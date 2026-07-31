@@ -1,0 +1,177 @@
+---
+const githubProfile = "https://github.com/FlaBBB";
+const linkedInProfile = "https://www.linkedin.com/in/fikri-flab/";
+const email = "f12345ff67@gmail.com";
+
+const profileRecords = [
+  {
+    capability: "TypeScript web applications",
+    observedEvidence:
+      "TypeScript web and realtime application structure is publicly visible across JMC and WordyChain.",
+    qualification:
+      "Public repositories establish hosted project material, not individual proficiency level, employment history, or sole authorship.",
+    sources: [
+      { name: "WordyChain", href: "https://github.com/FlaBBB/WordyChain" },
+      { name: "JMC", href: "https://github.com/FlaBBB/JMC" },
+    ],
+  },
+  {
+    capability: "Modular application design with automated tests",
+    observedEvidence:
+      "WordyChain visibly separates realtime, web, shared, dictionary, and game-core packages; its public tree includes unit-flow, end-to-end, and package-level tests.",
+    qualification:
+      "Present this as visible project structure and test coverage, not a blanket claim about every component’s authorship.",
+    sources: [{ name: "WordyChain", href: "https://github.com/FlaBBB/WordyChain" }],
+  },
+  {
+    capability: "Project-specific web-stack exposure",
+    observedEvidence:
+      "JMC documents Next.js App Router, TypeScript, PostgreSQL/Prisma, NextAuth.js v5, Tailwind CSS v4, Bun, Docker, Piston-backed code execution, and multiple submission languages.",
+    qualification:
+      "Attribute the stack to JMC. Do not present it as a personal expert-stack list or as proof of individual implementation depth; the README says the project was written by AI.",
+    sources: [{ name: "JMC", href: "https://github.com/FlaBBB/JMC" }],
+  },
+  {
+    capability: "Security-learning archive",
+    observedEvidence:
+      "A public cybersecurity archive contains CTF-oriented material for cryptography, digital forensics, reverse engineering, and binary exploitation.",
+    qualification:
+      "Label it a learning archive, not professional security work, a certification, or a claim of production security responsibility.",
+    sources: [{ name: "Cybers_security", href: "https://github.com/FlaBBB/Cybers_security" }],
+  },
+];
+
+const sections = [
+  { id: "identity", label: "00 / identity" },
+  { id: "technical-profile", label: "01 / Technical Profile" },
+  { id: "selected-evidence", label: "02 / selected evidence" },
+  { id: "learning-archive", label: "03 / learning archive" },
+  { id: "contact-path", label: "04 / Contact Path" },
+];
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width" />
+    <title>Signal Ledger — Fikri Flab</title>
+  </head>
+  <body>
+    <header>
+      <nav aria-label="Portfolio sections">
+        <ol>
+          {
+            sections.map(({ id, label }) => (
+              <li><a href={`#${id}`}>{label}</a></li>
+            ))
+          }
+        </ol>
+      </nav>
+    </header>
+
+    <main>
+      <section id="identity" aria-labelledby="identity-heading">
+        <h1>Fikri Flab</h1>
+        <h2 id="identity-heading">00 / identity</h2>
+        <p>Project-scoped engineering evidence.</p>
+        <a
+          href={githubProfile}
+          target="_blank"
+          rel="noreferrer"
+          aria-label="Inspect public work (opens in a new tab)"
+        >
+          Inspect public work ↗
+        </a>
+      </section>
+
+      <section id="technical-profile" aria-labelledby="technical-profile-heading">
+        <h2 id="technical-profile-heading">01 / Technical Profile</h2>
+        <p>A curated record of publicly visible projects and learning material.</p>
+        <ol aria-label="Technical Profile evidence ledger">
+          {
+            profileRecords.map(({ capability, observedEvidence, qualification, sources }) => (
+              <li>
+                <dl>
+                  <div>
+                    <dt>Capability</dt>
+                    <dd>{capability}</dd>
+                  </div>
+                  <div>
+                    <dt>Observed evidence</dt>
+                    <dd>{observedEvidence}</dd>
+                  </div>
+                  <div>
+                    <dt>Qualification</dt>
+                    <dd>{qualification}</dd>
+                  </div>
+                  <div>
+                    <dt>Source</dt>
+                    <dd>
+                      {
+                        sources.map((source, index) => (
+                          <>
+                            {index > 0 && " · "}
+                            <a href={source.href}>{source.name} ↗</a>
+                          </>
+                        ))
+                      }
+                    </dd>
+                  </div>
+                </dl>
+              </li>
+            ))
+          }
+        </ol>
+      </section>
+
+      <section id="selected-evidence" aria-labelledby="selected-evidence-heading">
+        <h2 id="selected-evidence-heading">02 / selected evidence</h2>
+        <article aria-labelledby="wordychain-heading">
+          <p>Selected evidence / 01</p>
+          <h3 id="wordychain-heading">Realtime and web boundaries, kept visible.</h3>
+          <p>
+            Public project structure separates realtime, web, shared, dictionary, and game-core packages; unit-flow,
+            end-to-end, and package-level test directories are visible.
+          </p>
+          <p>Repository structure is evidence of visible project organization, not a claim of exclusive authorship.</p>
+          <a href="https://github.com/FlaBBB/WordyChain">Inspect WordyChain ↗</a>
+        </article>
+        <article aria-labelledby="jmc-heading">
+          <p>Selected evidence / 02</p>
+          <h3 id="jmc-heading">A documented web application stack.</h3>
+          <p>
+            JMC documents a Next.js and TypeScript application with PostgreSQL/Prisma, NextAuth.js, Tailwind CSS,
+            Bun, Docker, and sandboxed multi-language code execution.
+          </p>
+          <p>
+            This describes JMC’s documented stack. It does not assert individual authorship or proficiency; its README
+            says the project was written by AI.
+          </p>
+          <a href="https://github.com/FlaBBB/JMC">Inspect JMC ↗</a>
+        </article>
+      </section>
+
+      <section id="learning-archive" aria-labelledby="learning-archive-heading">
+        <h2 id="learning-archive-heading">03 / learning archive</h2>
+        <p>Learning archive</p>
+        <h3>Security material, explicitly scoped.</h3>
+        <p>
+          A public CTF-oriented archive spans cryptography, digital forensics, reverse engineering, and binary
+          exploitation.
+        </p>
+        <p>Learning material, not professional security experience.</p>
+        <a href="https://github.com/FlaBBB/Cybers_security">Inspect Cybers_security ↗</a>
+      </section>
+
+      <section id="contact-path" aria-labelledby="contact-path-heading">
+        <h2 id="contact-path-heading">04 / Contact Path</h2>
+        <ul>
+          <li><a href={githubProfile}>GitHub — inspect public work ↗</a></li>
+          <li><a href={linkedInProfile}>LinkedIn — professional profile ↗</a></li>
+          <li><a href={`mailto:${email}`}>Email — start a conversation ↗</a></li>
+        </ul>
+      </section>
+    </main>
+  </body>
+</html>
