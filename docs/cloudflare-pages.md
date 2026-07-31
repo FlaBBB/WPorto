@@ -20,6 +20,7 @@ Do not add environment variables, bindings, Functions, a Worker, or a direct-upl
 ## Preview browser acceptance
 
 `.github/workflows/pages-preview-acceptance.yml` waits for the public branch alias at `https://<normalized-branch>.wporto.pages.dev`, then runs the existing browser acceptance suite with `PLAYWRIGHT_BASE_URL` set to that URL. The workflow needs no Cloudflare credentials because Cloudflare's GitHub integration performs the deployment. Fork pull requests are skipped because Cloudflare Pages does not create Git-integration previews for them.
+The production build writes the public `/.build-metadata.json` file with Cloudflare's `CF_PAGES_COMMIT_SHA`; before testing, the workflow requires that value to equal the pull request head SHA. This prevents a mutable branch alias from passing tests against an earlier deployment.
 
 Cloudflare lowercases a branch alias and replaces non-alphanumeric characters with `-`; the workflow applies the same transformation. Keep the Pages project name `wporto`, or update the workflow URL if the project name changes.
 
