@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 const repositoryUrls = {
   WordyChain: "https://github.com/FlaBBB/WordyChain",
@@ -6,9 +6,13 @@ const repositoryUrls = {
   Cybers_security: "https://github.com/FlaBBB/Cybers_security",
 };
 
-test("serves the complete Technical Profile from static output without JavaScript", async ({ browser }) => {
-  const context = await browser.newContext({ javaScriptEnabled: false });
-  const page = await context.newPage();
+const technicalProfileRows = (page: Page) =>
+  page.getByRole("list", { name: "Technical Profile evidence ledger" }).getByRole("listitem");
+
+test.describe("static Technical Profile output", () => {
+  test.use({ javaScriptEnabled: false });
+
+  test("serves the complete Technical Profile from static output without JavaScript", async ({ page }) => {
 
   const response = await page.goto("/");
   expect(response?.ok()).toBeTruthy();
@@ -83,8 +87,8 @@ test("serves the complete Technical Profile from static output without JavaScrip
     "mailto:f12345ff67@gmail.com",
   );
 
-  await context.close();
 });
+  });
 
 test("keeps the numbered navigation and external source links keyboard reachable", async ({ page }) => {
   await page.goto("/");
@@ -99,8 +103,72 @@ test("keeps the numbered navigation and external source links keyboard reachable
   ]);
 
   await page.keyboard.press("Tab");
+  await expect(page.getByRole("link", { name: "Inspect public work (opens in a new tab)" })).toBeFocused();
+  await page.keyboard.press("Tab");
   await expect(page.getByRole("link", { name: "00 / identity" })).toBeFocused();
 
   await page.getByRole("link", { name: "Inspect WordyChain ↗" }).focus();
   await expect(page.getByRole("link", { name: "Inspect WordyChain ↗" })).toBeFocused();
+});
+
+test("stacks the Technical Profile in order and keeps Contact Path targets usable on narrow screens", async ({ page }) => {
+  await page.setViewportSize({ width: 720, height: 900 });
+  await page.goto("/");
+
+  await expect(page.getByRole("navigation", { name: "Portfolio sections" })).toBeHidden();
+
+  const profileRows = technicalProfileRows(page);
+  await expect(profileRows).toHaveCount(4);
+
+  for (const row of await profileRows.all()) {
+    const fieldPositions = await row.locator("dl > div").evaluateAll((fields) =>
+      fields.map((field) => field.getBoundingClientRect().top),
+    );
+    for (let fieldIndex = 1; fieldIndex < fieldPositions.length; fieldIndex += 1) {
+      expect(fieldPositions[fieldIndex]).toBeGreaterThan(fieldPositions[fieldIndex - 1]);
+    }
+    await expect(row.locator("dl > div").nth(2)).toBeVisible();
+  }
+
+  const evidencePanels = page.locator("#selected-evidence article");
+  const panelPositions = await evidencePanels.evaluateAll((panels) =>
+    panels.map((panel) => {
+      const { left, top } = panel.getBoundingClientRect();
+      return { left, top };
+    }),
+  );
+  expect(panelPositions[0].top).toBeLessThan(panelPositions[1].top);
+  expect(panelPositions[0].left).toBe(panelPositions[1].left);
+
+  for (const contactLink of await page.locator("#contact-path a").all()) {
+    await expect(contactLink).toBeVisible();
+    expect(await contactLink.evaluate((link) => link.getBoundingClientRect().height)).toBeGreaterThanOrEqual(44);
+  }
+});
+
+test("presents the desktop Technical Profile as a ruled Signal Ledger", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto("/");
+
+  const stickyNavigationIndex = page.getByRole("navigation", { name: "Portfolio sections" }).locator("..");
+  await expect(stickyNavigationIndex).toHaveCSS("position", "sticky");
+  expect((await stickyNavigationIndex.boundingBox())?.y).toBeGreaterThanOrEqual(1000);
+  await page.locator("#technical-profile").scrollIntoViewIfNeeded();
+  expect((await stickyNavigationIndex.boundingBox())?.y).toBeLessThanOrEqual(32);
+
+  const firstLedgerRow = technicalProfileRows(page).first();
+  const firstFieldPositions = await firstLedgerRow.locator("dl > div").evaluateAll((fields) =>
+    fields.slice(0, 3).map((field) => field.getBoundingClientRect().top),
+  );
+  expect(new Set(firstFieldPositions).size).toBe(1);
+
+  const [wordyChainPanel, jmcPanel] = await page.locator("#selected-evidence article").all();
+  const wordyChainBounds = await wordyChainPanel.boundingBox();
+  const jmcBounds = await jmcPanel.boundingBox();
+  expect(wordyChainBounds?.x).toBeLessThan(jmcBounds?.x ?? 0);
+  expect(wordyChainBounds?.y).toBeLessThan(jmcBounds?.y ?? 0);
+
+  const contactPath = page.locator("#contact-path");
+  await contactPath.scrollIntoViewIfNeeded();
+  await expect(contactPath).toHaveCSS("background-color", "rgb(34, 70, 255)");
 });
