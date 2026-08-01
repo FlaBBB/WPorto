@@ -92,7 +92,7 @@ const sections = [
       <section id="technical-profile" aria-labelledby="technical-profile-heading">
         <h2 id="technical-profile-heading">01 / Technical Profile</h2>
         <p>A curated record of publicly visible projects and learning material.</p>
-        <EvidenceLedger records={profileRecords} client:load />
+        <EvidenceLedger records={profileRecords} client:visible />
       </section>
 
       <section id="selected-evidence" aria-labelledby="selected-evidence-heading">
@@ -322,12 +322,10 @@ const sections = [
       @keyframes signal-field-entry {
         from {
           opacity: 0;
-          transform: translate3d(0, 12px, 0);
         }
 
         to {
           opacity: 1;
-          transform: translate3d(0, 0, 0);
         }
       }
 

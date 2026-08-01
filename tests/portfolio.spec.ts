@@ -111,9 +111,21 @@ test("keeps the numbered navigation and external source links keyboard reachable
   await expect(page.getByRole("link", { name: "Inspect WordyChain ↗" })).toBeFocused();
 });
 
-test("discloses evidence detail by keyboard without hiding its source", async ({ page }) => {
+test("hydrates Technical Profile detail controls when visible", async ({ page }) => {
   await page.goto("/");
 
+  const technicalProfile = page.locator("#technical-profile");
+  const thirdDetail = page.locator("#evidence-detail-2");
+
+  await expect(thirdDetail).not.toHaveAttribute("hidden", "");
+  await technicalProfile.scrollIntoViewIfNeeded();
+  await expect(thirdDetail).toHaveAttribute("hidden", "");
+});
+
+
+test("discloses evidence detail by keyboard without hiding its source", async ({ page }) => {
+  await page.goto("/");
+  await page.locator("#technical-profile").scrollIntoViewIfNeeded();
   const secondDisclosure = page.getByRole("button", {
     name: "Evidence detail: Modular application design with automated tests",
   });
