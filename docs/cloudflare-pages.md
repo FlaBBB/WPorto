@@ -17,6 +17,27 @@ In **Workers & Pages**, create the `wporto` Pages project by connecting the Clou
 
 Do not add environment variables, bindings, Functions, a Worker, or a direct-upload deployment path. The GitHub integration creates the Pages build check and a public preview URL for each same-repository pull request. Pushes to `main` use the identical static build configuration for production; a failed build does not replace the previous successful deployment.
 
+## Production custom domain
+
+In the same Cloudflare account as `wporto`, make `flab.my.id` an active zone. In **Workers & Pages** → `wporto` → **Custom domains**, attach `flab.my.id` as the apex domain. Cloudflare then manages the apex Pages DNS record and certificate.
+
+Keep the Astro `site` configuration and rendered canonical URL at `https://flab.my.id`; do not configure a repository base path.
+
+Create two **Bulk Redirects** lists and rules:
+
+| Source URL | Target URL | Status | Required options |
+| --- | --- | --- | --- |
+| `https://www.flab.my.id` | `https://flab.my.id` | 301 | Preserve query string, subpath matching, preserve path suffix |
+| `https://wporto.pages.dev` | `https://flab.my.id` | 301 | Preserve query string, subpath matching, preserve path suffix |
+
+For the `www` rule to receive traffic, add a DNS `A` record named `www` with content `192.0.2.1` and **Proxied** status. It is a redirect placeholder, not an origin address.
+
+Do not attach `www.flab.my.id` to Pages: the Bulk Redirect rule owns that hostname.
+
+The redirect rules and the active zone are Cloudflare account state. They cannot be provisioned by this repository's Git integration, which deliberately has no Cloudflare credentials.
+
+`production-acceptance.yml` runs after each `main` push and on manual dispatch. It waits for the exact deployed commit, verifies the HTTPS canonical host and both 301 redirect contracts, then runs the browser suite against `https://flab.my.id`. Curl's default certificate verification makes a failed or invalid TLS certificate fail the check.
+
 ## Preview browser acceptance
 
 `.github/workflows/pages-preview-acceptance.yml` waits for the public branch alias at `https://<normalized-branch>.wporto.pages.dev`, then runs the existing browser acceptance suite with `PLAYWRIGHT_BASE_URL` set to that URL. The workflow needs no Cloudflare credentials because Cloudflare's GitHub integration performs the deployment. Fork pull requests are skipped because Cloudflare Pages does not create Git-integration previews for them.

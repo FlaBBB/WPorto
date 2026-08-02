@@ -90,6 +90,12 @@ test.describe("static Technical Profile output", () => {
 });
 });
 
+test("publishes the apex URL as the canonical Portfolio Site", async ({ page }) => {
+  await page.goto("/");
+
+  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", "https://flab.my.id/");
+});
+
 test("keeps the numbered navigation and external source links keyboard reachable", async ({ page }) => {
   await page.goto("/");
 
