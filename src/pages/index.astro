@@ -1,4 +1,7 @@
 ---
+import EvidenceLedger from "../components/EvidenceLedger.svelte";
+import SignalField from "../components/SignalField.svelte";
+
 const githubProfile = "https://github.com/FlaBBB";
 const linkedInProfile = "https://www.linkedin.com/in/fikri-flab/";
 const email = "f12345ff67@gmail.com";
@@ -56,11 +59,13 @@ const sections = [
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width" />
     <title>Signal Ledger — Fikri Flab</title>
+    <link rel="canonical" href="https://flab.my.id/" />
   </head>
   <body>
 
     <main>
       <section id="identity" aria-labelledby="identity-heading">
+        <SignalField client:media="(prefers-reduced-motion: no-preference)" />
         <h1>Fikri <span>Flab</span></h1>
         <h2 id="identity-heading">00 / identity</h2>
         <p>Project-scoped engineering evidence.</p>
@@ -88,41 +93,7 @@ const sections = [
       <section id="technical-profile" aria-labelledby="technical-profile-heading">
         <h2 id="technical-profile-heading">01 / Technical Profile</h2>
         <p>A curated record of publicly visible projects and learning material.</p>
-        <ol aria-label="Technical Profile evidence ledger">
-          {
-            profileRecords.map(({ capability, observedEvidence, qualification, sources }) => (
-              <li>
-                <dl>
-                  <div>
-                    <dt>Capability</dt>
-                    <dd>{capability}</dd>
-                  </div>
-                  <div>
-                    <dt>Observed evidence</dt>
-                    <dd>{observedEvidence}</dd>
-                  </div>
-                  <div>
-                    <dt>Qualification</dt>
-                    <dd>{qualification}</dd>
-                  </div>
-                  <div>
-                    <dt>Source</dt>
-                    <dd>
-                      {
-                        sources.map((source, index) => (
-                          <>
-                            {index > 0 && " · "}
-                            <a href={source.href}>{source.name} ↗</a>
-                          </>
-                        ))
-                      }
-                    </dd>
-                  </div>
-                </dl>
-              </li>
-            ))
-          }
-        </ol>
+        <EvidenceLedger records={profileRecords} client:visible />
       </section>
 
       <section id="selected-evidence" aria-labelledby="selected-evidence-heading">
@@ -327,6 +298,38 @@ const sections = [
         pointer-events: none;
       }
 
+      .signal-field {
+        position: absolute;
+        inset: var(--gutter);
+        overflow: hidden;
+        background-image:
+          linear-gradient(var(--rule) 1px, transparent 1px),
+          linear-gradient(90deg, var(--rule) 1px, transparent 1px);
+        background-size: 4rem 4rem;
+        opacity: 0.7;
+      }
+
+      .signal-field canvas {
+        width: 100%;
+        height: 100%;
+        animation: signal-field-entry 700ms ease-out both;
+      }
+
+      #identity > :not(astro-island) {
+        position: relative;
+        z-index: 1;
+      }
+
+      @keyframes signal-field-entry {
+        from {
+          opacity: 0;
+        }
+
+        to {
+          opacity: 1;
+        }
+      }
+
       #identity > p {
         grid-column: 9 / span 3;
         color: var(--muted-ink);
@@ -344,7 +347,7 @@ const sections = [
         font-size: 1.125rem;
       }
 
-      #technical-profile > ol {
+      #technical-profile [aria-label="Technical Profile evidence ledger"] {
         grid-column: 1 / -1;
         display: grid;
         gap: 0;
@@ -354,14 +357,14 @@ const sections = [
         counter-reset: ledger;
       }
 
-      #technical-profile > ol > li {
+      #technical-profile [aria-label="Technical Profile evidence ledger"] > li {
         position: relative;
         padding: 1.5rem 0;
         border-block-start: 1px solid var(--rule);
         counter-increment: ledger;
       }
 
-      #technical-profile > ol > li::before {
+      #technical-profile [aria-label="Technical Profile evidence ledger"] > li::before {
         position: absolute;
         top: 1.5rem;
         left: -2.5rem;
@@ -378,29 +381,64 @@ const sections = [
         gap: 1.5rem;
       }
 
-      #technical-profile dl > div {
+      #technical-profile .ledger-field {
         display: grid;
         align-content: start;
         gap: 0.5rem;
       }
 
-      #technical-profile dl > div:nth-child(1) {
+      #technical-profile .ledger-capability {
         grid-column: span 3;
       }
 
-      #technical-profile dl > div:nth-child(2) {
+      #technical-profile .ledger-disclosure {
+        width: fit-content;
+        margin-block-start: 0.5rem;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        color: var(--signal);
+        cursor: pointer;
+        font: inherit;
+        font-size: 0.75rem;
+        text-align: start;
+        text-decoration: underline;
+        text-decoration-thickness: 1px;
+        text-underline-offset: 0.2em;
+      }
+
+      #technical-profile .ledger-details {
+        display: grid;
+        grid-column: span 9;
+        grid-template-columns: repeat(9, minmax(0, 1fr));
+        gap: 1.5rem;
+      }
+
+      #technical-profile .ledger-details[hidden] {
+        display: none;
+      }
+
+      #technical-profile .ledger-details > :first-child {
         grid-column: span 5;
       }
 
-      #technical-profile dl > div:nth-child(3) {
+      #technical-profile .ledger-details > :last-child {
         grid-column: span 4;
       }
 
-      #technical-profile dl > div:nth-child(4) {
+      #technical-profile .ledger-source {
         grid-column: 1 / -1;
-        grid-template-columns: subgrid;
+        grid-template-columns: repeat(12, minmax(0, 1fr));
         padding-block-start: 1rem;
         border-block-start: 1px solid var(--rule);
+      }
+
+      #technical-profile .ledger-source dt {
+        grid-column: span 3;
+      }
+
+      #technical-profile .ledger-source dd {
+        grid-column: 4 / -1;
       }
 
       dt,
@@ -422,12 +460,8 @@ const sections = [
         font-size: 0.9375rem;
       }
 
-      #technical-profile dl > div:nth-child(3) dd {
+      #technical-profile .ledger-details > :last-child dd {
         color: var(--muted-ink);
-      }
-
-      #technical-profile dl > div:nth-child(4) dd {
-        grid-column: 4 / -1;
       }
 
       #technical-profile a {
@@ -560,32 +594,32 @@ const sections = [
           grid-row: 1;
         }
 
-        #technical-profile > ol {
+        #technical-profile [aria-label="Technical Profile evidence ledger"] {
           grid-column: 1;
         }
 
-        #technical-profile > ol > li {
+        #technical-profile [aria-label="Technical Profile evidence ledger"] > li {
           padding-inline-start: 2.5rem;
         }
 
-        #technical-profile > ol > li::before {
+        #technical-profile [aria-label="Technical Profile evidence ledger"] > li::before {
           left: 0;
         }
 
-        #technical-profile dl {
+        #technical-profile dl,
+        #technical-profile .ledger-details,
+        #technical-profile .ledger-source {
           grid-template-columns: 1fr;
           gap: 1.25rem;
         }
 
-        #technical-profile dl > div:nth-child(n) {
-          grid-column: 1;
-        }
-
-        #technical-profile dl > div:nth-child(4) {
-          grid-template-columns: 1fr;
-        }
-
-        #technical-profile dl > div:nth-child(4) dd {
+        #technical-profile .ledger-capability,
+        #technical-profile .ledger-details,
+        #technical-profile .ledger-source,
+        #technical-profile .ledger-details > :first-child,
+        #technical-profile .ledger-details > :last-child,
+        #technical-profile .ledger-source dt,
+        #technical-profile .ledger-source dd {
           grid-column: 1;
         }
 

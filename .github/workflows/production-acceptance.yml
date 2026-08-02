@@ -1,0 +1,70 @@
+name: Production acceptance
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-production:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out production commit
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Wait for the canonical production release
+        env:
+          PRODUCTION_URL: https://flab.my.id
+          EXPECTED_COMMIT: ${{ github.sha }}
+        run: |
+          for attempt in $(seq 1 36); do
+            if curl --fail --silent --show-error "$PRODUCTION_URL/.build-metadata.json" | grep --fixed-strings --quiet "\"commit\":\"${EXPECTED_COMMIT}\""; then
+              if curl --fail --silent --show-error "$PRODUCTION_URL" | grep --fixed-strings --quiet '<title>Signal Ledger — Fikri Flab</title>'; then
+                exit 0
+              fi
+            fi
+            sleep 10
+          done
+          echo "Canonical production did not serve the expected Portfolio Site: $PRODUCTION_URL" >&2
+          exit 1
+
+      - name: Verify permanent hostname redirects
+        run: |
+          assert_redirect() {
+            local source="$1"
+            local target="$2"
+            local actual
+            actual=$(curl --silent --show-error --output /dev/null --write-out '%{http_code} %{redirect_url}' --max-redirs 0 "$source")
+            if [ "$actual" != "301 $target" ]; then
+              echo "Expected 301 redirect from $source to $target; got: $actual" >&2
+              exit 1
+            fi
+          }
+
+          assert_redirect \
+            'https://www.flab.my.id/redirect-check/nested?source=www' \
+            'https://flab.my.id/redirect-check/nested?source=www'
+          assert_redirect \
+            'https://wporto.pages.dev/redirect-check/nested?source=pages' \
+            'https://flab.my.id/redirect-check/nested?source=pages'
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run browser acceptance suite against canonical production
+        env:
+          PLAYWRIGHT_BASE_URL: https://flab.my.id
+        run: npm test

@@ -88,7 +88,13 @@ test.describe("static Technical Profile output", () => {
   );
 
 });
-  });
+});
+
+test("publishes the apex URL as the canonical Portfolio Site", async ({ page }) => {
+  await page.goto("/");
+
+  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", "https://flab.my.id/");
+});
 
 test("keeps the numbered navigation and external source links keyboard reachable", async ({ page }) => {
   await page.goto("/");
@@ -111,6 +117,83 @@ test("keeps the numbered navigation and external source links keyboard reachable
   await expect(page.getByRole("link", { name: "Inspect WordyChain ↗" })).toBeFocused();
 });
 
+test("hydrates Technical Profile detail controls when visible", async ({ page }) => {
+  await page.goto("/");
+
+  const technicalProfile = page.locator("#technical-profile");
+  const thirdDetail = page.locator("#evidence-detail-2");
+
+  await expect(thirdDetail).not.toHaveAttribute("hidden", "");
+  await technicalProfile.scrollIntoViewIfNeeded();
+  await expect(thirdDetail).toHaveAttribute("hidden", "");
+});
+
+
+test("discloses evidence detail by keyboard without hiding its source", async ({ page }) => {
+  await page.goto("/");
+  await page.locator("#technical-profile").scrollIntoViewIfNeeded();
+  const secondDisclosure = page.getByRole("button", {
+    name: "Evidence detail: Modular application design with automated tests",
+  });
+  const secondSource = technicalProfileRows(page)
+    .nth(1)
+    .getByRole("link", { name: "WordyChain ↗" });
+
+  await expect(secondDisclosure).toHaveAttribute("aria-expanded", "false");
+  await expect(secondSource).toBeVisible();
+  await secondDisclosure.focus();
+  await expect(secondDisclosure).toHaveCSS("outline-width", "2px");
+  await expect(secondDisclosure).toHaveCSS("outline-style", "solid");
+  const focusContrast = await secondDisclosure.evaluate((button) => {
+    const relativeLuminance = (color: string) => {
+      const [red = 0, green = 0, blue = 0] = color.match(/\d+/g)!.map(Number).map((channel) => {
+        const normalized = channel / 255;
+        return normalized <= 0.03928 ? normalized / 12.92 : ((normalized + 0.055) / 1.055) ** 2.4;
+      });
+
+      return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+    };
+
+    const outline = relativeLuminance(getComputedStyle(button).outlineColor);
+    const background = relativeLuminance(getComputedStyle(document.body).backgroundColor);
+    return (Math.max(outline, background) + 0.05) / (Math.min(outline, background) + 0.05);
+  });
+  expect(focusContrast).toBeGreaterThanOrEqual(3);
+  await page.keyboard.press("Space");
+  await expect(secondDisclosure).toHaveAttribute("aria-expanded", "true");
+  await expect(page.locator("#evidence-detail-1")).toBeVisible();
+  await expect(secondSource).toBeVisible();
+
+  await page.keyboard.press("Space");
+  await expect(secondDisclosure).toHaveAttribute("aria-expanded", "false");
+  await expect(page.locator("#evidence-detail-1")).toBeHidden();
+  await expect(secondSource).toBeVisible();
+});
+
+test.describe("Reduced-Motion Alternate", () => {
+
+  test("keeps the static rule grid, disclosure, and Contact Path available without a canvas", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.goto("/");
+
+    await expect(page.locator(".signal-field")).toBeVisible();
+    await expect(page.locator(".signal-field canvas")).toHaveCount(0);
+    await expect(technicalProfileRows(page)).toHaveCount(4);
+
+    const disclosure = page.getByRole("button", {
+      name: "Evidence detail: Project-specific web-stack exposure",
+    });
+    await disclosure.focus();
+    await page.keyboard.press("Enter");
+    await expect(disclosure).toHaveAttribute("aria-expanded", "true");
+    await expect(page.locator("#evidence-detail-2")).toBeVisible();
+
+    await expect(page.locator("#contact-path")).toContainText("GitHub — inspect public work ↗");
+    await expect(page.locator("#contact-path")).toContainText("LinkedIn — professional profile ↗");
+    await expect(page.locator("#contact-path")).toContainText("Email — start a conversation ↗");
+  });
+});
+
 test("stacks the Technical Profile in order and keeps Contact Path targets usable on narrow screens", async ({ page }) => {
   await page.setViewportSize({ width: 720, height: 900 });
   await page.goto("/");
@@ -119,15 +202,36 @@ test("stacks the Technical Profile in order and keeps Contact Path targets usabl
 
   const profileRows = technicalProfileRows(page);
   await expect(profileRows).toHaveCount(4);
+  await page.locator("#technical-profile").scrollIntoViewIfNeeded();
+  await expect(profileRows.nth(1).getByRole("button")).toHaveAttribute("aria-expanded", "false");
 
   for (const row of await profileRows.all()) {
-    const fieldPositions = await row.locator("dl > div").evaluateAll((fields) =>
-      fields.map((field) => field.getBoundingClientRect().top),
-    );
-    for (let fieldIndex = 1; fieldIndex < fieldPositions.length; fieldIndex += 1) {
-      expect(fieldPositions[fieldIndex]).toBeGreaterThan(fieldPositions[fieldIndex - 1]);
+    const disclosure = row.getByRole("button");
+    if ((await disclosure.getAttribute("aria-expanded")) === "false") {
+      await disclosure.focus();
+      await page.keyboard.press("Space");
     }
-    await expect(row.locator("dl > div").nth(2)).toBeVisible();
+
+    const capabilityPosition = await row.locator(".ledger-capability").evaluate((field) => field.getBoundingClientRect().top);
+    const qualification = row.getByText("Qualification", { exact: true });
+    await expect(qualification).toBeVisible();
+    await expect(row.locator("dt")).toHaveText(["Capability", "Observed evidence", "Qualification", "Source"]);
+    const qualificationPosition = await qualification.evaluate((field) => field.getBoundingClientRect().top);
+    const sourcePosition = await row.locator(".ledger-source").evaluate((field) => field.getBoundingClientRect().top);
+
+    expect(qualificationPosition).toBeGreaterThan(capabilityPosition);
+    expect(sourcePosition).toBeGreaterThan(qualificationPosition);
+    await expect(row.locator(".ledger-source")).toBeVisible();
+  }
+  const profileRowPositions = await profileRows.evaluateAll((rows) =>
+    rows.map((row) => {
+      const { left, top } = row.getBoundingClientRect();
+      return { left, top };
+    }),
+  );
+  for (let index = 1; index < profileRowPositions.length; index += 1) {
+    expect(profileRowPositions[index].top).toBeGreaterThan(profileRowPositions[index - 1].top);
+    expect(profileRowPositions[index].left).toBe(profileRowPositions[index - 1].left);
   }
 
   const evidencePanels = page.locator("#selected-evidence article");
@@ -155,11 +259,11 @@ test("presents the desktop Technical Profile as a ruled Signal Ledger", async ({
   expect((await stickyNavigationIndex.boundingBox())?.y).toBeGreaterThanOrEqual(1000);
   await page.locator("#technical-profile").scrollIntoViewIfNeeded();
   expect((await stickyNavigationIndex.boundingBox())?.y).toBeLessThanOrEqual(32);
-
   const firstLedgerRow = technicalProfileRows(page).first();
-  const firstFieldPositions = await firstLedgerRow.locator("dl > div").evaluateAll((fields) =>
-    fields.slice(0, 3).map((field) => field.getBoundingClientRect().top),
-  );
+
+  const firstFieldPositions = await firstLedgerRow
+    .locator(".ledger-capability, .ledger-details > .ledger-field")
+    .evaluateAll((fields) => fields.map((field) => field.getBoundingClientRect().top));
   expect(new Set(firstFieldPositions).size).toBe(1);
 
   const [wordyChainPanel, jmcPanel] = await page.locator("#selected-evidence article").all();
