@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@astrojs/svelte": "^9.0.1",
+    "@fontsource-variable/bricolage-grotesque": "^5.3.0",
     "astro": "^7.3.6",
     "gsap": "^3.15.0",
     "svelte": "^5.56.8"

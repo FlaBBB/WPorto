@@ -21,12 +21,12 @@ test.describe("static Technical Profile output", () => {
     expect(response?.ok()).toBeTruthy();
     await expect(page).toHaveTitle("Fikri Flab — Projects and Play");
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(
-      /Building things\.\s*Learning out loud\./,
+      /Build\.\s*Break\.\s*Learn\./,
     );
     await expect(page.getByRole("link", { name: "Fikri Flab — back to top" })).toBeVisible();
     await expect(page.getByRole("heading", { level: 2 })).toHaveText([
-      "Technical Profile",
       "Selected Work",
+      "Technical Profile",
       "Learning, out in the open.",
       "Say hello.",
     ]);
@@ -292,7 +292,8 @@ test("moves separate layers at different depths and resets on pointer leave", as
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto("/");
   const image = page.locator(".hero-image");
-  await expect(page.locator(".hero-visual")).toHaveCSS("transform", "none");
+  // The entrance tween clears its own transform; wait it out before measuring depth.
+  await expect.poll(() => page.locator(".hero-visual").evaluate(el => getComputedStyle(el).transform)).toBe("none");
   const field = await page.locator(".hero-art").boundingBox();
   if (!field) throw new Error("Hero illustration missing");
   await page.mouse.move(
@@ -349,6 +350,16 @@ test("reveals project work on scroll and reverts when reduced motion interrupts"
   await expect.poll(() => project.evaluate(el => new DOMMatrix(getComputedStyle(el).transform).m42)).toBeCloseTo(24);
   await project.scrollIntoViewIfNeeded();
   await expect(project).toHaveCSS("transform", "none");
+  // Scroll just past the hero so the parallax timeline is fully at its end
+  // rather than wherever the project card happens to land.
+  await page.evaluate(() => {
+    const hero = document.querySelector("#identity");
+    if (!hero) throw new Error("Hero missing");
+    window.scrollTo({
+      top: hero.getBoundingClientRect().bottom + window.scrollY + 40,
+      behavior: "instant",
+    });
+  });
   const height = await page.locator(".hero-image").evaluate(el => el.getBoundingClientRect().height);
   for (const [selector, fraction] of [
     [".hero-backdrop", 0.028],
@@ -462,13 +473,11 @@ for (const width of [320, 390, 768, 801, 1100, 1440]) {
     const panels = await page.locator("#selected-evidence article").all();
     const first = await panels[0].boundingBox();
     const second = await panels[1].boundingBox();
-    if (width <= 800) {
-      expect(first?.x).toBe(second?.x);
-      expect(second?.y).toBeGreaterThan((first?.y ?? 0) + (first?.height ?? 0));
-    } else {
-      expect(first?.y).toBe(second?.y);
-      expect(second?.x).toBeGreaterThan((first?.x ?? 0) + (first?.width ?? 0));
-    }
+    // Work rows are full-width sheets stacked at every width; the second sheet
+    // is stepped right on wide screens and aligned on narrow ones.
+    expect(second?.y).toBeGreaterThan((first?.y ?? 0) + (first?.height ?? 0));
+    if (width <= 800) expect(second?.x).toBe(first?.x);
+    else expect(second?.x).toBeGreaterThan(first?.x ?? 0);
     const overflow = await page
       .locator("#selected-evidence h3, #selected-evidence p, #identity h1, #contact-path h2")
       .evaluateAll((elements) =>
@@ -480,47 +489,309 @@ for (const width of [320, 390, 768, 801, 1100, 1440]) {
   });
 }
 
-test("keeps text contrast readable on lavender and purple surfaces", async ({
+test("keeps text contrast readable on the painted paper surfaces", async ({
   page,
 }) => {
   await page.goto("/");
   const contrast = await page
     .locator(
-      ".hero-note, .primary-link, .secondary-link, .section-intro, .ledger-qualification dd, .project-copy p, .project-link, .work-scope, .art-caption, #contact-path a, nav a",
+      ".hero-kicker, .hero-note, .primary-link, .secondary-link, .section-intro, .ledger-qualification dd, .ledger-capability, .project-copy p, .project-link, .project-stack li, .work-scope, .topic-tag, .notes-label small, .archive-copy p, .art-caption, #contact-path a, .contact-link strong, .contact-link small, nav a",
     )
     .evaluateAll((elements) => {
-      const luminance = (color: string) => {
-        const [red, green, blue] = color
+      const parse = (color: string) => {
+        const [red, green, blue, alpha = 1] = color
           .match(/[\d.]+/g)!
-          .slice(0, 3)
-          .map(Number)
-          .map((channel) => {
-            const value = channel / 255;
-            return value <= 0.04045
-              ? value / 12.92
-              : ((value + 0.055) / 1.055) ** 2.4;
-          });
-        return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+          .map(Number);
+        return { red, green, blue, alpha };
       };
-      return elements.map((el) => {
-        let background: Element | null = el;
-        while (
-          background &&
-          getComputedStyle(background).backgroundColor === "rgba(0, 0, 0, 0)"
-        ) {
-          background = background.parentElement;
+      const luminance = ({ red, green, blue }: ReturnType<typeof parse>) =>
+        [red, green, blue]
+          .map((channel) => channel / 255)
+          .map((value) =>
+            value <= 0.04045
+              ? value / 12.92
+              : ((value + 0.055) / 1.055) ** 2.4,
+          )
+          .reduce(
+            (total, channel, index) =>
+              total + [0.2126, 0.7152, 0.0722][index] * channel,
+            0,
+          );
+      const over = (
+        top: ReturnType<typeof parse>,
+        bottom: ReturnType<typeof parse>,
+      ) => ({
+        red: top.red * top.alpha + bottom.red * (1 - top.alpha),
+        green: top.green * top.alpha + bottom.green * (1 - top.alpha),
+        blue: top.blue * top.alpha + bottom.blue * (1 - top.alpha),
+        alpha: 1,
+      });
+
+      // Paper faces are painted by pseudo-elements, so the surface behind text
+      // is the nearest ancestor background or covering pseudo-element — not
+      // just the nearest element with a background-color.
+      const layersFor = (element: Element) => {
+        const layers: ReturnType<typeof parse>[] = [];
+        let node: Element | null = element;
+        while (node && node !== document.documentElement) {
+          const own = getComputedStyle(node).backgroundColor;
+          if (own !== "rgba(0, 0, 0, 0)") {
+            layers.push(parse(own));
+            break;
+          }
+          const box = node.getBoundingClientRect();
+          const painted = (["::before", "::after"] as const)
+            .map((pseudo) => ({ pseudo, style: getComputedStyle(node!, pseudo) }))
+            .filter(
+              ({ style }) =>
+                style.backgroundColor !== "rgba(0, 0, 0, 0)" &&
+                parseFloat(style.width) >= box.width * 0.9 &&
+                parseFloat(style.height) >= box.height * 0.9,
+            )
+            .sort((a, b) => Number(b.style.zIndex) - Number(a.style.zIndex));
+          if (painted.length) {
+            layers.push(parse(painted[0].style.backgroundColor));
+            break;
+          }
+          node = node.parentElement;
         }
-        const ink = luminance(getComputedStyle(el).color);
-        const surface = luminance(
-          getComputedStyle(background!).backgroundColor,
-        );
-        return (
-          (Math.max(ink, surface) + 0.05) / (Math.min(ink, surface) + 0.05)
-        );
+        if (!layers.length)
+          layers.push(parse(getComputedStyle(document.body).backgroundColor));
+        return layers;
+      };
+
+      return elements.map((el) => {
+        const layers = layersFor(el);
+        const surface = layers.reduce((below, top) => over(top, below), {
+          red: 255,
+          green: 255,
+          blue: 255,
+          alpha: 1,
+        });
+        const ink = luminance(parse(getComputedStyle(el).color));
+        const paper = luminance(surface);
+        return (Math.max(ink, paper) + 0.05) / (Math.min(ink, paper) + 0.05);
       });
     });
   for (const ratio of contrast) expect(ratio).toBeGreaterThanOrEqual(4.5);
 });
+
+test("uses the one character illustration only in the hero", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator('img[src*="hero-character"]')).toHaveCount(1);
+  await expect(
+    page.locator('img[src*="hero-character"]').first(),
+  ).toHaveJSProperty("naturalWidth", 1728);
+  // No preliminary fox or world artwork is referenced anywhere.
+  expect(
+    await page
+      .locator("img")
+      .evaluateAll((images) =>
+        images
+          .map((image) => image.getAttribute("src") ?? "")
+          .filter((src) => /fox-|world-/.test(src)),
+      ),
+  ).toEqual([]);
+  // Every other image is the shared brand mark, not a second illustration.
+  expect(
+    await page
+      .locator("main img")
+      .evaluateAll(
+        (images) => images.filter((image) => !image.closest(".hero-art")).length,
+      ),
+  ).toBe(0);
+});
+
+test("ships one coherent angular brand mark", async ({ page, request }) => {
+  await page.goto("/");
+  const marks = page.locator("img.brand-mark");
+  expect(await marks.count()).toBeGreaterThanOrEqual(2);
+  expect(
+    await marks.evaluateAll((images) =>
+      images.map((image) => image.getAttribute("src")),
+    ),
+  ).toEqual(await marks.evaluateAll((images) => images.map(() => "/favicon.svg")));
+  const icon = await request.get("/favicon.svg");
+  expect(icon.ok()).toBeTruthy();
+  expect(icon.headers()["content-type"]).toContain("image/svg+xml");
+  const svg = await icon.text();
+  // Angular identity: no rounded corners on the plate.
+  expect(svg).not.toMatch(/\brx=/);
+  // The FF monogram plus the purple plate, consistent with the site palette.
+  expect(svg.match(/fill="#f8f3eb"/g)).toHaveLength(2);
+  expect(svg).toContain("#642cba");
+});
+
+test("gives selected paper surfaces a real cut edge and press feedback", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto("/");
+  const button = page.locator(".primary-link");
+  await expect(button).toHaveClass(/paper--press/);
+
+  const edge = await button.evaluate((element) => {
+    const face = getComputedStyle(element, "::before");
+    const side = getComputedStyle(element, "::after");
+    return {
+      faceBackground: face.backgroundColor,
+      faceCut: face.clipPath,
+      faceTransform: face.transform,
+      edgeBackground: side.backgroundColor,
+      edgeTransform: side.transform,
+      edgeShadow: side.filter,
+    };
+  });
+  // A painted face cut to a non-rectangular contour.
+  expect(edge.faceBackground).not.toBe("rgba(0, 0, 0, 0)");
+  expect(edge.faceCut.startsWith("polygon(")).toBeTruthy();
+  expect(edge.faceTransform).toBe("none");
+  // A solid offset edge below it, with one directional shadow.
+  expect(edge.edgeBackground).not.toBe(edge.faceBackground);
+  const offset = edge.edgeTransform.match(/matrix\([^)]*\)/)?.[0] ?? "";
+  const [, , , , offsetX, offsetY] = offset
+    .slice(7, -1)
+    .split(", ")
+    .map(Number);
+  expect(offsetX).toBeGreaterThan(0);
+  expect(offsetY).toBeGreaterThan(0);
+  expect(edge.edgeShadow).toContain("drop-shadow");
+
+  // Press feedback is a state sequence, not merely a change: the edge grows on
+  // hover, collapses past its resting offset while held, returns to the hover
+  // offset on release, and returns to rest when the pointer leaves. Each state
+  // is measured from the painted ::after transform and compared with the other
+  // measured states, so the assertions do not restate the CSS custom properties.
+  const edgeOffset = () =>
+    button.evaluate((element) => {
+      const { m41, m42 } = new DOMMatrix(
+        getComputedStyle(element, "::after").transform,
+      );
+      return { x: m41, y: m42 };
+    });
+  const magnitude = ({ x, y }: { x: number; y: number }) => Math.hypot(x, y);
+  // Wait for the edge transition to finish. getAnimations() cannot be used:
+  // Firefox does not report pseudo-element transitions, so a duration-aware
+  // wait plus a stability check is what works in both engines.
+  const settled = async () => {
+    const duration = await button.evaluate(
+      (element) =>
+        parseFloat(getComputedStyle(element, "::after").transitionDuration) *
+        1000,
+    );
+    await page.waitForTimeout(duration + 150);
+    let previous = await edgeOffset();
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      await page.waitForTimeout(60);
+      const current = await edgeOffset();
+      if (
+        Math.abs(current.x - previous.x) < 0.01 &&
+        Math.abs(current.y - previous.y) < 0.01
+      )
+        return current;
+      previous = current;
+    }
+    throw new Error("Edge offset never settled");
+  };
+
+  // Start with the pointer away from the button so the first sample is the
+  // resting offset, not a hover offset left over from an earlier interaction.
+  //
+  // The hero entrance tween moves the hero copy (and therefore this button),
+  // and a late web-font swap reflows the hero. Probing showed two bounding-box
+  // samples 100ms apart can read identically while the tween is still mid-flight
+  // (opacity 0.81, a non-none transform), so box stability is not a reliable
+  // signal that the entrance has finished. Wait for the real completion signal
+  // instead: clearProps removes the inline transform and opacity, so the settled
+  // state is `transform: none; opacity: 1`. This keeps every measurement after
+  // animation and font settlement rather than at an arbitrary point during it.
+  await page.evaluate(() => document.fonts.ready);
+  await expect
+    .poll(
+      () =>
+        page.locator(".hero-actions").evaluate((element) => {
+          const style = getComputedStyle(element);
+          return `${style.transform}|${style.opacity}`;
+        }),
+      { timeout: 20_000 },
+    )
+    .toBe("none|1");
+
+  await page.mouse.move(0, 0);
+  const resting = await settled();
+
+  // The primary link is a real in-page anchor, so releasing the button would
+  // navigate and scroll the page, moving the button out from under the pointer.
+  // Navigation is covered by the keyboard-navigation test; suppress it here so
+  // the press interaction can be measured in place.
+  await button.evaluate((element) =>
+    element.addEventListener("click", (event) => event.preventDefault()),
+  );
+
+  // Drive every state with explicit coordinates: a move to the current position
+  // is a no-op, and Firefox only recomputes :hover on a real move. Confirm the
+  // pointer actually entered the button before sampling, so a stale target can
+  // never be mistaken for a missing hover style.
+  const hoverButton = async () => {
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      const box = await button.boundingBox();
+      if (!box) throw new Error("Primary link missing");
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+      if (await button.evaluate((element) => element.matches(":hover")))
+        return;
+      await page.waitForTimeout(50);
+    }
+    throw new Error("Pointer never entered the primary link");
+  };
+
+  await hoverButton();
+  const hovered = await settled();
+  expect(magnitude(hovered)).toBeGreaterThan(magnitude(resting));
+  expect(hovered.x).toBeGreaterThan(resting.x);
+  expect(hovered.y).toBeGreaterThan(resting.y);
+
+  await page.mouse.down();
+  const pressed = await settled();
+  expect(magnitude(pressed)).toBeLessThan(magnitude(resting));
+  expect(pressed.x).toBeLessThan(resting.x);
+  expect(pressed.y).toBeLessThan(resting.y);
+
+  await page.mouse.up();
+  await page.mouse.move(0, 0);
+  await hoverButton();
+  const released = await settled();
+  expect(Math.abs(released.x - hovered.x)).toBeLessThan(0.5);
+  expect(Math.abs(released.y - hovered.y)).toBeLessThan(0.5);
+
+  await page.mouse.move(0, 0);
+  const left = await settled();
+  expect(Math.abs(left.x - resting.x)).toBeLessThan(0.5);
+  expect(Math.abs(left.y - resting.y)).toBeLessThan(0.5);
+
+  // The work sheets and contact sheet are painted surfaces, not page-coloured
+  // rectangles: each carries its own face colour and a cut contour.
+  for (const selector of [".project", ".contact-sheet", ".profile-sources"]) {
+    const surface = await page.locator(selector).first().evaluate((element) => {
+      const face = getComputedStyle(element, "::before");
+      return { background: face.backgroundColor, cut: face.clipPath };
+    });
+    expect(surface.background).not.toBe("rgba(0, 0, 0, 0)");
+    expect(surface.cut.startsWith("polygon(")).toBeTruthy();
+  }
+
+  // The character's paper contour is painted with CSS drop-shadows. An SVG
+  // feMorphology filter produced the same edge but throttled the pointer
+  // parallax to ~1fps in headless Chromium, so it must not come back.
+  const heroEdge = await page.locator(".hero-image").evaluate((element) => ({
+    filter: getComputedStyle(element).filter,
+    svgFilters: document.querySelectorAll("svg filter").length,
+    morphology: document.querySelectorAll("feMorphology").length,
+  }));
+  expect(heroEdge.filter.match(/drop-shadow/g)?.length).toBeGreaterThanOrEqual(4);
+  expect(heroEdge.svgFilters).toBe(0);
+  expect(heroEdge.morphology).toBe(0);
+});
+
 
 test("returns a real 404 with a working recovery path", async ({ page }) => {
   const response = await page.goto("/missing-portfolio-page/nested");
@@ -535,7 +806,7 @@ test("returns a real 404 with a working recovery path", async ({ page }) => {
   );
   await page.getByRole("link", { name: "Back to the Portfolio Site" }).click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(
-    /Building things\.\s*Learning out loud\./,
+    /Build\.\s*Break\.\s*Learn\./,
   );
 });
 

@@ -1,5 +1,7 @@
 ---
 import EvidenceLedger from "../components/EvidenceLedger.svelte";
+import Icon from "../components/Icon.astro";
+import "../styles/portfolio.css";
 
 const githubProfile = "https://github.com/FlaBBB";
 const linkedInProfile = "https://www.linkedin.com/in/fikri-flab/";
@@ -59,7 +61,7 @@ const sections = [
     <meta name="viewport" content="width=device-width" />
     <title>{title}</title>
     <meta name="description" content={description} />
-    <meta name="theme-color" content="#faf7ff" />
+    <meta name="theme-color" content="#f8f3eb" />
     <meta property="og:type" content="website" />
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
@@ -73,24 +75,23 @@ const sections = [
   <body>
     <a class="skip-link" href="#main-content">Skip to content</a>
     <header class="site-header">
-      <a class="wordmark" href="#identity" aria-label="Fikri Flab — back to top">Fikri Flab<span aria-hidden="true">✦</span></a>
-      <nav aria-label="Portfolio sections">
-        <ul>
-          {sections.map(({ id, label }) => <li><a href={`#${id}`}>{label}</a></li>)}
-        </ul>
-      </nav>
+      <div class="shell header-inner">
+        <a class="wordmark" href="#identity" aria-label="Fikri Flab — back to top"><img class="brand-mark" src="/favicon.svg" width="48" height="48" alt="" />Fikri Flab</a>
+        <nav aria-label="Portfolio sections">
+          <ul>{sections.map(({ id, label }) => <li><a href={`#${id}`}>{label}</a></li>)}</ul>
+        </nav>
+      </div>
     </header>
     <main id="main-content" tabindex="-1">
-      <section id="identity" aria-labelledby="identity-heading">
+      <section id="identity" class="shell" aria-labelledby="identity-heading">
         <div class="hero-copy">
           <p class="hero-kicker">A little code. A lot of curiosity.</p>
-          <h1 id="identity-heading">Building things.<br /><span>Learning out loud.</span></h1>
-          <p class="hero-note">Web applications, realtime projects,<br class="desktop-break" /> and a security-learning archive.</p>
+          <h1 id="identity-heading"><span>Build.</span><span>Break.</span><span>Learn<span class="end-mark">.</span></span></h1>
+          <p class="hero-note">TypeScript web projects.<br />Realtime structure.<br />Learning in public.</p>
           <div class="hero-actions">
-            <a class="primary-link" href="#selected-evidence">Explore projects <span aria-hidden="true">↗</span></a>
-            <a class="secondary-link" href="#contact-path">Get in touch</a>
+            <a class="primary-link paper paper--press" href="#selected-evidence">Explore projects <Icon name="arrow-right" /></a>
+            <a class="secondary-link" href="#contact-path">Get in touch <Icon name="arrow-up-right" /></a>
           </div>
-          <a class="github-link" href={githubProfile} target="_blank" rel="noreferrer" aria-label="Inspect public work (opens in a new tab)">Open source, open to inspection <span aria-hidden="true">↗</span></a>
         </div>
         <div class="hero-visual">
           <div class="hero-art" aria-hidden="true">
@@ -99,78 +100,78 @@ const sections = [
             <img class="hero-layer hero-image" data-depth="1" src="/hero-character.webp" width="1728" height="1152" alt="" fetchpriority="high" decoding="async" />
             <img class="hero-layer hero-crystals-front" data-depth="1.6" src="/hero-crystals-front.webp" width="1728" height="1152" alt="" decoding="async" />
           </div>
-          <p class="art-caption"><span class="color-dots" aria-hidden="true"><i></i><i></i><i></i></span>A little world of my own.</p>
+          <p class="art-caption"><span class="paper caption-tag">Same curiosity.<br />More building.</span></p>
+        </div>
+        <div class="hero-footnote">
+          <span>Fikri Flab / Projects and Play</span>
+          <a href={githubProfile} target="_blank" rel="noreferrer" aria-label="Inspect public work (opens in a new tab)">Open source, open to inspection <Icon name="arrow-up-right" /></a>
         </div>
       </section>
 
-      <section id="technical-profile" aria-labelledby="technical-profile-heading">
-        <h2 id="technical-profile-heading">Technical Profile</h2>
-        <div class="profile-overview">
-          <p><span class="profile-symbol" aria-hidden="true">&lt;/&gt;</span><span>TypeScript<br /> applications</span></p>
-          <p><span class="profile-symbol" aria-hidden="true">◇</span><span>Modular project<br /> structure</span></p>
-          <p><span class="profile-symbol" aria-hidden="true">✧</span><span>Security<br /> learning</span></p>
-        </div>
-        <details id="profile-sources" class="profile-sources">
-          <summary>Sources &amp; scope <span aria-hidden="true">+</span></summary>
-          <p class="section-intro">The project evidence behind this profile, including what it does—and doesn’t—establish.</p>
-          <EvidenceLedger records={profileRecords} />
-        </details>
-      </section>
-
-      <section id="selected-evidence" aria-labelledby="selected-evidence-heading">
+      <section id="selected-evidence" class="shell chapter" aria-labelledby="selected-evidence-heading">
         <div class="section-heading">
-          <h2 id="selected-evidence-heading">Selected Work</h2>
-          <p class="section-intro">A closer look at the source.</p>
+          <div><p class="eyebrow">01 / The work</p><h2 id="selected-evidence-heading">Selected Work</h2></div>
+          <p class="section-intro">A closer look at the source.<br />Structure, stacks, and experiments.</p>
         </div>
-        <article aria-labelledby="wordychain-heading">
-          <div class="project-study structure-study" aria-hidden="true">
-            <span>Structure study</span>
-            <svg viewBox="0 0 200 180" fill="none"><circle cx="73" cy="90" r="48" fill="#a177ef" /><circle cx="55" cy="78" r="48" stroke="#6636b8" /><path d="M138 18L188 73H138Z" fill="#9060e9" /><path d="M100 161L100 100L159 161Z" fill="#75dded" /><path d="M109 163L179 163L144 113Z" fill="#7746d5" /><circle cx="177" cy="104" r="14" fill="#f295db" /><path d="M16 159L41 136M175 40L195 20" stroke="#8d42d9" stroke-width="2" /></svg>
-          </div>
-          <div class="project-copy">
-            <h3 id="wordychain-heading">WordyChain</h3>
-            <p>Visible package and test structure.</p>
-            <p class="project-stack">web · realtime · shared · dictionary · game-core</p>
-            <a class="project-link" href="https://github.com/FlaBBB/WordyChain">View WordyChain repository <span aria-hidden="true">↗</span></a>
-          </div>
-        </article>
-        <article aria-labelledby="jmc-heading">
-          <div class="project-study stack-study" aria-hidden="true">
-            <span>Stack study</span>
-            <svg viewBox="0 0 200 180" fill="none"><path d="M20 129L99 102L181 129L100 160Z" fill="#ef9bd6" /><path d="M20 96L99 69L181 96L100 127Z" fill="#70d7e7" /><path d="M20 62L99 35L181 62L100 94Z" fill="#9460e7" /><path d="M100 94V72L181 42V62Z" fill="#7746d5" /><circle cx="151" cy="20" r="9" fill="#a17aee" /><path d="M158 157L179 146M28 41L49 31" stroke="#f3a269" stroke-width="2" /></svg>
-          </div>
-          <div class="project-copy">
-            <h3 id="jmc-heading">JMC</h3>
-            <p>A documented web application stack.</p>
-            <p class="project-stack">Next.js · TypeScript · PostgreSQL · Prisma</p>
-            <a class="project-link" href="https://github.com/FlaBBB/JMC">View JMC repository <span aria-hidden="true">↗</span></a>
-          </div>
-        </article>
-        <p class="work-scope">Project material, not a claim of sole authorship or proficiency. JMC’s README says the project was written by AI. Full qualifications are in <a href="#profile-sources">Sources &amp; scope</a>.</p>
+        <div class="project-list">
+          <article class="project paper" aria-labelledby="wordychain-heading">
+            <span class="project-number" aria-hidden="true">01</span>
+            <div class="project-copy">
+              <h3 id="wordychain-heading">WordyChain</h3>
+              <p>Visible package boundaries and automated tests.</p>
+              <ul class="project-stack" aria-label="WordyChain packages"><li>web</li><li>realtime</li><li>shared</li><li>dictionary</li><li>game-core</li></ul>
+            </div>
+            <a class="project-link" href="https://github.com/FlaBBB/WordyChain" aria-label="View WordyChain repository">View source <Icon name="arrow-up-right" /></a>
+          </article>
+          <article class="project project--jmc paper" aria-labelledby="jmc-heading">
+            <span class="project-number" aria-hidden="true">02</span>
+            <div class="project-copy">
+              <h3 id="jmc-heading">JMC</h3>
+              <p>A publicly documented web application stack.</p>
+              <ul class="project-stack" aria-label="JMC documented stack"><li>Next.js</li><li>TypeScript</li><li>PostgreSQL</li><li>Prisma</li></ul>
+            </div>
+            <a class="project-link" href="https://github.com/FlaBBB/JMC" aria-label="View JMC repository">View source <Icon name="arrow-up-right" /></a>
+          </article>
+        </div>
+        <p class="work-scope">Public project material, not a claim of sole authorship or proficiency. JMC’s README says the project was written by AI. See <a href="#profile-sources">Sources &amp; scope</a> for the full qualifications.</p>
       </section>
 
-      <section id="learning-archive" aria-labelledby="learning-archive-heading">
-        <span class="archive-symbol" aria-hidden="true">✳</span>
-        <div>
-          <h2 id="learning-archive-heading">Learning, out in the open.</h2>
-          <p>Cryptography, forensics, reverse engineering, and binary exploitation. CTF notes—not professional security experience.</p>
+      <section id="technical-profile" class="profile-section" aria-labelledby="technical-profile-heading">
+        <div class="shell chapter">
+          <div class="section-heading">
+            <div><p class="eyebrow">02 / Under the surface</p><h2 id="technical-profile-heading">Technical Profile</h2></div>
+            <p class="section-intro">What the public material shows.<br />And where its limits are.</p>
+          </div>
+          <div class="profile-overview">
+            <div class="profile-topic"><span class="topic-tag paper">Web / realtime</span><h3>TypeScript<br />applications.</h3><p>Application structure visible across WordyChain and JMC.</p></div>
+            <div class="profile-topic"><span class="topic-tag paper">Structure / tests</span><h3>Pieces that<br />fit together.</h3><p>Package boundaries and automated tests in WordyChain.</p></div>
+            <div class="profile-topic"><span class="topic-tag paper">Notes / exploration</span><h3>Learning<br />in the open.</h3><p>A CTF-oriented archive—not professional security experience.</p></div>
+          </div>
+          <details id="profile-sources" class="profile-sources paper">
+            <summary><span class="notes-label"><Icon name="repository" /><span><strong>Sources &amp; scope</strong><small>The evidence behind this profile</small></span></span><span class="notes-toggle"><Icon name="plus" /></span></summary>
+            <p class="notes-intro">The project evidence behind this profile, including what it does—and doesn’t—establish.</p>
+            <EvidenceLedger records={profileRecords} />
+          </details>
         </div>
-        <a class="text-link" href="https://github.com/FlaBBB/Cybers_security">Cybers_security archive <span aria-hidden="true">↗</span></a>
       </section>
 
-      <section id="contact-path" aria-labelledby="contact-path-heading">
-        <div>
-          <h2 id="contact-path-heading">Say hello.</h2>
-          <p class="contact-intro">A project, a question, or just a conversation.</p>
+      <section id="learning-archive" class="shell chapter" aria-labelledby="learning-archive-heading">
+        <div class="archive-heading"><span class="archive-tab paper">Still curious.</span><h2 id="learning-archive-heading">Learning, out in the open.</h2></div>
+        <div class="archive-copy"><p>Cryptography, forensics, reverse engineering, and binary exploitation. CTF notes—not professional security experience.</p><a class="text-link" href="https://github.com/FlaBBB/Cybers_security"><Icon name="gem" />Cybers_security archive <Icon name="arrow-up-right" /></a></div>
+      </section>
+
+      <section id="contact-path" class="shell chapter" aria-labelledby="contact-path-heading">
+        <div class="contact-sheet paper">
+          <div class="contact-copy"><p class="eyebrow">03 / The next conversation</p><h2 id="contact-path-heading">Say hello<span class="end-mark">.</span></h2><p class="contact-intro">A project, a question,<br />or just a conversation.</p></div>
+          <ul class="contact-links">
+            <li><!--email_off--><a class="contact-link contact-link--email paper paper--press" href={`mailto:${email}`} aria-label="Email"><Icon name="mail" /><span><strong>Email</strong><small>{email}</small></span><Icon name="arrow-up-right" /></a><!--/email_off--></li>
+            <li><a class="contact-link" href={githubProfile} aria-label="GitHub"><Icon name="repository" /><span><strong>GitHub</strong><small>Explore the public work</small></span><Icon name="arrow-up-right" /></a></li>
+            <li><a class="contact-link" href={linkedInProfile} aria-label="LinkedIn"><Icon name="conversation" /><span><strong>LinkedIn</strong><small>Connect with Fikri</small></span><Icon name="arrow-up-right" /></a></li>
+          </ul>
         </div>
-        <ul>
-          <li><a href={githubProfile}>GitHub <span aria-hidden="true">↗</span></a></li>
-          <li><a href={linkedInProfile}>LinkedIn <span aria-hidden="true">↗</span></a></li>
-          <li><!--email_off--><a href={`mailto:${email}`}>Email <span aria-hidden="true">↗</span></a><!--/email_off--></li>
-        </ul>
       </section>
     </main>
-    <footer class="site-footer"><span>Fikri Flab <span aria-hidden="true">✦</span> Projects and Play</span><a href="#identity">Back to top ↑</a></footer>
+    <footer class="site-footer shell"><a class="wordmark" href="#identity" aria-label="Fikri Flab — home"><img class="brand-mark" src="/favicon.svg" width="42" height="42" alt="" />Fikri Flab</a><span>Projects and Play / Made with curiosity.</span><a class="text-link" href="#identity">Back to top <Icon name="arrow-up-right" /></a></footer>
 
     <script>
       import { gsap } from "gsap";
@@ -241,159 +242,5 @@ const sections = [
         link.addEventListener("click", () => { document.querySelector<HTMLDetailsElement>("#profile-sources")!.open = true; });
       });
     </script>
-
-    <style is:global>
-      :root {
-        --background: #faf7ff;
-        --surface: #f0e9fb;
-        --ink: #21103c;
-        --muted-ink: #655379;
-        --rule: #d9cce9;
-        --signal: #7131d5;
-        --gutter: clamp(1.25rem, 5.5vw, 5rem);
-        color-scheme: light;
-        font-family: "Helvetica Neue", Arial, sans-serif;
-        font-synthesis: none;
-      }
-      * { box-sizing: border-box; }
-      html { background: var(--background); scroll-behavior: smooth; scroll-padding-top: 7rem; }
-      body { margin: 0; color: var(--ink); background: var(--background); line-height: 1.6; }
-      h1, h2, h3, p, ul, ol, dl, dd { margin: 0; }
-      a { color: var(--signal); text-underline-offset: 0.25em; text-decoration-thickness: 1px; }
-      a, summary { -webkit-tap-highlight-color: transparent; }
-      a:focus-visible, summary:focus-visible { outline: 2px solid var(--signal); outline-offset: 4px; }
-      main:focus { outline: none; }
-      .skip-link { position: fixed; top: 0.75rem; left: var(--gutter); z-index: 20; padding: 0.75rem 1rem; color: white; background: var(--signal); border-radius: 0.5rem; transform: translateY(-200%); }
-      .skip-link:focus { transform: translateY(0); }
-      .site-header { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; justify-content: space-between; gap: 1rem; max-width: 90rem; margin-inline: auto; padding: 1rem var(--gutter); background: var(--background); }
-      .wordmark { display: inline-flex; align-items: center; gap: 0.6rem; min-height: 2.75rem; flex-shrink: 0; color: var(--ink); text-decoration: none; font-size: 1.35rem; font-weight: 700; letter-spacing: -0.04em; }
-      .wordmark span { color: var(--signal); }
-      nav ul { display: flex; gap: 2rem; padding: 0; list-style: none; }
-      nav a { display: inline-flex; align-items: center; min-height: 2.75rem; color: var(--ink); text-decoration: none; }
-      nav a:hover { color: var(--signal); text-decoration: underline; }
-      main, .site-footer { max-width: 90rem; margin-inline: auto; padding-inline: var(--gutter); }
-      section { margin-bottom: 3rem; }
-      h2 { font-size: 1.5rem; line-height: 1.2; letter-spacing: -0.035em; font-weight: 650; }
-      #identity { display: grid; grid-template-columns: 1fr 1fr; align-items: center; gap: 2.5rem; padding-top: 2rem; margin-bottom: 2.5rem; }
-      .hero-copy { min-width: 0; }
-      .hero-kicker { margin-bottom: 1.1rem; color: var(--signal); font-size: 0.8125rem; font-weight: 600; }
-      h1 { font-size: clamp(2.5rem, 4.3vw, 4rem); line-height: 1.07; letter-spacing: -0.055em; font-weight: 750; }
-      h1 span { color: #442070; }
-      .hero-note { margin-top: 1.4rem; color: var(--muted-ink); font-size: clamp(1.0625rem, 1.65vw, 1.5rem); line-height: 1.45; letter-spacing: -0.02em; }
-      .hero-actions { display: flex; flex-wrap: wrap; gap: 0.75rem 1.25rem; margin-top: 1.75rem; }
-      .primary-link, .secondary-link { display: inline-flex; align-items: center; justify-content: center; gap: 1rem; min-height: 3.25rem; padding: 0.65rem 1.4rem; border-radius: 3rem; text-decoration: none; font-weight: 550; }
-      .primary-link { color: white; background: var(--signal); border: 1px solid var(--signal); }
-      .secondary-link { color: var(--signal); border: 1px solid var(--signal); }
-      .primary-link:hover { background: #5721aa; }
-      .secondary-link:hover { background: var(--surface); }
-      .github-link { display: inline-flex; align-items: center; gap: 0.5rem; min-height: 2.75rem; margin-top: 0.8rem; color: var(--muted-ink); font-size: 0.8125rem; }
-      .hero-visual { position: relative; min-width: 0; }
-      .hero-art { position: relative; isolation: isolate; aspect-ratio: 3 / 2; }
-      .hero-layer { position: absolute; inset: 0; display: block; width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
-      .hero-backdrop { z-index: 0; background: radial-gradient(ellipse at 60% 38%, #d9c3ff99, transparent 65%), radial-gradient(ellipse at 78% 60%, #edbdea66, transparent 55%), radial-gradient(ellipse at 25% 68%, #8ee5ee44, transparent 45%); mask-image: radial-gradient(ellipse, black 15%, transparent 70%); }
-      .hero-crystals-back { z-index: 1; opacity: 0.6; }
-      .hero-image { z-index: 2; }
-      .hero-crystals-front { z-index: 3; }
-      .art-caption { display: flex; align-items: center; justify-content: flex-end; gap: 0.7rem; margin-top: 0.6rem; color: var(--muted-ink); font-size: 0.8125rem; }
-      .color-dots { display: inline-flex; gap: 0.25rem; }
-      .color-dots i { width: 0.4rem; height: 0.4rem; border-radius: 50%; background: #a579eb; }
-      .color-dots i:nth-child(2) { background: #4fd6e4; }
-      .color-dots i:nth-child(3) { background: #f18ed2; }
-      #technical-profile h2 { margin-bottom: 1.25rem; }
-      .profile-overview { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; align-items: center; }
-      .profile-overview p { display: flex; align-items: center; gap: 1rem; line-height: 1.4; }
-      .profile-overview p + p { border-left: 1px solid var(--rule); padding-left: 1.5rem; }
-      .profile-symbol { display: grid; place-items: center; flex-shrink: 0; width: 3.25rem; height: 3.25rem; border-radius: 1rem; background: #ede1fd; color: #652eb8; font-size: 1.5rem; font-weight: 600; }
-      .text-link { display: inline-flex; align-items: center; gap: 0.6rem; min-height: 2.75rem; font-size: 0.9375rem; }
-      .profile-sources { margin-top: 1.25rem; scroll-margin-top: 0.5rem; }
-      .profile-sources > summary { display: inline-flex; align-items: center; gap: 1rem; min-height: 2.75rem; color: var(--signal); cursor: pointer; list-style: none; text-decoration: underline; text-underline-offset: 0.25em; font-size: 0.875rem; }
-      .profile-sources > summary::-webkit-details-marker, .ledger-disclosure::-webkit-details-marker { display: none; }
-      .profile-sources[open] > summary span { transform: rotate(45deg); }
-      .section-intro { color: var(--muted-ink); font-size: 0.875rem; }
-      .profile-sources > .section-intro { padding-block: 1rem; max-width: 65ch; }
-      .evidence-ledger { list-style: none; padding: 0; border-bottom: 1px solid var(--rule); }
-      .evidence-ledger > li { border-top: 1px solid var(--rule); padding-bottom: 0.5rem; }
-      .ledger-disclosure { display: grid; grid-template-columns: 2rem 1fr auto; gap: 0.75rem; align-items: center; min-height: 3.5rem; padding-block: 0.75rem; cursor: pointer; list-style: none; }
-      .ledger-number { color: var(--signal); font-size: 0.75rem; }
-      .ledger-capability { font-size: 1rem; line-height: 1.4; font-weight: 550; }
-      .ledger-indicator { display: grid; place-items: center; width: 1.75rem; height: 1.75rem; color: var(--signal); background: #ede1fd; border-radius: 50%; }
-      details[open] .ledger-indicator::before { content: "−"; }
-      details:not([open]) .ledger-indicator::before { content: "+"; }
-      .ledger-details { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; padding: 0.75rem 2.5rem 1rem 2.75rem; }
-      .ledger-field { display: grid; align-content: start; gap: 0.5rem; }
-      dt { color: var(--muted-ink); font-size: 0.75rem; font-weight: 650; }
-      dd { font-size: 0.875rem; overflow-wrap: anywhere; }
-      .ledger-qualification dd { color: var(--muted-ink); }
-      .ledger-source { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; padding-left: 2.75rem; font-size: 0.8125rem; }
-      .ledger-source-label { color: var(--muted-ink); }
-      .ledger-source a { display: inline-flex; align-items: center; min-height: 2.75rem; }
-      #selected-evidence { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
-      .section-heading { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem 1rem; grid-column: 1 / -1; }
-      #selected-evidence article { display: grid; grid-template-columns: 0.8fr 1.2fr; gap: 1.25rem; min-width: 0; padding: 1rem; border-radius: 1.25rem; background: var(--surface); }
-      .project-study { display: flex; flex-direction: column; justify-content: center; padding: 0.8rem; border-radius: 0.8rem; background: #faf6ff; min-width: 0; }
-      .project-study > span { font-size: 0.75rem; color: #6838a0; }
-      .project-study svg { display: block; width: 100%; height: 9rem; }
-      .project-copy { display: flex; flex-direction: column; gap: 0.6rem; justify-content: center; min-width: 0; padding-block: 0.5rem; }
-      .project-copy h3 { font-size: clamp(1.375rem, 2vw, 1.875rem); line-height: 1.2; letter-spacing: -0.04em; overflow-wrap: anywhere; }
-      .project-copy > p { color: var(--muted-ink); font-size: 0.875rem; }
-      .project-copy .project-stack { font-size: 0.8125rem; }
-      .project-link { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 0.3rem; min-height: 2.75rem; padding-top: 0.25rem; font-size: 0.875rem; }
-      .work-scope { grid-column: 1 / -1; color: var(--muted-ink); font-size: 0.8125rem; max-width: 100ch; }
-      #learning-archive { display: grid; grid-template-columns: auto 1fr auto; gap: 1.25rem; align-items: center; padding: 1.5rem; border-radius: 1rem; background: #f1eaff; }
-      .archive-symbol { font-size: 2rem; color: #8b4ace; }
-      #learning-archive h2 { font-size: 1.125rem; margin-bottom: 0.4rem; }
-      #learning-archive p { max-width: 70ch; font-size: 0.8125rem; color: var(--muted-ink); }
-      #contact-path { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1.5rem; padding-bottom: 2rem; border-bottom: 1px solid var(--rule); margin-bottom: 0; }
-      .contact-intro { margin-top: 0.5rem; color: var(--muted-ink); font-size: 0.875rem; }
-      #contact-path ul { display: flex; flex-wrap: wrap; gap: 1.5rem; list-style: none; padding: 0; }
-      #contact-path a { display: inline-flex; align-items: center; gap: 0.5rem; min-height: 2.75rem; }
-      .site-footer { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem 1.5rem; padding-block: 1rem; color: var(--muted-ink); font-size: 0.75rem; }
-      .site-footer > span > span { color: #ab68db; margin-inline: 0.35rem; }
-      .site-footer a { display: inline-flex; align-items: center; min-height: 2.75rem; }
-      @media (max-width: 1100px) {
-        #identity { gap: 1.5rem; }
-        .hero-actions { gap: 0.75rem; }
-        .primary-link, .secondary-link { padding-inline: 1.1rem; font-size: 0.875rem; }
-        .desktop-break { display: none; }
-        .profile-overview { grid-template-columns: 1fr 1fr 1fr; }
-        .profile-overview > a { grid-column: 1 / -1; }
-        .profile-overview p + p { padding-left: 0.75rem; }
-        .profile-overview p { gap: 0.6rem; font-size: 0.875rem; }
-        #selected-evidence article { grid-template-columns: 1fr; }
-        .project-study { align-items: flex-start; }
-        .project-study svg { height: 9rem; width: 100%; }
-        #learning-archive { grid-template-columns: auto 1fr; }
-        #learning-archive > a { grid-column: 2; }
-      }
-      @media (max-width: 800px) {
-        #identity { grid-template-columns: 1fr; padding-top: 1.5rem; gap: 1.75rem; }
-        h1 { font-size: clamp(2.5rem, 7.5vw, 3.75rem); }
-        #selected-evidence { grid-template-columns: 1fr; }
-        #selected-evidence article { grid-template-columns: 0.8fr 1.2fr; }
-        .project-study svg { height: auto; }
-        .ledger-details { grid-template-columns: 1fr; gap: 1rem; padding-right: 0; }
-      }
-      @media (max-width: 540px) {
-        .site-header { flex-wrap: wrap; padding-top: 0.5rem; padding-bottom: 0.5rem; gap: 0; }
-        nav { width: 100%; }
-        nav ul { justify-content: space-between; gap: 1rem; }
-        nav a { font-size: 0.875rem; }
-        html { scroll-padding-top: 8.5rem; }
-        .profile-overview { grid-template-columns: 1fr; gap: 0.85rem; }
-        .profile-overview p + p { border-left: 0; padding-left: 0; }
-        .profile-overview p br { display: none; }
-        .profile-overview p > span:last-child { display: flex; gap: 0.25rem; flex-wrap: wrap; }
-        .profile-symbol { width: 2.5rem; height: 2.5rem; border-radius: 0.75rem; font-size: 1.25rem; }
-        #selected-evidence article { grid-template-columns: 1fr; gap: 0.75rem; }
-        .project-study svg { height: 10rem; }
-        .ledger-disclosure { grid-template-columns: 1.25rem 1fr auto; gap: 0.5rem; }
-        .ledger-details, .ledger-source { padding-left: 1.75rem; }
-        #learning-archive { grid-template-columns: 1fr; gap: 0.5rem; padding: 1.25rem; }
-        #learning-archive > a { grid-column: 1; overflow-wrap: anywhere; }
-        .archive-symbol { display: none; }
-        section { margin-bottom: 2.25rem; }
-      }
-      @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
-    </style>
   </body>
 </html>
