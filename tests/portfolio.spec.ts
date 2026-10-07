@@ -671,18 +671,29 @@ test("gives selected paper surfaces a real cut edge and press feedback", async (
     });
   const magnitude = ({ x, y }: { x: number; y: number }) => Math.hypot(x, y);
   // Wait for the edge transition to finish. getAnimations() cannot be used:
-  // Firefox does not report pseudo-element transitions, so a duration-aware
-  // wait plus a stability check is what works in both engines.
+  // Firefox does not report pseudo-element transitions. Advance the browser's
+  // frame clock, not a Node timer: starved WebKit can repeat an intermediate
+  // transform across wall-clock samples between painted frames.
   const settled = async () => {
-    const duration = await button.evaluate(
-      (element) =>
-        parseFloat(getComputedStyle(element, "::after").transitionDuration) *
-        1000,
+    await button.evaluate(
+      (element) => new Promise<void>((resolve) => {
+        const duration =
+          parseFloat(getComputedStyle(element, "::after").transitionDuration) *
+          1000;
+        requestAnimationFrame((start) => {
+          const advance = (timestamp: number) => {
+            if (timestamp - start >= duration + 150) resolve();
+            else requestAnimationFrame(advance);
+          };
+          requestAnimationFrame(advance);
+        });
+      }),
     );
-    await page.waitForTimeout(duration + 150);
     let previous = await edgeOffset();
     for (let attempt = 0; attempt < 30; attempt += 1) {
-      await page.waitForTimeout(60);
+      await page.evaluate(() => new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+      ));
       const current = await edgeOffset();
       if (
         Math.abs(current.x - previous.x) < 0.01 &&
