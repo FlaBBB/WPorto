@@ -763,14 +763,29 @@ test("gives selected paper surfaces a real cut edge and press feedback", async (
   await page.mouse.up();
   await page.mouse.move(0, 0);
   await hoverButton();
-  const released = await settled();
-  expect(Math.abs(released.x - hovered.x)).toBeLessThan(0.5);
-  expect(Math.abs(released.y - hovered.y)).toBeLessThan(0.5);
+  // WebKit can report two identical intermediate frames while a transition is
+  // still running. Poll for the measured endpoint rather than mistaking those
+  // frames for completion; the same 0.5px tolerance applies to both axes.
+  await expect
+    .poll(async () => {
+      const released = await edgeOffset();
+      return Math.max(
+        Math.abs(released.x - hovered.x),
+        Math.abs(released.y - hovered.y),
+      );
+    })
+    .toBeLessThan(0.5);
 
   await page.mouse.move(0, 0);
-  const left = await settled();
-  expect(Math.abs(left.x - resting.x)).toBeLessThan(0.5);
-  expect(Math.abs(left.y - resting.y)).toBeLessThan(0.5);
+  await expect
+    .poll(async () => {
+      const left = await edgeOffset();
+      return Math.max(
+        Math.abs(left.x - resting.x),
+        Math.abs(left.y - resting.y),
+      );
+    })
+    .toBeLessThan(0.5);
 
   // The work sheets and contact sheet are painted surfaces, not page-coloured
   // rectangles: each carries its own face colour and a cut contour.
