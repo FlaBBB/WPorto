@@ -36,7 +36,11 @@ Do not attach `www.flab.my.id` to Pages: the Bulk Redirect rule owns that hostna
 
 The redirect rules and the active zone are Cloudflare account state. They cannot be provisioned by this repository's Git integration, which deliberately has no Cloudflare credentials.
 
-`production-acceptance.yml` runs after each `main` push and on manual dispatch. It waits for the exact deployed commit, verifies the HTTPS canonical host and both 301 redirect contracts, then runs the browser suite against `https://flab.my.id`. Curl's default certificate verification makes a failed or invalid TLS certificate fail the check.
+Do not add a catch-all `_redirects` rule to solve these hostname redirects. Pages does not support domain-level redirects in that file; an unconditional path rule would also affect the canonical host and public previews. Use the account-managed rules above. See [Cloudflare Pages redirect documentation](https://developers.cloudflare.com/pages/configuration/redirects/).
+
+`production-acceptance.yml` runs after each `main` push and on manual dispatch. Its browser job waits for the exact deployed commit, then runs Chromium, Firefox, and WebKit acceptance against `https://flab.my.id`. Two independent jobs check the 301 redirect contracts, so an account-level DNS failure cannot prevent UI verification and neither redirect failure hides the other. Redirect failures still fail the workflow; they are not waived. Curl's default certificate verification makes a failed or invalid TLS certificate fail the check.
+
+The editorial release renders the Evidence Ledger as native HTML disclosures, with the first record open and source links always exposed. Only the decorative Signal Field hydrates. The sticky horizontal index replaces the original fixed left rail; all five shortcuts remain available on mobile. These owner-approved decisions supersede the corresponding older layout and hydration decisions in [specification #6](https://github.com/FlaBBB/WPorto/issues/6); its factual content boundaries remain unchanged.
 
 ## Preview browser acceptance
 
@@ -47,7 +51,9 @@ Cloudflare lowercases a branch alias and replaces non-alphanumeric characters wi
 
 ## Verification
 
-1. Open a pull request from a branch in `FlaBBB/WPorto`.
-2. Confirm the Cloudflare Pages build check reports a public preview URL.
-3. Confirm `Pages preview acceptance` passes against that URL.
-4. Merge the pull request into `main` and confirm the Pages production deployment completes from the same `npm run build` and `dist` configuration.
+`static-acceptance.yml` checks types and builds/tests the static output in all three browser engines on pull requests and `main` pushes, independently of Cloudflare availability. Locally, run `npm ci`, `npx playwright install chromium firefox webkit`, `npm run check`, and `npm test`. Linux CI installs browser system dependencies with `--with-deps`; unsupported local distributions may need a supported runner for WebKit.
+
+1. For a pull request from `FlaBBB/WPorto`, confirm `Static acceptance`, the Cloudflare Pages build check, and `Pages preview acceptance` pass. Forks still receive static acceptance without Cloudflare credentials.
+2. After the approved change reaches `main`, confirm the Pages production deployment completes from the same `npm run build` and `dist` configuration.
+3. Confirm `https://flab.my.id/.build-metadata.json` reports that exact commit, `Production acceptance` passes, and a missing nested URL returns the Portfolio Site's recovery page with HTTP 404, not the homepage with HTTP 200.
+4. Inspect the deployed desktop and mobile presentation. Treat unresolved DNS or redirect checks as outstanding host configuration, even when the canonical deployment and browser checks succeed.

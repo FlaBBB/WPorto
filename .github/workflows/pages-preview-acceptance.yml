@@ -15,6 +15,8 @@ jobs:
     steps:
       - name: Check out pull request commit
         uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Set up Node.js
         uses: actions/setup-node@v6
@@ -24,6 +26,9 @@ jobs:
 
       - name: Install locked dependencies
         run: npm ci
+
+      - name: Check Astro and Svelte types
+        run: npm run check
 
       - name: Resolve Pages preview URL
         id: preview
@@ -39,8 +44,8 @@ jobs:
           EXPECTED_COMMIT: ${{ github.event.pull_request.head.sha }}
         run: |
           for attempt in $(seq 1 36); do
-            if curl --fail --silent --show-error "$PREVIEW_URL/.build-metadata.json" | grep --fixed-strings --quiet "\"commit\":\"${EXPECTED_COMMIT}\""; then
-              if curl --fail --silent --show-error "$PREVIEW_URL" | grep --fixed-strings --quiet '<title>Signal Ledger — Fikri Flab</title>'; then
+            if curl --fail --silent --show-error --connect-timeout 10 --max-time 20 "$PREVIEW_URL/.build-metadata.json" | grep --fixed-strings --quiet "\"commit\":\"${EXPECTED_COMMIT}\""; then
+              if curl --fail --silent --show-error --connect-timeout 10 --max-time 20 "$PREVIEW_URL" | grep --fixed-strings --quiet '<title>Signal Ledger — Fikri Flab</title>'; then
                 exit 0
               fi
             fi
@@ -49,10 +54,17 @@ jobs:
           echo "Pages preview did not serve the Portfolio Site: $PREVIEW_URL" >&2
           exit 1
 
-      - name: Install Chromium
-        run: npx playwright install --with-deps chromium
+      - name: Install browser engines
+        run: npx playwright install --with-deps chromium firefox webkit
 
       - name: Run browser acceptance suite against preview
         env:
           PLAYWRIGHT_BASE_URL: ${{ steps.preview.outputs.url }}
         run: npm test
+
+      - name: Upload failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: preview-test-results
+          path: test-results/

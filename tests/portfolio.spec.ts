@@ -7,272 +7,401 @@ const repositoryUrls = {
 };
 
 const technicalProfileRows = (page: Page) =>
-  page.getByRole("list", { name: "Technical Profile evidence ledger" }).getByRole("listitem");
+  page
+    .getByRole("list", { name: "Technical Profile evidence ledger" })
+    .getByRole("listitem");
 
 test.describe("static Technical Profile output", () => {
   test.use({ javaScriptEnabled: false });
 
-  test("serves the complete Technical Profile from static output without JavaScript", async ({ page }) => {
+  test("serves complete evidence and working disclosures without JavaScript", async ({
+    page,
+  }) => {
+    const response = await page.goto("/");
+    expect(response?.ok()).toBeTruthy();
+    await expect(page).toHaveTitle("Signal Ledger — Fikri Flab");
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText(
+      "Fikri Flab",
+    );
+    await expect(page.getByRole("heading", { level: 2 })).toHaveText([
+      "00 / identity",
+      "01 / Technical Profile",
+      "02 / selected evidence",
+      "03 / learning archive",
+      "04 / Contact Path",
+    ]);
 
-  const response = await page.goto("/");
-  expect(response?.ok()).toBeTruthy();
+    const rows = technicalProfileRows(page);
+    await expect(rows).toHaveCount(4);
+    await expect(rows.locator("summary .ledger-capability")).toHaveText([
+      "TypeScript web applications",
+      "Modular application design with automated tests",
+      "Project-specific web-stack exposure",
+      "Security-learning archive",
+    ]);
+    const observedEvidence = [
+      "TypeScript web and realtime application structure is publicly visible across JMC and WordyChain.",
+      "WordyChain visibly separates realtime, web, shared, dictionary, and game-core packages; its public tree includes unit-flow, end-to-end, and package-level tests.",
+      "JMC documents Next.js App Router, TypeScript, PostgreSQL/Prisma, NextAuth.js v5, Tailwind CSS v4, Bun, Docker, Piston-backed code execution, and multiple submission languages.",
+      "A public cybersecurity archive contains CTF-oriented material for cryptography, digital forensics, reverse engineering, and binary exploitation.",
+    ];
+    const qualifications = [
+      "Public repositories establish hosted project material, not individual proficiency level, employment history, or sole authorship.",
+      "Visible project structure and tests do not establish authorship of every component.",
+      "This is JMC’s documented stack, not a personal proficiency claim; the README says the project was written by AI.",
+      "A learning archive, not professional security work, a certification, or production security responsibility.",
+    ];
 
-  await expect(page).toHaveTitle("Signal Ledger — Fikri Flab");
-  await expect(page.getByRole("main")).toBeVisible();
-  await expect(page.getByRole("heading", { level: 1, name: "Fikri Flab" })).toBeVisible();
-  await expect(page.getByRole("heading", { level: 2 })).toHaveText([
-    "00 / identity",
-    "01 / Technical Profile",
-    "02 / selected evidence",
-    "03 / learning archive",
-    "04 / Contact Path",
-  ]);
-
-  const ledger = page.getByRole("list", { name: "Technical Profile evidence ledger" });
-  await expect(ledger.getByRole("listitem")).toHaveCount(4);
-  const profileRows = ledger.getByRole("listitem");
-  await expect(profileRows).toHaveText([
-    /TypeScript web applications/,
-    /Modular application design with automated tests/,
-    /Project-specific web-stack exposure/,
-    /Security-learning archive/,
-  ]);
-
-  for (const row of await profileRows.all()) {
-    await expect(row.locator("dt")).toHaveText(["Capability", "Observed evidence", "Qualification", "Source"]);
-  }
-  await expect(profileRows.nth(0)).toContainText(
-    "TypeScript web and realtime application structure is publicly visible across JMC and WordyChain.",
-  );
-  await expect(profileRows.nth(1)).toContainText(
-    "WordyChain visibly separates realtime, web, shared, dictionary, and game-core packages; its public tree includes unit-flow, end-to-end, and package-level tests.",
-  );
-  await expect(profileRows.nth(2)).toContainText(
-    "JMC documents Next.js App Router, TypeScript, PostgreSQL/Prisma, NextAuth.js v5, Tailwind CSS v4, Bun, Docker, Piston-backed code execution, and multiple submission languages.",
-  );
-  await expect(profileRows.nth(3)).toContainText(
-    "A public cybersecurity archive contains CTF-oriented material for cryptography, digital forensics, reverse engineering, and binary exploitation.",
-  );
-
-
-  await expect(profileRows.nth(0)).toContainText(
-    "Public repositories establish hosted project material, not individual proficiency level, employment history, or sole authorship.",
-  );
-  await expect(profileRows.nth(1)).toContainText(
-    "Present this as visible project structure and test coverage, not a blanket claim about every component’s authorship.",
-  );
-  await expect(profileRows.nth(2)).toContainText("the README says the project was written by AI.");
-  await expect(profileRows.nth(3)).toContainText(
-    "Label it a learning archive, not professional security work, a certification, or a claim of production security responsibility.",
-  );
-
-  for (const [project, href] of Object.entries(repositoryUrls)) {
-    await expect(page.getByRole("link", { name: new RegExp(project) }).first()).toHaveAttribute("href", href);
-  }
-
-  await expect(page.getByRole("link", { name: "Inspect public work (opens in a new tab)" })).toHaveAttribute(
-    "href",
-    "https://github.com/FlaBBB",
-  );
-  await expect(page.getByRole("link", { name: "GitHub — inspect public work ↗" })).toHaveAttribute(
-    "href",
-    "https://github.com/FlaBBB",
-  );
-  await expect(page.getByRole("link", { name: "LinkedIn — professional profile ↗" })).toHaveAttribute(
-    "href",
-    "https://www.linkedin.com/in/fikri-flab/",
-  );
-  await expect(page.getByRole("link", { name: "Email — start a conversation ↗" })).toHaveAttribute(
-    "href",
-    "mailto:f12345ff67@gmail.com",
-  );
-
-});
-});
-
-test("publishes the apex URL as the canonical Portfolio Site", async ({ page }) => {
-  await page.goto("/");
-
-  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", "https://flab.my.id/");
-});
-
-test("keeps the numbered navigation and external source links keyboard reachable", async ({ page }) => {
-  await page.goto("/");
-
-  const navigation = page.getByRole("navigation", { name: "Portfolio sections" });
-  await expect(navigation.getByRole("link")).toHaveText([
-    "00 / identity",
-    "01 / Technical Profile",
-    "02 / selected evidence",
-    "03 / learning archive",
-    "04 / Contact Path",
-  ]);
-
-  await page.keyboard.press("Tab");
-  await expect(page.getByRole("link", { name: "Inspect public work (opens in a new tab)" })).toBeFocused();
-  await page.keyboard.press("Tab");
-  await expect(page.getByRole("link", { name: "00 / identity" })).toBeFocused();
-
-  await page.getByRole("link", { name: "Inspect WordyChain ↗" }).focus();
-  await expect(page.getByRole("link", { name: "Inspect WordyChain ↗" })).toBeFocused();
-});
-
-test("hydrates Technical Profile detail controls when visible", async ({ page }) => {
-  await page.goto("/");
-
-  const technicalProfile = page.locator("#technical-profile");
-  const thirdDetail = page.locator("#evidence-detail-2");
-
-  await expect(thirdDetail).not.toHaveAttribute("hidden", "");
-  await technicalProfile.scrollIntoViewIfNeeded();
-  await expect(thirdDetail).toHaveAttribute("hidden", "");
-});
-
-
-test("discloses evidence detail by keyboard without hiding its source", async ({ page }) => {
-  await page.goto("/");
-  await page.locator("#technical-profile").scrollIntoViewIfNeeded();
-  const secondDisclosure = page.getByRole("button", {
-    name: "Evidence detail: Modular application design with automated tests",
-  });
-  const secondSource = technicalProfileRows(page)
-    .nth(1)
-    .getByRole("link", { name: "WordyChain ↗" });
-
-  await expect(secondDisclosure).toHaveAttribute("aria-expanded", "false");
-  await expect(secondSource).toBeVisible();
-  await secondDisclosure.focus();
-  await expect(secondDisclosure).toHaveCSS("outline-width", "2px");
-  await expect(secondDisclosure).toHaveCSS("outline-style", "solid");
-  const focusContrast = await secondDisclosure.evaluate((button) => {
-    const relativeLuminance = (color: string) => {
-      const [red = 0, green = 0, blue = 0] = color.match(/\d+/g)!.map(Number).map((channel) => {
-        const normalized = channel / 255;
-        return normalized <= 0.03928 ? normalized / 12.92 : ((normalized + 0.055) / 1.055) ** 2.4;
-      });
-
-      return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
-    };
-
-    const outline = relativeLuminance(getComputedStyle(button).outlineColor);
-    const background = relativeLuminance(getComputedStyle(document.body).backgroundColor);
-    return (Math.max(outline, background) + 0.05) / (Math.min(outline, background) + 0.05);
-  });
-  expect(focusContrast).toBeGreaterThanOrEqual(3);
-  await page.keyboard.press("Space");
-  await expect(secondDisclosure).toHaveAttribute("aria-expanded", "true");
-  await expect(page.locator("#evidence-detail-1")).toBeVisible();
-  await expect(secondSource).toBeVisible();
-
-  await page.keyboard.press("Space");
-  await expect(secondDisclosure).toHaveAttribute("aria-expanded", "false");
-  await expect(page.locator("#evidence-detail-1")).toBeHidden();
-  await expect(secondSource).toBeVisible();
-});
-
-test.describe("Reduced-Motion Alternate", () => {
-
-  test("keeps the static rule grid, disclosure, and Contact Path available without a canvas", async ({ page }) => {
-    await page.emulateMedia({ reducedMotion: "reduce" });
-    await page.goto("/");
-
-    await expect(page.locator(".signal-field")).toBeVisible();
-    await expect(page.locator(".signal-field canvas")).toHaveCount(0);
-    await expect(technicalProfileRows(page)).toHaveCount(4);
-
-    const disclosure = page.getByRole("button", {
-      name: "Evidence detail: Project-specific web-stack exposure",
-    });
-    await disclosure.focus();
-    await page.keyboard.press("Enter");
-    await expect(disclosure).toHaveAttribute("aria-expanded", "true");
-    await expect(page.locator("#evidence-detail-2")).toBeVisible();
-
-    await expect(page.locator("#contact-path")).toContainText("GitHub — inspect public work ↗");
-    await expect(page.locator("#contact-path")).toContainText("LinkedIn — professional profile ↗");
-    await expect(page.locator("#contact-path")).toContainText("Email — start a conversation ↗");
-  });
-});
-
-test("stacks the Technical Profile in order and keeps Contact Path targets usable on narrow screens", async ({ page }) => {
-  await page.setViewportSize({ width: 720, height: 900 });
-  await page.goto("/");
-
-  await expect(page.getByRole("navigation", { name: "Portfolio sections" })).toBeHidden();
-
-  const profileRows = technicalProfileRows(page);
-  await expect(profileRows).toHaveCount(4);
-  await page.locator("#technical-profile").scrollIntoViewIfNeeded();
-  await expect(profileRows.nth(1).getByRole("button")).toHaveAttribute("aria-expanded", "false");
-
-  for (const row of await profileRows.all()) {
-    const disclosure = row.getByRole("button");
-    if ((await disclosure.getAttribute("aria-expanded")) === "false") {
-      await disclosure.focus();
-      await page.keyboard.press("Space");
+    for (let index = 0; index < 4; index += 1) {
+      const row = rows.nth(index);
+      if (index > 0) {
+        await row.locator("summary").focus();
+        await page.keyboard.press("Space");
+      }
+      await expect(row.locator(".ledger-details")).toBeVisible();
+      await expect(row.locator("dt")).toHaveText([
+        "Observed evidence",
+        "Qualification",
+      ]);
+      await expect(row.locator("dd").first()).toHaveText(
+        observedEvidence[index],
+      );
+      await expect(row.locator("dd").last()).toHaveText(qualifications[index]);
+      await expect(row.locator(".ledger-source")).toBeVisible();
     }
-
-    const capabilityPosition = await row.locator(".ledger-capability").evaluate((field) => field.getBoundingClientRect().top);
-    const qualification = row.getByText("Qualification", { exact: true });
-    await expect(qualification).toBeVisible();
-    await expect(row.locator("dt")).toHaveText(["Capability", "Observed evidence", "Qualification", "Source"]);
-    const qualificationPosition = await qualification.evaluate((field) => field.getBoundingClientRect().top);
-    const sourcePosition = await row.locator(".ledger-source").evaluate((field) => field.getBoundingClientRect().top);
-
-    expect(qualificationPosition).toBeGreaterThan(capabilityPosition);
-    expect(sourcePosition).toBeGreaterThan(qualificationPosition);
-    await expect(row.locator(".ledger-source")).toBeVisible();
-  }
-  const profileRowPositions = await profileRows.evaluateAll((rows) =>
-    rows.map((row) => {
-      const { left, top } = row.getBoundingClientRect();
-      return { left, top };
-    }),
-  );
-  for (let index = 1; index < profileRowPositions.length; index += 1) {
-    expect(profileRowPositions[index].top).toBeGreaterThan(profileRowPositions[index - 1].top);
-    expect(profileRowPositions[index].left).toBe(profileRowPositions[index - 1].left);
-  }
-
-  const evidencePanels = page.locator("#selected-evidence article");
-  const panelPositions = await evidencePanels.evaluateAll((panels) =>
-    panels.map((panel) => {
-      const { left, top } = panel.getBoundingClientRect();
-      return { left, top };
-    }),
-  );
-  expect(panelPositions[0].top).toBeLessThan(panelPositions[1].top);
-  expect(panelPositions[0].left).toBe(panelPositions[1].left);
-
-  for (const contactLink of await page.locator("#contact-path a").all()) {
-    await expect(contactLink).toBeVisible();
-    expect(await contactLink.evaluate((link) => link.getBoundingClientRect().height)).toBeGreaterThanOrEqual(44);
-  }
+    for (const [project, href] of Object.entries(repositoryUrls)) {
+      await expect(
+        page.getByRole("link", { name: new RegExp(project) }).first(),
+      ).toHaveAttribute("href", href);
+    }
+    await expect(page.locator(".signal-field svg")).toBeVisible();
+    await expect(page.locator(".signal-field canvas")).toHaveCount(0);
+  });
 });
 
-test("presents the desktop Technical Profile as a ruled Signal Ledger", async ({ page }) => {
+test("publishes canonical metadata, a favicon, and direct Contact Paths", async ({
+  page,
+  request,
+}) => {
+  await page.goto("/");
+  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
+    "href",
+    "https://flab.my.id/",
+  );
+  await expect(page.locator('meta[name="description"]')).toHaveAttribute(
+    "content",
+    /Fikri Flab.*TypeScript.*public source material/,
+  );
+  await expect(page.locator('meta[property="og:url"]')).toHaveAttribute(
+    "content",
+    "https://flab.my.id/",
+  );
+  await expect(page.locator('meta[property="og:title"]')).toHaveAttribute(
+    "content",
+    "Signal Ledger — Fikri Flab",
+  );
+  await expect(page.locator('meta[name="twitter:card"]')).toHaveAttribute(
+    "content",
+    "summary",
+  );
+  const icon = await request.get("/favicon.svg");
+  expect(icon.ok()).toBeTruthy();
+  expect(icon.headers()["content-type"]).toContain("image/svg+xml");
+
+  const contact = page.locator("#contact-path");
+  await expect(
+    contact.getByRole("link", { name: "GitHub Inspect public work" }),
+  ).toHaveAttribute("href", "https://github.com/FlaBBB");
+  await expect(
+    contact.getByRole("link", { name: "LinkedIn Professional profile" }),
+  ).toHaveAttribute("href", "https://www.linkedin.com/in/fikri-flab/");
+  await expect(
+    contact.getByRole("link", { name: "Email Start a conversation" }),
+  ).toHaveAttribute("href", "mailto:f12345ff67@gmail.com");
+  await expect(
+    page.getByRole("link", {
+      name: "Inspect public work (opens in a new tab)",
+    }),
+  ).toHaveAttribute("target", "_blank");
+});
+
+test("makes the skip link and numbered navigation keyboard reachable", async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto("/");
+  await page.keyboard.press("Tab");
+  await expect(
+    page.getByRole("link", { name: "Skip to content" }),
+  ).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("main")).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(
+    page.getByRole("link", { name: "Explore selected evidence" }),
+  ).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/#selected-evidence$/);
+  const headingTop = await page
+    .locator("#selected-evidence-heading")
+    .evaluate((el) => el.getBoundingClientRect().top);
+  const headerBottom = await page
+    .locator(".site-header")
+    .evaluate((el) => el.getBoundingClientRect().bottom);
+  expect(headingTop).toBeGreaterThanOrEqual(headerBottom);
+  const navigationLabels = await page
+    .getByRole("navigation")
+    .getByRole("link")
+    .evaluateAll((links) =>
+      links.map((link) => link.getAttribute("aria-label")),
+    );
+  expect(navigationLabels).toEqual([
+    "00 / identity",
+    "01 / Technical Profile",
+    "02 / selected evidence",
+    "03 / learning archive",
+    "04 / Contact Path",
+  ]);
+});
+
+test("uses native keyboard disclosure without hiding sources", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const rows = technicalProfileRows(page);
+  await expect(rows.locator("details[open]")).toHaveCount(1);
+  await expect(rows.first().locator("details")).toHaveAttribute("open", "");
+  await expect(page.locator(".signal-field canvas")).toHaveCount(1);
+  await expect(rows.locator("details[open]")).toHaveCount(1);
+
+  const second = rows.nth(1);
+  const summary = second.locator("summary");
+  await expect(second.locator(".ledger-details")).toBeHidden();
+  await summary.focus();
+  await expect(summary).toHaveCSS("outline-width", "2px");
+  await expect(summary).toHaveCSS("outline-style", "solid");
+  await page.keyboard.press("Space");
+  await expect(second.locator("details")).toHaveAttribute("open", "");
+  await expect(second.locator(".ledger-details")).toBeVisible();
+  await expect(rows.first().locator(".ledger-details")).toBeHidden();
+  await page.keyboard.press("Enter");
+  await expect(second.locator(".ledger-details")).toBeHidden();
+  for (const row of await rows.all())
+    await expect(row.locator(".ledger-source")).toBeVisible();
+});
+
+test("provides the Reduced-Motion Alternate and handles preference changes after load", async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto("/");
+  await expect(page.locator(".signal-field canvas")).toHaveCount(0);
+  await expect(page.locator(".signal-field svg")).toBeVisible();
+  await expect(page.locator("html")).toHaveCSS("scroll-behavior", "auto");
+  const thirdRow = technicalProfileRows(page).nth(2);
+  await thirdRow.locator("summary").focus();
+  await page.keyboard.press("Enter");
+  await expect(thirdRow.locator(".ledger-details")).toBeVisible();
+
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await expect(page.locator(".signal-field canvas")).toHaveCount(1);
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await expect(page.locator(".signal-field canvas")).toHaveCount(0);
+  await expect(page.locator(".signal-field svg")).toBeVisible();
+  await expect(thirdRow.locator("details")).toHaveAttribute("open", "");
+});
+
+test("moves the signal within its bounds and resets on pointer leave", async ({
+  page,
+}) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto("/");
+  const canvas = page.locator(".signal-field canvas");
+  await expect(canvas).toBeVisible();
+  const field = await page.locator(".signal-field").boundingBox();
+  if (!field) throw new Error("Signal field missing");
+  await page.mouse.move(
+    field.x + field.width * 0.9,
+    field.y + field.height * 0.2,
+  );
+  const translation = () =>
+    canvas.evaluate((el) => {
+      const matrix = new DOMMatrix(getComputedStyle(el).transform);
+      return { x: matrix.m41, y: matrix.m42 };
+    });
+  await expect
+    .poll(async () => Math.abs((await translation()).x - 19.2))
+    .toBeLessThan(0.2);
+  await expect
+    .poll(async () => Math.abs((await translation()).y + 14.4))
+    .toBeLessThan(0.2);
+  await page.mouse.move(1, 1);
+  await expect
+    .poll(async () => Math.abs((await translation()).x))
+    .toBeLessThan(0.1);
+  await expect
+    .poll(async () => Math.abs((await translation()).y))
+    .toBeLessThan(0.1);
+});
 
-  const stickyNavigationIndex = page.getByRole("navigation", { name: "Portfolio sections" }).locator("..");
-  await expect(stickyNavigationIndex).toHaveCSS("position", "sticky");
-  expect((await stickyNavigationIndex.boundingBox())?.y).toBeGreaterThanOrEqual(1000);
-  await page.locator("#technical-profile").scrollIntoViewIfNeeded();
-  expect((await stickyNavigationIndex.boundingBox())?.y).toBeLessThanOrEqual(32);
-  const firstLedgerRow = technicalProfileRows(page).first();
+for (const width of [320, 390, 768, 801, 1100, 1440]) {
+  test(`keeps navigation, content, and touch targets usable at ${width}px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 1000 });
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.goto("/");
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth),
+    ).toBe(width);
+    await expect(page.getByRole("navigation")).toBeVisible();
+    if (width <= 800) {
+      for (const link of await page
+        .getByRole("navigation")
+        .getByRole("link")
+        .all()) {
+        const bounds = await link.boundingBox();
+        expect(bounds?.x).toBeGreaterThanOrEqual(0);
+        expect((bounds?.x ?? 0) + (bounds?.width ?? 0)).toBeLessThanOrEqual(
+          width,
+        );
+        expect(bounds?.height).toBeGreaterThanOrEqual(44);
+      }
+      await expect(page.locator(".nav-short")).toHaveText([
+        "Identity",
+        "Profile",
+        "Evidence",
+        "Archive",
+        "Contact",
+      ]);
+    }
+    const contactNav = page
+      .getByRole("navigation")
+      .getByRole("link", { name: "04 / Contact Path" });
+    await contactNav.focus();
+    await page.keyboard.press("Enter");
+    await expect(page).toHaveURL(/#contact-path$/);
+    const header = await page.locator(".site-header").boundingBox();
+    const heading = await page.locator("#contact-path-heading").boundingBox();
+    expect(heading?.y).toBeGreaterThanOrEqual(
+      (header?.y ?? 0) + (header?.height ?? 0),
+    );
+    for (const link of await page.locator("#contact-path a").all()) {
+      await expect(link).toBeVisible();
+      expect((await link.boundingBox())?.height).toBeGreaterThanOrEqual(44);
+    }
 
-  const firstFieldPositions = await firstLedgerRow
-    .locator(".ledger-capability, .ledger-details > .ledger-field")
-    .evaluateAll((fields) => fields.map((field) => field.getBoundingClientRect().top));
-  expect(new Set(firstFieldPositions).size).toBe(1);
+    const thirdRow = technicalProfileRows(page).nth(2);
+    await thirdRow.locator("summary").click();
+    await expect(thirdRow.locator(".ledger-details")).toBeVisible();
+    expect(
+      (await thirdRow.locator("summary").boundingBox())?.height,
+    ).toBeGreaterThanOrEqual(44);
+    const observed = await thirdRow
+      .locator(".ledger-field")
+      .first()
+      .boundingBox();
+    const qualification = await thirdRow
+      .locator(".ledger-qualification")
+      .boundingBox();
+    if (width <= 800)
+      expect(qualification?.y).toBeGreaterThan(observed?.y ?? 0);
+    else expect(qualification?.y).toBe(observed?.y);
 
-  const [wordyChainPanel, jmcPanel] = await page.locator("#selected-evidence article").all();
-  const wordyChainBounds = await wordyChainPanel.boundingBox();
-  const jmcBounds = await jmcPanel.boundingBox();
-  expect(wordyChainBounds?.x).toBeLessThan(jmcBounds?.x ?? 0);
-  expect(wordyChainBounds?.y).toBeLessThan(jmcBounds?.y ?? 0);
+    const panels = await page.locator("#selected-evidence article").all();
+    const first = await panels[0].boundingBox();
+    const second = await panels[1].boundingBox();
+    if (width <= 800) {
+      expect(first?.x).toBe(second?.x);
+      expect(second?.y).toBeGreaterThan((first?.y ?? 0) + (first?.height ?? 0));
+    } else {
+      expect(first?.y).toBe(second?.y);
+      expect(second?.x).toBeGreaterThan((first?.x ?? 0) + (first?.width ?? 0));
+    }
+    const overflow = await page
+      .locator("#selected-evidence h3, #selected-evidence p, .contact-title")
+      .evaluateAll((elements) =>
+        elements
+          .filter((el) => el.scrollWidth > el.clientWidth + 1)
+          .map((el) => el.textContent),
+      );
+    expect(overflow).toEqual([]);
+  });
+}
 
-  const contactPath = page.locator("#contact-path");
-  await contactPath.scrollIntoViewIfNeeded();
-  await expect(contactPath).toHaveCSS("background-color", "rgb(34, 70, 255)");
+test("keeps text contrast readable on dark and blue surfaces", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const contrast = await page
+    .locator(
+      ".hero-note, .primary-link, .section-intro, .ledger-qualification dd, #contact-path a, nav a",
+    )
+    .evaluateAll((elements) => {
+      const luminance = (color: string) => {
+        const [red, green, blue] = color
+          .match(/[\d.]+/g)!
+          .slice(0, 3)
+          .map(Number)
+          .map((channel) => {
+            const value = channel / 255;
+            return value <= 0.04045
+              ? value / 12.92
+              : ((value + 0.055) / 1.055) ** 2.4;
+          });
+        return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+      };
+      return elements.map((el) => {
+        let background: Element | null = el;
+        while (
+          background &&
+          getComputedStyle(background).backgroundColor === "rgba(0, 0, 0, 0)"
+        ) {
+          background = background.parentElement;
+        }
+        const ink = luminance(getComputedStyle(el).color);
+        const surface = luminance(
+          getComputedStyle(background!).backgroundColor,
+        );
+        return (
+          (Math.max(ink, surface) + 0.05) / (Math.min(ink, surface) + 0.05)
+        );
+      });
+    });
+  for (const ratio of contrast) expect(ratio).toBeGreaterThanOrEqual(4.5);
+});
+
+test("returns a real 404 with a working recovery path", async ({ page }) => {
+  const response = await page.goto("/missing-portfolio-page/nested");
+  expect(response?.status()).toBe(404);
+  await expect(page).toHaveTitle("Page not found — Fikri Flab");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(
+    "No signal here.",
+  );
+  await expect(page.locator('meta[name="robots"]')).toHaveAttribute(
+    "content",
+    "noindex",
+  );
+  await page.getByRole("link", { name: "Back to the Portfolio Site" }).click();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(
+    "Fikri Flab",
+  );
+});
+
+test("loads the page and its local assets without browser errors", async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  const failedResponses: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  page.on("response", (response) => {
+    if (response.status() >= 400)
+      failedResponses.push(`${response.status()} ${response.url()}`);
+  });
+  await page.goto("/");
+  await expect(page.locator(".signal-field canvas")).toBeVisible();
+  await page.locator("#technical-profile summary").nth(3).click();
+  await expect(page.locator("#evidence-detail-3")).toBeVisible();
+  expect(errors).toEqual([]);
+  expect(failedResponses).toEqual([]);
 });

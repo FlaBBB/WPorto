@@ -5,6 +5,7 @@ import SignalField from "../components/SignalField.svelte";
 const githubProfile = "https://github.com/FlaBBB";
 const linkedInProfile = "https://www.linkedin.com/in/fikri-flab/";
 const email = "f12345ff67@gmail.com";
+const description = "Fikri Flab’s Portfolio Site: explore TypeScript web projects, realtime application structure, and a security-learning archive through public source material.";
 
 const profileRecords = [
   {
@@ -23,7 +24,7 @@ const profileRecords = [
     observedEvidence:
       "WordyChain visibly separates realtime, web, shared, dictionary, and game-core packages; its public tree includes unit-flow, end-to-end, and package-level tests.",
     qualification:
-      "Present this as visible project structure and test coverage, not a blanket claim about every component’s authorship.",
+      "Visible project structure and tests do not establish authorship of every component.",
     sources: [{ name: "WordyChain", href: "https://github.com/FlaBBB/WordyChain" }],
   },
   {
@@ -31,7 +32,7 @@ const profileRecords = [
     observedEvidence:
       "JMC documents Next.js App Router, TypeScript, PostgreSQL/Prisma, NextAuth.js v5, Tailwind CSS v4, Bun, Docker, Piston-backed code execution, and multiple submission languages.",
     qualification:
-      "Attribute the stack to JMC. Do not present it as a personal expert-stack list or as proof of individual implementation depth; the README says the project was written by AI.",
+      "This is JMC’s documented stack, not a personal proficiency claim; the README says the project was written by AI.",
     sources: [{ name: "JMC", href: "https://github.com/FlaBBB/JMC" }],
   },
   {
@@ -39,17 +40,17 @@ const profileRecords = [
     observedEvidence:
       "A public cybersecurity archive contains CTF-oriented material for cryptography, digital forensics, reverse engineering, and binary exploitation.",
     qualification:
-      "Label it a learning archive, not professional security work, a certification, or a claim of production security responsibility.",
+      "A learning archive, not professional security work, a certification, or production security responsibility.",
     sources: [{ name: "Cybers_security", href: "https://github.com/FlaBBB/Cybers_security" }],
   },
 ];
 
 const sections = [
-  { id: "identity", label: "00 / identity" },
-  { id: "technical-profile", label: "01 / Technical Profile" },
-  { id: "selected-evidence", label: "02 / selected evidence" },
-  { id: "learning-archive", label: "03 / learning archive" },
-  { id: "contact-path", label: "04 / Contact Path" },
+  { id: "identity", label: "00 / identity", shortLabel: "Identity" },
+  { id: "technical-profile", label: "01 / Technical Profile", shortLabel: "Profile" },
+  { id: "selected-evidence", label: "02 / selected evidence", shortLabel: "Evidence" },
+  { id: "learning-archive", label: "03 / learning archive", shortLabel: "Archive" },
+  { id: "contact-path", label: "04 / Contact Path", shortLabel: "Contact" },
 ];
 ---
 
@@ -59,183 +60,159 @@ const sections = [
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width" />
     <title>Signal Ledger — Fikri Flab</title>
+    <meta name="description" content={description} />
+    <meta name="theme-color" content="#0a0b0d" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Signal Ledger — Fikri Flab" />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content="https://flab.my.id/" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="Signal Ledger — Fikri Flab" />
+    <meta name="twitter:description" content={description} />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="canonical" href="https://flab.my.id/" />
   </head>
   <body>
-
-    <main>
+    <a class="skip-link" href="#main-content">Skip to content</a>
+    <header class="site-header">
+      <a class="wordmark" href="#identity" aria-label="Signal Ledger — back to Fikri Flab’s identity">
+        <span aria-hidden="true">FF<span class="wordmark-dot">.</span></span>
+        <span class="wordmark-label">Signal Ledger</span>
+      </a>
+      <nav aria-label="Portfolio sections">
+        <ol>
+          {sections.map(({ id, label, shortLabel }) => (
+            <li>
+              <a href={`#${id}`} aria-label={label}>
+                <span class="nav-number" aria-hidden="true">{label.slice(0, 4)}</span>
+                <span class="nav-full" aria-hidden="true">{label.slice(5)}</span>
+                <span class="nav-short" aria-hidden="true">{shortLabel}</span>
+              </a>
+            </li>
+          ))}
+        </ol>
+      </nav>
+    </header>
+    <main id="main-content" tabindex="-1">
       <section id="identity" aria-labelledby="identity-heading">
-        <SignalField client:media="(prefers-reduced-motion: no-preference)" />
-        <h1>Fikri <span>Flab</span></h1>
-        <h2 id="identity-heading">00 / identity</h2>
-        <p>Project-scoped engineering evidence.</p>
-        <a
-          href={githubProfile}
-          target="_blank"
-          rel="noreferrer"
-          aria-label="Inspect public work (opens in a new tab)"
-        >
-          Inspect public work ↗
-        </a>
+        <div class="hero-copy">
+          <h2 id="identity-heading">00 / identity</h2>
+          <h1>Fikri <span>Flab</span></h1>
+          <p class="hero-intro">Web applications.<br />Realtime systems.<br /><span>Learning in public.</span></p>
+          <p class="hero-note">A closer look at the projects, structure, and learning behind my public work.</p>
+          <div class="hero-actions">
+            <a class="primary-link" href="#selected-evidence">Explore selected evidence <span aria-hidden="true">↓</span></a>
+            <a class="text-link" href="#contact-path">Start a conversation <span aria-hidden="true">↗</span></a>
+          </div>
+        </div>
+        <div class="hero-field">
+          <SignalField client:media="(prefers-reduced-motion: no-preference)" />
+          <div class="field-label"><span>Signal study / 001</span><span aria-hidden="true">+24 / −24</span></div>
+          <p class="field-caption">A visual experiment.<br />Not a chart of project data.</p>
+          <span class="field-mark" aria-hidden="true">↗</span>
+        </div>
+        <div class="hero-footer">
+          <p>Public work. Visible sources. Clear scope.</p>
+          <a href={githubProfile} target="_blank" rel="noreferrer" aria-label="Inspect public work (opens in a new tab)">Inspect public work ↗</a>
+        </div>
       </section>
-      <header>
-        <nav aria-label="Portfolio sections">
-          <ol>
-            {
-              sections.map(({ id, label }) => (
-                <li><a href={`#${id}`}>{label}</a></li>
-              ))
-            }
-          </ol>
-        </nav>
-      </header>
-
       <section id="technical-profile" aria-labelledby="technical-profile-heading">
-        <h2 id="technical-profile-heading">01 / Technical Profile</h2>
-        <p>A curated record of publicly visible projects and learning material.</p>
-        <EvidenceLedger records={profileRecords} client:visible />
+        <div class="section-heading">
+          <h2 id="technical-profile-heading">01 / Technical Profile</h2>
+          <p class="section-title">Evidence over claims.</p>
+          <p class="section-intro">A curated record of publicly visible projects and learning material. Open a record for the evidence and its limits.</p>
+        </div>
+        <EvidenceLedger records={profileRecords} />
       </section>
-
       <section id="selected-evidence" aria-labelledby="selected-evidence-heading">
-        <h2 id="selected-evidence-heading">02 / selected evidence</h2>
+        <div class="section-heading">
+          <h2 id="selected-evidence-heading">02 / selected evidence</h2>
+          <p class="section-title">Look inside the work.</p>
+          <p class="section-intro">Two public repositories. Different systems, with the source material open to inspection.</p>
+        </div>
         <article aria-labelledby="wordychain-heading">
-          <p>Selected evidence / 01</p>
-          <h3 id="wordychain-heading">Realtime and web boundaries, kept visible.</h3>
-          <p>
-            Public project structure separates realtime, web, shared, dictionary, and game-core packages; unit-flow,
-            end-to-end, and package-level test directories are visible.
-          </p>
-          <p>Repository structure is evidence of visible project organization, not a claim of exclusive authorship.</p>
-          <a href="https://github.com/FlaBBB/WordyChain">Inspect WordyChain ↗</a>
+          <div class="project-heading">
+            <p class="eyebrow">Selected evidence / 01</p>
+            <h3 id="wordychain-heading">WordyChain</h3>
+            <p class="project-deck">Realtime and web boundaries, kept visible.</p>
+          </div>
+          <div class="project-structure" aria-label="Visible WordyChain packages">
+            <span>web</span><span>realtime</span><span>shared</span><span>dictionary</span><span>game-core</span>
+          </div>
+          <div class="project-copy">
+            <p>Public project structure separates realtime, web, shared, dictionary, and game-core packages; unit-flow, end-to-end, and package-level test directories are visible.</p>
+            <p class="scope-note">Repository structure is evidence of visible project organization, not a claim of exclusive authorship.</p>
+          </div>
+          <a class="project-link" href="https://github.com/FlaBBB/WordyChain">Inspect WordyChain ↗</a>
         </article>
         <article aria-labelledby="jmc-heading">
-          <p>Selected evidence / 02</p>
-          <h3 id="jmc-heading">A documented web application stack.</h3>
-          <p>
-            JMC documents a Next.js and TypeScript application with PostgreSQL/Prisma, NextAuth.js, Tailwind CSS,
-            Bun, Docker, and sandboxed multi-language code execution.
-          </p>
-          <p>
-            This describes JMC’s documented stack. It does not assert individual authorship or proficiency; its README
-            says the project was written by AI.
-          </p>
-          <a href="https://github.com/FlaBBB/JMC">Inspect JMC ↗</a>
+          <div class="project-heading">
+            <p class="eyebrow">Selected evidence / 02</p>
+            <h3 id="jmc-heading">JMC</h3>
+            <p class="project-deck">A documented web application stack.</p>
+          </div>
+          <div class="project-structure" aria-label="Documented JMC stack">
+            <span>Next.js</span><span>TypeScript</span><span>PostgreSQL</span><span>Prisma</span><span>Docker</span>
+          </div>
+          <div class="project-copy">
+            <p>JMC documents a Next.js and TypeScript application with PostgreSQL/Prisma, NextAuth.js, Tailwind CSS, Bun, Docker, and sandboxed multi-language code execution.</p>
+            <p class="scope-note">This describes JMC’s documented stack. It does not assert individual authorship or proficiency; its README says the project was written by AI.</p>
+          </div>
+          <a class="project-link" href="https://github.com/FlaBBB/JMC">Inspect JMC ↗</a>
         </article>
       </section>
-
       <section id="learning-archive" aria-labelledby="learning-archive-heading">
-        <h2 id="learning-archive-heading">03 / learning archive</h2>
-        <p>Learning archive</p>
-        <h3>Security material, explicitly scoped.</h3>
-        <p>
-          A public CTF-oriented archive spans cryptography, digital forensics, reverse engineering, and binary
-          exploitation.
-        </p>
-        <p>Learning material, not professional security experience.</p>
-        <a href="https://github.com/FlaBBB/Cybers_security">Inspect Cybers_security ↗</a>
+        <div class="archive-heading">
+          <h2 id="learning-archive-heading">03 / learning archive</h2>
+          <h3>Still learning.<br />Keeping the notes.</h3>
+        </div>
+        <div class="archive-copy">
+          <p>A public CTF-oriented archive spans cryptography, digital forensics, reverse engineering, and binary exploitation.</p>
+          <p class="scope-note">Learning material, not professional security experience.</p>
+          <a class="text-link" href="https://github.com/FlaBBB/Cybers_security">Inspect Cybers_security ↗</a>
+        </div>
       </section>
-
       <section id="contact-path" aria-labelledby="contact-path-heading">
         <h2 id="contact-path-heading">04 / Contact Path</h2>
+        <p class="contact-title">Start with a<br />conversation<span aria-hidden="true">↗</span></p>
+        <p class="contact-intro">Explore the source, connect on LinkedIn, or send a note directly.</p>
         <ul>
-          <li><a href={githubProfile}>GitHub — inspect public work ↗</a></li>
-          <li><a href={linkedInProfile}>LinkedIn — professional profile ↗</a></li>
-          <li><!--email_off--><a href={`mailto:${email}`}>Email — start a conversation ↗</a><!--/email_off--></li>
+          <li><a href={githubProfile}><span><strong>GitHub</strong><span>Inspect public work</span></span><span aria-hidden="true">↗</span></a></li>
+          <li><a href={linkedInProfile}><span><strong>LinkedIn</strong><span>Professional profile</span></span><span aria-hidden="true">↗</span></a></li>
+          <li><!--email_off--><a href={`mailto:${email}`}><span><strong>Email</strong><span>Start a conversation</span></span><span aria-hidden="true">↗</span></a><!--/email_off--></li>
         </ul>
       </section>
     </main>
+    <footer class="site-footer"><span>Fikri Flab / Signal Ledger</span><a href="#identity">Back to top ↑</a></footer>
     <style is:global>
       :root {
         --background: #0a0b0d;
+        --surface: #111315;
         --ink: #f2f0e9;
-        --muted-ink: #a8a79f;
-        --rule: #2a2d31;
+        --muted-ink: #aeafa7;
+        --rule: #303337;
         --signal: #d6ff33;
         --contact: #2246ff;
-        --annotation: #ff7058;
-        --gutter: 4.5rem;
+        --gutter: clamp(1.25rem, 5vw, 5rem);
+        --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
         color-scheme: dark;
-        font-family: Inter, "Helvetica Neue", Arial, sans-serif;
+        font-family: "Helvetica Neue", Arial, sans-serif;
         font-synthesis: none;
       }
-
       * {
         box-sizing: border-box;
       }
-
       html {
         background: var(--background);
         scroll-behavior: smooth;
+        scroll-padding-top: 7rem;
       }
-
       body {
-        min-width: 20rem;
         margin: 0;
         background: var(--background);
         color: var(--ink);
-        font-size: 1rem;
-        line-height: 1.5;
+        line-height: 1.6;
       }
-
-      a {
-        color: inherit;
-        text-decoration-thickness: 1px;
-        text-underline-offset: 0.2em;
-      }
-
-      a:focus-visible,
-      button:focus-visible {
-        outline: 2px solid var(--signal);
-        outline-offset: 4px;
-      }
-
-      header {
-        position: sticky;
-        top: 2rem;
-        z-index: 1;
-        width: 3rem;
-        height: 0;
-        transform: translateX(-4.5rem);
-      }
-
-      header ol,
-      #contact-path ul {
-        margin: 0;
-        padding: 0;
-        list-style: none;
-      }
-
-      header li {
-        margin-block-end: 0.75rem;
-      }
-
-      header a {
-        color: var(--muted-ink);
-        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-        font-size: 0.6875rem;
-        letter-spacing: 0.08em;
-        line-height: 1.25;
-        text-decoration: none;
-      }
-
-      header a:hover,
-      header a:focus-visible {
-        color: var(--signal);
-      }
-
-      main {
-        margin-inline-start: 6rem;
-      }
-
-      section {
-        display: grid;
-        grid-template-columns: repeat(12, minmax(0, 1fr));
-        column-gap: 1.5rem;
-        row-gap: 1.5rem;
-        padding: 4rem var(--gutter);
-        border-block-start: 1px solid var(--rule);
-      }
-
       h1,
       h2,
       h3,
@@ -246,417 +223,672 @@ const sections = [
       dd {
         margin: 0;
       }
-
-      h1,
+      a {
+        color: inherit;
+        text-decoration-thickness: 1px;
+        text-underline-offset: 0.25em;
+      }
+      a,
+      summary {
+        -webkit-tap-highlight-color: transparent;
+      }
+      a:focus-visible,
+      summary:focus-visible {
+        outline: 2px solid var(--signal);
+        outline-offset: 4px;
+      }
+      main:focus {
+        outline: none;
+      }
+      .skip-link {
+        position: fixed;
+        top: 0.75rem;
+        left: var(--gutter);
+        z-index: 20;
+        padding: 0.75rem 1rem;
+        color: var(--background);
+        background: var(--signal);
+        transform: translateY(-200%);
+      }
+      .skip-link:focus {
+        transform: translateY(0);
+      }
+      .site-header {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 2rem;
+        padding: 1rem var(--gutter);
+        border-bottom: 1px solid var(--rule);
+        background: var(--background);
+      }
+      .wordmark {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        min-height: 2.75rem;
+        text-decoration: none;
+        flex-shrink: 0;
+      }
+      .wordmark > span:first-child {
+        font-weight: 700;
+        font-size: 1.75rem;
+        letter-spacing: -0.08em;
+      }
+      .wordmark-dot {
+        color: var(--signal);
+      }
+      .wordmark-label {
+        max-width: 7ch;
+        font: 0.6875rem/1.3 var(--mono);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+      nav {
+        min-width: 0;
+      }
+      nav ol {
+        display: flex;
+        align-items: center;
+        gap: clamp(0.5rem, 1.5vw, 1.5rem);
+        padding: 0;
+        list-style: none;
+      }
+      nav a {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        min-height: 2.75rem;
+        white-space: nowrap;
+        font: 0.75rem/1.4 var(--mono);
+        color: var(--muted-ink);
+        text-decoration: none;
+      }
+      .nav-short {
+        display: none;
+      }
+      nav a:hover {
+        color: var(--signal);
+      }
+      section {
+        padding: 5rem var(--gutter);
+        border-bottom: 1px solid var(--rule);
+      }
       h2,
-      h3 {
-        font-weight: 650;
-        letter-spacing: -0.055em;
-        line-height: 0.88;
+      .eyebrow,
+      dt {
+        font: 0.75rem/1.5 var(--mono);
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
       }
-
+      h2 {
+        color: var(--signal);
+      }
+      #identity {
+        display: grid;
+        grid-template-columns: 1.15fr 1fr;
+        gap: 3rem;
+        padding-top: 3.5rem;
+        padding-bottom: 1.5rem;
+      }
+      .hero-copy {
+        min-width: 0;
+      }
       h1 {
-        grid-column: 1 / span 8;
-        align-self: end;
-        max-inline-size: 8ch;
-        font-size: clamp(4rem, 12vw, 12rem);
+        margin-top: 2rem;
+        font-size: clamp(5.5rem, 11.8vw, 11rem);
+        font-weight: 700;
+        line-height: 0.86;
+        letter-spacing: -0.065em;
       }
-
       h1 span {
         display: block;
       }
-
-      h2,
-      #identity > p,
-      #identity > a {
-        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-        font-size: 0.75rem;
-        font-weight: 500;
-        letter-spacing: 0.08em;
-        line-height: 1.35;
-        text-transform: uppercase;
+      .hero-intro {
+        margin-top: 2rem;
+        font-size: clamp(1.5rem, 2.4vw, 2.25rem);
+        line-height: 1.2;
+        letter-spacing: -0.035em;
       }
-
-      h2 {
-        grid-column: 9 / -1;
-        align-self: start;
+      .hero-intro > span {
+        color: var(--muted-ink);
+      }
+      .hero-note {
+        max-width: 38ch;
+        margin-top: 1.25rem;
+        color: var(--muted-ink);
+        font-size: 0.9375rem;
+      }
+      .hero-actions {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.75rem 1.5rem;
+        margin-top: 2rem;
+      }
+      .primary-link {
+        display: inline-flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1.25rem;
+        min-height: 3.25rem;
+        padding: 0.75rem 1.25rem;
+        background: var(--signal);
+        color: var(--background);
+        font: 0.8125rem/1.5 var(--mono);
+        text-decoration: none;
+      }
+      .primary-link:hover {
+        background: var(--ink);
+      }
+      .text-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        min-height: 2.75rem;
         color: var(--signal);
+        font-size: 0.9375rem;
       }
-
-      #identity {
+      .hero-field {
         position: relative;
-        min-height: 100svh;
-        align-items: end;
-        border: 0;
-      }
-
-      #identity::before {
-        position: absolute;
-        inset: var(--gutter);
+        min-height: 30rem;
         border: 1px solid var(--rule);
-        content: "";
-        pointer-events: none;
       }
-
       .signal-field {
         position: absolute;
-        inset: var(--gutter);
+        inset: 0;
         overflow: hidden;
         background-image:
           linear-gradient(var(--rule) 1px, transparent 1px),
           linear-gradient(90deg, var(--rule) 1px, transparent 1px);
-        background-size: 4rem 4rem;
-        opacity: 0.7;
+        background-size: 3.5rem 3.5rem;
       }
-
-      .signal-field canvas {
+      .signal-field canvas,
+      .signal-field svg {
+        position: absolute;
+        inset: 0;
         width: 100%;
         height: 100%;
-        animation: signal-field-entry 700ms ease-out both;
       }
-
-      #identity > :not(astro-island) {
-        position: relative;
-        z-index: 1;
+      .signal-field.has-canvas svg {
+        visibility: hidden;
       }
-
-      @keyframes signal-field-entry {
-        from {
-          opacity: 0;
-        }
-
-        to {
-          opacity: 1;
-        }
-      }
-
-      #identity > p {
-        grid-column: 9 / span 3;
-        color: var(--muted-ink);
-      }
-
-      #identity > a {
-        grid-column: 10 / -1;
-        justify-self: end;
-        color: var(--ink);
-      }
-
-      #technical-profile > p {
-        grid-column: 1 / span 6;
-        color: var(--muted-ink);
-        font-size: 1.125rem;
-      }
-
-      #technical-profile [aria-label="Technical Profile evidence ledger"] {
-        grid-column: 1 / -1;
-        display: grid;
-        gap: 0;
-        padding: 0;
-        list-style: none;
-        border-block-end: 1px solid var(--rule);
-        counter-reset: ledger;
-      }
-
-      #technical-profile [aria-label="Technical Profile evidence ledger"] > li {
-        position: relative;
-        padding: 1.5rem 0;
-        border-block-start: 1px solid var(--rule);
-        counter-increment: ledger;
-      }
-
-      #technical-profile [aria-label="Technical Profile evidence ledger"] > li::before {
+      .field-label,
+      .field-caption {
         position: absolute;
-        top: 1.5rem;
-        left: -2.5rem;
-        color: var(--annotation);
-        content: "0" counter(ledger);
-        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-        font-size: 0.6875rem;
-        letter-spacing: 0.08em;
-      }
-
-      #technical-profile dl {
-        display: grid;
-        grid-template-columns: repeat(12, minmax(0, 1fr));
-        gap: 1.5rem;
-      }
-
-      #technical-profile .ledger-field {
-        display: grid;
-        align-content: start;
-        gap: 0.5rem;
-      }
-
-      #technical-profile .ledger-capability {
-        grid-column: span 3;
-      }
-
-      #technical-profile .ledger-disclosure {
-        width: fit-content;
-        margin-block-start: 0.5rem;
-        padding: 0;
-        border: 0;
-        background: transparent;
-        color: var(--signal);
-        cursor: pointer;
-        font: inherit;
-        font-size: 0.75rem;
-        text-align: start;
-        text-decoration: underline;
-        text-decoration-thickness: 1px;
-        text-underline-offset: 0.2em;
-      }
-
-      #technical-profile .ledger-details {
-        display: grid;
-        grid-column: span 9;
-        grid-template-columns: repeat(9, minmax(0, 1fr));
-        gap: 1.5rem;
-      }
-
-      #technical-profile .ledger-details[hidden] {
-        display: none;
-      }
-
-      #technical-profile .ledger-details > :first-child {
-        grid-column: span 5;
-      }
-
-      #technical-profile .ledger-details > :last-child {
-        grid-column: span 4;
-      }
-
-      #technical-profile .ledger-source {
-        grid-column: 1 / -1;
-        grid-template-columns: repeat(12, minmax(0, 1fr));
-        padding-block-start: 1rem;
-        border-block-start: 1px solid var(--rule);
-      }
-
-      #technical-profile .ledger-source dt {
-        grid-column: span 3;
-      }
-
-      #technical-profile .ledger-source dd {
-        grid-column: 4 / -1;
-      }
-
-      dt,
-      #selected-evidence article > p:first-child,
-      #learning-archive > p:first-of-type {
+        z-index: 1;
+        font: 0.6875rem/1.6 var(--mono);
         color: var(--muted-ink);
-        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-        font-size: 0.75rem;
-        letter-spacing: 0.08em;
-        line-height: 1.35;
+        pointer-events: none;
+      }
+      .field-label {
+        top: 1.5rem;
+        left: 1.5rem;
+        right: 1.5rem;
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
         text-transform: uppercase;
       }
-
-      dd {
-        overflow-wrap: anywhere;
+      .field-caption {
+        bottom: 1.5rem;
+        left: 1.5rem;
+        margin-left: -0.5rem;
+        padding: 0.25rem 0.5rem;
+        background: var(--background);
       }
-
-      #technical-profile dd {
-        font-size: 0.9375rem;
-      }
-
-      #technical-profile .ledger-details > :last-child dd {
-        color: var(--muted-ink);
-      }
-
-      #technical-profile a {
+      .field-mark {
+        position: absolute;
+        right: 1.5rem;
+        bottom: 1.25rem;
         color: var(--signal);
+        font-size: 2rem;
+        pointer-events: none;
       }
-
-      #selected-evidence > article {
-        display: grid;
-        gap: 1.5rem;
-        align-content: start;
-        min-height: 28rem;
-        padding: 1.5rem;
-        border: 1px solid var(--rule);
-      }
-
-      #selected-evidence > article:first-of-type {
-        grid-column: 1 / span 7;
-      }
-
-      #selected-evidence > article:last-of-type {
-        grid-column: 8 / -1;
-        margin-block-start: 6rem;
-      }
-
-      #selected-evidence h3,
-      #learning-archive h3 {
-        font-size: clamp(2.25rem, 4vw, 4.5rem);
-      }
-
-      #selected-evidence article > p:nth-of-type(2) {
+      .hero-footer {
+        grid-column: 1 / -1;
+        display: flex;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 0.5rem 2rem;
+        align-items: center;
+        border-top: 1px solid var(--rule);
+        padding-top: 1rem;
+        font: 0.6875rem/1.6 var(--mono);
         color: var(--muted-ink);
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
       }
-
-      #selected-evidence article > a,
-      #learning-archive > a {
-        align-self: end;
-        color: var(--signal);
-      }
-
-      #learning-archive {
-        min-height: 70svh;
-        align-content: center;
-      }
-
-      #learning-archive h3 {
-        grid-column: 1 / span 8;
-      }
-
-      #learning-archive > p:not(:first-of-type) {
-        grid-column: 9 / -1;
-        color: var(--muted-ink);
-      }
-
-      #learning-archive > a {
-        grid-column: 9 / -1;
-      }
-
-      #contact-path {
-        min-height: 70svh;
-        align-content: space-between;
-        background: var(--contact);
-        border-color: var(--ink);
-      }
-
-      #contact-path h2 {
+      .hero-footer a {
+        display: inline-flex;
+        align-items: center;
+        min-height: 2.75rem;
         color: var(--ink);
       }
-
+      .section-heading {
+        display: grid;
+        grid-template-columns: 1.15fr 1fr;
+        gap: 1.5rem 3rem;
+        align-items: end;
+        margin-bottom: 3rem;
+      }
+      .section-heading h2 {
+        grid-column: 1 / -1;
+      }
+      .section-title {
+        font-size: clamp(2.25rem, 4.5vw, 4.5rem);
+        font-weight: 600;
+        letter-spacing: -0.05em;
+        line-height: 1.03;
+      }
+      .section-intro {
+        max-width: 48ch;
+        color: var(--muted-ink);
+      }
+      .evidence-ledger {
+        list-style: none;
+        padding: 0;
+        border-bottom: 1px solid var(--rule);
+      }
+      .evidence-ledger > li {
+        border-top: 1px solid var(--rule);
+        padding: 0 0 1rem;
+      }
+      .ledger-disclosure {
+        display: grid;
+        grid-template-columns: 2.5rem 1fr auto;
+        gap: 1rem;
+        align-items: center;
+        padding: 1.25rem 0 0.75rem;
+        min-height: 4.5rem;
+        cursor: pointer;
+        list-style: none;
+      }
+      .ledger-disclosure::-webkit-details-marker {
+        display: none;
+      }
+      .ledger-number {
+        font: 0.75rem/1.5 var(--mono);
+        color: var(--signal);
+      }
+      .ledger-capability {
+        font-size: clamp(1.125rem, 1.8vw, 1.5rem);
+        letter-spacing: -0.02em;
+        line-height: 1.3;
+      }
+      .ledger-indicator {
+        width: 2rem;
+        height: 2rem;
+        display: grid;
+        place-items: center;
+        color: var(--signal);
+        border: 1px solid var(--rule);
+        font: 1.25rem/1 var(--mono);
+      }
+      details[open] .ledger-indicator::before {
+        content: "−";
+      }
+      details:not([open]) .ledger-indicator::before {
+        content: "+";
+      }
+      .ledger-disclosure:hover .ledger-capability {
+        color: var(--signal);
+      }
+      .ledger-details {
+        display: grid;
+        grid-template-columns: 1.15fr 1fr;
+        gap: 3rem;
+        padding: 1rem 3rem 1.5rem 3.5rem;
+      }
+      .ledger-field {
+        display: grid;
+        align-content: start;
+        gap: 0.75rem;
+      }
+      dt {
+        color: var(--muted-ink);
+        font-size: 0.6875rem;
+      }
+      dd {
+        font-size: 0.9375rem;
+        overflow-wrap: anywhere;
+      }
+      .ledger-qualification dd {
+        color: var(--muted-ink);
+      }
+      .ledger-source {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.75rem 1.5rem;
+        padding-left: 3.5rem;
+      }
+      .ledger-source-label {
+        color: var(--muted-ink);
+        font: 0.6875rem/1.5 var(--mono);
+        text-transform: uppercase;
+      }
+      .ledger-source a {
+        display: inline-flex;
+        align-items: center;
+        min-height: 2.75rem;
+        color: var(--signal);
+        font-size: 0.875rem;
+      }
+      #selected-evidence {
+        display: grid;
+        grid-template-columns: 1.15fr 1fr;
+        gap: 0 3rem;
+      }
+      #selected-evidence .section-heading {
+        grid-column: 1 / -1;
+      }
+      #selected-evidence article {
+        display: flex;
+        flex-direction: column;
+        gap: 1.5rem;
+        min-width: 0;
+        padding: 2rem 0 0;
+        border-top: 1px solid var(--rule);
+      }
+      .eyebrow {
+        color: var(--muted-ink);
+        font-size: 0.6875rem;
+      }
+      .project-heading h3 {
+        margin-top: 1rem;
+        font-size: clamp(2.5rem, 5vw, 5rem);
+        font-weight: 600;
+        line-height: 1;
+        letter-spacing: -0.055em;
+        overflow-wrap: anywhere;
+      }
+      .project-deck {
+        margin-top: 1rem;
+        font-size: 1.125rem;
+        letter-spacing: -0.02em;
+      }
+      .project-structure {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0;
+        border: 1px solid var(--rule);
+        background: var(--surface);
+      }
+      .project-structure span {
+        padding: 0.75rem 1rem;
+        color: var(--muted-ink);
+        font: 0.6875rem/1.5 var(--mono);
+      }
+      .project-copy {
+        display: grid;
+        gap: 1.25rem;
+        color: var(--muted-ink);
+      }
+      .scope-note {
+        padding-left: 1rem;
+        border-left: 2px solid var(--rule);
+        color: var(--muted-ink);
+        font-size: 0.875rem;
+      }
+      .project-link {
+        display: flex;
+        align-items: center;
+        min-height: 3rem;
+        margin-top: auto;
+        color: var(--signal);
+      }
+      #learning-archive {
+        display: grid;
+        grid-template-columns: 1.15fr 1fr;
+        gap: 3rem;
+        align-items: end;
+      }
+      .archive-heading h3 {
+        margin-top: 2rem;
+        font-size: clamp(2.5rem, 4.5vw, 4.5rem);
+        font-weight: 600;
+        letter-spacing: -0.05em;
+        line-height: 1.05;
+      }
+      .archive-copy {
+        display: grid;
+        gap: 1.5rem;
+        color: var(--muted-ink);
+      }
+      #contact-path {
+        display: grid;
+        grid-template-columns: 1.15fr 1fr;
+        gap: 2rem 3rem;
+        background: var(--contact);
+      }
+      #contact-path h2 {
+        grid-column: 1 / -1;
+        color: var(--ink);
+      }
+      .contact-title {
+        grid-column: 1 / -1;
+        font-size: clamp(2.75rem, 7vw, 7rem);
+        font-weight: 600;
+        line-height: 1;
+        letter-spacing: -0.055em;
+      }
+      .contact-title > span {
+        display: inline-block;
+        margin-left: 0.25em;
+      }
+      .contact-intro {
+        grid-column: 1 / -1;
+        max-width: 48ch;
+      }
       #contact-path ul {
         grid-column: 1 / -1;
         display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 1.5rem;
-        align-self: end;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 2rem;
+        padding: 1.5rem 0 0;
+        list-style: none;
       }
-
       #contact-path a {
         display: flex;
+        justify-content: space-between;
+        gap: 0.75rem;
         align-items: center;
-        min-height: 4rem;
-        padding: 0.75rem 0;
-        border-block-start: 1px solid currentColor;
-        font-size: clamp(1.125rem, 2vw, 2rem);
+        min-height: 6rem;
+        border-top: 1px solid currentColor;
+        text-decoration: none;
       }
-
-      @media (max-width: 720px) {
-        :root {
-          --gutter: 1.25rem;
+      #contact-path a > span:first-child {
+        display: grid;
+        gap: 0.25rem;
+      }
+      #contact-path strong {
+        font-size: 1.5rem;
+        font-weight: 500;
+      }
+      #contact-path a > span:first-child > span {
+        font-size: 0.8125rem;
+      }
+      #contact-path a > span:last-child {
+        font-size: 1.75rem;
+      }
+      #contact-path a:hover strong {
+        text-decoration: underline;
+        text-underline-offset: 0.2em;
+      }
+      .site-footer {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        align-items: center;
+        gap: 0.5rem 2rem;
+        padding: 1rem var(--gutter);
+        color: var(--muted-ink);
+        font: 0.6875rem/1.5 var(--mono);
+      }
+      .site-footer a {
+        display: inline-flex;
+        align-items: center;
+        min-height: 2.75rem;
+      }
+      @media (min-width: 1600px) {
+        body {
+          max-width: 100rem;
+          margin-inline: auto;
+          border-inline: 1px solid var(--rule);
         }
-
+      }
+      @media (max-width: 1100px) {
+        .site-header {
+          flex-wrap: wrap;
+          gap: 0;
+          padding-top: 0.75rem;
+          padding-bottom: 0.25rem;
+        }
+        .wordmark-label {
+          max-width: none;
+        }
+        nav {
+          width: 100%;
+          overflow-x: auto;
+          padding: 0.25rem 0.25rem 0.5rem;
+          scrollbar-width: thin;
+        }
+        nav ol {
+          width: max-content;
+          gap: 1.5rem;
+        }
         html {
-          scroll-behavior: auto;
+          scroll-padding-top: 9rem;
         }
-
-        header {
+        #identity {
+          gap: 2rem;
+        }
+        .hero-actions {
+          align-items: start;
+          flex-direction: column;
+        }
+        .hero-field {
+          min-height: 26rem;
+        }
+        .section-heading,
+        .ledger-details,
+        #selected-evidence,
+        #learning-archive {
+          gap: 1.5rem 2rem;
+        }
+        .ledger-details {
+          padding-right: 0;
+        }
+      }
+      @media (max-width: 800px) {
+        nav {
+          overflow: visible;
+          padding-inline: 0;
+        }
+        nav ol {
+          display: grid;
+          grid-template-columns: repeat(5, minmax(0, 1fr));
+          width: 100%;
+          gap: 0.5rem;
+        }
+        nav a {
+          flex-direction: column;
+          align-items: start;
+          justify-content: center;
+          gap: 0.15rem;
+        }
+        .nav-number {
+          font-size: 0.625rem;
+        }
+        .nav-full {
           display: none;
         }
-
-        main {
-          margin: 0;
+        .nav-short {
+          display: inline;
+          color: var(--ink);
+          font:
+            0.75rem/1.4 "Helvetica Neue",
+            Arial,
+            sans-serif;
         }
-
         section {
+          padding-block: 3.5rem;
+        }
+        #identity {
+          grid-template-columns: 1fr;
+          padding-top: 2.5rem;
+        }
+        h1 {
+          font-size: clamp(5.5rem, 22vw, 9rem);
+        }
+        .hero-intro {
+          font-size: 1.75rem;
+        }
+        .hero-actions {
+          flex-direction: row;
+          align-items: center;
+        }
+        .hero-field {
+          min-height: 16rem;
+        }
+        .hero-footer {
+          display: block;
+        }
+        .section-heading,
+        #selected-evidence,
+        #learning-archive,
+        #contact-path {
+          grid-template-columns: 1fr;
+        }
+        .section-heading {
+          margin-bottom: 2rem;
+        }
+        .section-intro {
+          max-width: 50ch;
+        }
+        .ledger-details {
           grid-template-columns: 1fr;
           gap: 1.5rem;
-          padding-block: 3rem;
         }
-
-        #identity {
-          min-height: 44rem;
-          background-size: 3rem 3rem;
+        .ledger-disclosure {
+          grid-template-columns: 1.5rem 1fr auto;
+          gap: 0.75rem;
         }
-
-        h1,
-        h2,
-        #identity > p,
-        #identity > a,
-        #technical-profile > p,
-        #learning-archive h3,
-        #learning-archive > p:not(:first-of-type),
-        #learning-archive > a {
-          grid-column: 1;
+        .ledger-details,
+        .ledger-source {
+          padding-left: 2.25rem;
         }
-
-        h1 {
-          font-size: clamp(4rem, 22vw, 7rem);
+        #selected-evidence {
+          gap: 2rem;
         }
-
-        h2 {
-          grid-row: 1;
+        #selected-evidence .section-heading {
+          margin-bottom: 0;
         }
-
-        #technical-profile [aria-label="Technical Profile evidence ledger"] {
-          grid-column: 1;
+        .project-heading h3 {
+          font-size: clamp(2.5rem, 10vw, 4rem);
         }
-
-        #technical-profile [aria-label="Technical Profile evidence ledger"] > li {
-          padding-inline-start: 2.5rem;
+        .archive-heading h3 {
+          margin-top: 1.5rem;
         }
-
-        #technical-profile [aria-label="Technical Profile evidence ledger"] > li::before {
-          left: 0;
-        }
-
-        #technical-profile dl,
-        #technical-profile .ledger-details,
-        #technical-profile .ledger-source {
-          grid-template-columns: 1fr;
-          gap: 1.25rem;
-        }
-
-        #technical-profile .ledger-capability,
-        #technical-profile .ledger-details,
-        #technical-profile .ledger-source,
-        #technical-profile .ledger-details > :first-child,
-        #technical-profile .ledger-details > :last-child,
-        #technical-profile .ledger-source dt,
-        #technical-profile .ledger-source dd {
-          grid-column: 1;
-        }
-
-        #selected-evidence > article:first-of-type,
-        #selected-evidence > article:last-of-type {
-          grid-column: 1;
-          min-height: 0;
-          margin: 0;
-        }
-
-        #learning-archive {
-          min-height: 0;
-        }
-
-        #contact-path {
-          min-height: 0;
-        }
-
         #contact-path ul {
-          grid-column: 1;
           grid-template-columns: 1fr;
           gap: 0;
+          padding-top: 0;
         }
-
         #contact-path a {
-          min-height: 2.75rem;
+          min-height: 5.5rem;
+        }
+        .contact-title {
+          font-size: clamp(2.5rem, 10vw, 5rem);
         }
       }
-
       @media (prefers-reduced-motion: reduce) {
-        *,
-        *::before,
-        *::after {
-          scroll-behavior: auto !important;
-          transition-duration: 0.01ms !important;
-          animation-duration: 0.01ms !important;
-          animation-iteration-count: 1 !important;
+        html {
+          scroll-behavior: auto;
         }
       }
     </style>

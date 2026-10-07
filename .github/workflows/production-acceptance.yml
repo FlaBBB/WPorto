@@ -25,14 +25,17 @@ jobs:
       - name: Install locked dependencies
         run: npm ci
 
+      - name: Check Astro and Svelte types
+        run: npm run check
+
       - name: Wait for the canonical production release
         env:
           PRODUCTION_URL: https://flab.my.id
           EXPECTED_COMMIT: ${{ github.sha }}
         run: |
           for attempt in $(seq 1 36); do
-            if curl --fail --silent --show-error "$PRODUCTION_URL/.build-metadata.json" | grep --fixed-strings --quiet "\"commit\":\"${EXPECTED_COMMIT}\""; then
-              if curl --fail --silent --show-error "$PRODUCTION_URL" | grep --fixed-strings --quiet '<title>Signal Ledger — Fikri Flab</title>'; then
+            if curl --fail --silent --show-error --connect-timeout 10 --max-time 20 "$PRODUCTION_URL/.build-metadata.json" | grep --fixed-strings --quiet "\"commit\":\"${EXPECTED_COMMIT}\""; then
+              if curl --fail --silent --show-error --connect-timeout 10 --max-time 20 "$PRODUCTION_URL" | grep --fixed-strings --quiet '<title>Signal Ledger — Fikri Flab</title>'; then
                 exit 0
               fi
             fi
@@ -41,30 +44,37 @@ jobs:
           echo "Canonical production did not serve the expected Portfolio Site: $PRODUCTION_URL" >&2
           exit 1
 
-      - name: Verify permanent hostname redirects
-        run: |
-          assert_redirect() {
-            local source="$1"
-            local target="$2"
-            local actual
-            actual=$(curl --silent --show-error --output /dev/null --write-out '%{http_code} %{redirect_url}' --max-redirs 0 "$source")
-            if [ "$actual" != "301 $target" ]; then
-              echo "Expected 301 redirect from $source to $target; got: $actual" >&2
-              exit 1
-            fi
-          }
-
-          assert_redirect \
-            'https://www.flab.my.id/redirect-check/nested?source=www' \
-            'https://flab.my.id/redirect-check/nested?source=www'
-          assert_redirect \
-            'https://wporto.pages.dev/redirect-check/nested?source=pages' \
-            'https://flab.my.id/redirect-check/nested?source=pages'
-
-      - name: Install Chromium
-        run: npx playwright install --with-deps chromium
+      - name: Install browser engines
+        run: npx playwright install --with-deps chromium firefox webkit
 
       - name: Run browser acceptance suite against canonical production
         env:
           PLAYWRIGHT_BASE_URL: https://flab.my.id
         run: npm test
+
+      - name: Upload failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-test-results
+          path: test-results/
+
+  verify-redirects:
+    name: Canonical redirect / ${{ matrix.hostname }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    strategy:
+      fail-fast: false
+      matrix:
+        hostname: [www.flab.my.id, wporto.pages.dev]
+    steps:
+      - name: Verify permanent redirect with path and query preserved
+        env:
+          SOURCE: https://${{ matrix.hostname }}/redirect-check/nested?source=acceptance
+          TARGET: https://flab.my.id/redirect-check/nested?source=acceptance
+        run: |
+          actual=$(curl --silent --show-error --connect-timeout 10 --max-time 20 --output /dev/null --write-out '%{http_code} %{redirect_url}' --max-redirs 0 "$SOURCE")
+          if [ "$actual" != "301 $TARGET" ]; then
+            echo "Expected 301 redirect from $SOURCE to $TARGET; got: $actual" >&2
+            exit 1
+          fi

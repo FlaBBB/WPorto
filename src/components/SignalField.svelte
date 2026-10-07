@@ -18,8 +18,8 @@
     const context = canvas.getContext("2d");
     if (!context) return;
 
-    const { width, height } = canvas.getBoundingClientRect();
-    const ratio = window.devicePixelRatio || 1;
+    const { width, height } = field.getBoundingClientRect();
+    const ratio = Math.min(window.devicePixelRatio || 1, 2);
     const pixelWidth = Math.round(width * ratio);
     const pixelHeight = Math.round(height * ratio);
 
@@ -30,7 +30,7 @@
 
     context.setTransform(ratio, 0, 0, ratio, 0, 0);
     context.clearRect(0, 0, width, height);
-    context.strokeStyle = "rgba(214, 255, 51, 0.52)";
+    context.strokeStyle = "rgba(214, 255, 51, 0.8)";
     context.lineWidth = 1;
     context.beginPath();
     context.moveTo(width * 0.14, height * 0.56);
@@ -97,19 +97,46 @@
   }
 
   onMount(() => {
-    canvas = document.createElement("canvas");
-    canvas.setAttribute("aria-hidden", "true");
-    field.append(canvas);
-    draw();
-    window.addEventListener("resize", draw);
+    const motionPreference = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const resizeObserver = new ResizeObserver(draw);
+
+    function syncMotionPreference() {
+      stop();
+      currentX = currentY = targetX = targetY = 0;
+      if (motionPreference.matches) {
+        canvas?.remove();
+        canvas = undefined;
+        field.classList.remove("has-canvas");
+        return;
+      }
+
+      if (!canvas) {
+        canvas = document.createElement("canvas");
+        canvas.setAttribute("aria-hidden", "true");
+        field.append(canvas);
+        field.classList.add("has-canvas");
+      }
+      canvas.style.transform = "translate3d(0, 0, 0)";
+      draw();
+    }
+
+    syncMotionPreference();
+    resizeObserver.observe(field);
+    motionPreference.addEventListener("change", syncMotionPreference);
     document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
       stop();
-      window.removeEventListener("resize", draw);
+      resizeObserver.disconnect();
+      motionPreference.removeEventListener("change", syncMotionPreference);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
+      canvas?.remove();
     };
   });
 </script>
 
-<div class="signal-field" aria-hidden="true" bind:this={field} onpointermove={handlePointerMove} onpointerleave={resetPointer}></div>
+<div class="signal-field" aria-hidden="true" bind:this={field} onpointermove={handlePointerMove} onpointerleave={resetPointer}>
+  <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+    <polyline points="14,56 42,36 70,64 92,22" fill="none" stroke="rgba(214, 255, 51, 0.8)" stroke-width="1" vector-effect="non-scaling-stroke" />
+  </svg>
+</div>
