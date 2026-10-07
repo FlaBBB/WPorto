@@ -745,12 +745,16 @@ test("gives selected paper surfaces a real cut edge and press feedback", async (
   };
 
   await hoverButton();
+  // A stable sample can still be the previous state before WebKit repaints.
+  // Require the transition to start before measuring its settled geometry.
+  await expect.poll(async () => magnitude(await edgeOffset())).toBeGreaterThan(magnitude(resting));
   const hovered = await settled();
   expect(magnitude(hovered)).toBeGreaterThan(magnitude(resting));
   expect(hovered.x).toBeGreaterThan(resting.x);
   expect(hovered.y).toBeGreaterThan(resting.y);
 
   await page.mouse.down();
+  await expect.poll(async () => magnitude(await edgeOffset())).toBeLessThan(magnitude(resting));
   const pressed = await settled();
   expect(magnitude(pressed)).toBeLessThan(magnitude(resting));
   expect(pressed.x).toBeLessThan(resting.x);
@@ -779,15 +783,16 @@ test("gives selected paper surfaces a real cut edge and press feedback", async (
     expect(surface.cut.startsWith("polygon(")).toBeTruthy();
   }
 
-  // The character's paper contour is painted with CSS drop-shadows. An SVG
-  // feMorphology filter produced the same edge but throttled the pointer
-  // parallax to ~1fps in headless Chromium, so it must not come back.
+  // The paper contour is baked into the transparent asset. SVG morphology and
+  // chained CSS shadows both stalled pointer animation in browser acceptance.
   const heroEdge = await page.locator(".hero-image").evaluate((element) => ({
+    source: element.getAttribute("src"),
     filter: getComputedStyle(element).filter,
     svgFilters: document.querySelectorAll("svg filter").length,
     morphology: document.querySelectorAll("feMorphology").length,
   }));
-  expect(heroEdge.filter.match(/drop-shadow/g)?.length).toBeGreaterThanOrEqual(4);
+  expect(heroEdge.source).toBe("/hero-character-paper.webp");
+  expect(heroEdge.filter).toBe("none");
   expect(heroEdge.svgFilters).toBe(0);
   expect(heroEdge.morphology).toBe(0);
 });

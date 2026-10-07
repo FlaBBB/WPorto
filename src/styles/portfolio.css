@@ -114,20 +114,9 @@ h1 { font-size: clamp(5rem, 9vw, 8.5rem); font-weight: 800; font-stretch: 75%; f
 .hero-backdrop::before { background: var(--deep); transform: translate(9px, 13px); filter: drop-shadow(0 18px 22px rgba(var(--shadow), 0.3)); }
 .hero-backdrop::after { background: #6f31bd; }
 .hero-crystals-back { z-index: 1; opacity: 0.5; }
-/* The one character, cut out of paper: a light face following the silhouette,
-   a thick plum edge, and one soft directional shadow. Painted with a short
-   drop-shadow chain rather than an SVG morphology filter, which cost ~60x the
-   frame budget for the same look. */
-.hero-image {
-  z-index: 2;
-  filter:
-    drop-shadow(4px 4px 0 var(--background))
-    drop-shadow(-4px -4px 0 var(--background))
-    drop-shadow(4px -4px 0 var(--background))
-    drop-shadow(-4px 4px 0 var(--background))
-    drop-shadow(7px 11px 0 var(--deep))
-    drop-shadow(10px 16px 6px rgba(var(--shadow), 0.24));
-}
+/* The cream contour, plum edge, and soft shadow are baked into the transparent
+   character asset: chained runtime filters stall WebKit pointer animation. */
+.hero-image { z-index: 2; }
 .hero-crystals-front { z-index: 3; filter: drop-shadow(2px 3px 0 #482769); }
 .art-caption { display: flex; justify-content: flex-end; margin-top: 2.5rem; margin-right: 0.5rem; color: var(--ink); font-size: 0.8125rem; line-height: 1.35; }
 .caption-tag { --sheet: var(--gold); --edge: #a87c2c; --lift: 4px; --slide: 2px; --cut: polygon(0 0, calc(100% - 14px) 0, 100% 16px, 100% 100%, 10px 100%, 0 calc(100% - 12px)); padding: 0.9rem 1.5rem; transform: rotate(-5deg); font-weight: 650; }
