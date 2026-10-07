@@ -45,7 +45,7 @@ jobs:
         run: |
           for attempt in $(seq 1 36); do
             if curl --fail --silent --show-error --connect-timeout 10 --max-time 20 "$PREVIEW_URL/.build-metadata.json" | grep --fixed-strings --quiet "\"commit\":\"${EXPECTED_COMMIT}\""; then
-              if curl --fail --silent --show-error --connect-timeout 10 --max-time 20 "$PREVIEW_URL" | grep --fixed-strings --quiet '<title>Signal Ledger — Fikri Flab</title>'; then
+              if curl --fail --silent --show-error --connect-timeout 10 --max-time 20 "$PREVIEW_URL" | grep --fixed-strings --quiet '<title>Fikri Flab — Projects and Play</title>'; then
                 exit 0
               fi
             fi
