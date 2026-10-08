@@ -3,56 +3,63 @@ import { expect, test, type Page } from "@playwright/test";
 const repositoryUrls = {
   WordyChain: "https://github.com/FlaBBB/WordyChain",
   JMC: "https://github.com/FlaBBB/JMC",
+  "harness-agentic-sdlc": "https://github.com/FlaBBB/harness-agentic-sdlc",
+  "OOT-AI-Agent-Practice": "https://github.com/FlaBBB/OOT-AI-Agent-Practice",
   Cybers_security: "https://github.com/FlaBBB/Cybers_security",
 };
 
-const technicalProfileRows = (page: Page) =>
+const profileRows = (page: Page) =>
   page
     .getByRole("list", { name: "Technical Profile evidence ledger" })
     .getByRole("listitem");
 
-test.describe("static Technical Profile output", () => {
+const CAPABILITIES = [
+  "TypeScript web applications",
+  "Modular application design with automated tests",
+  "Project-specific web-stack exposure",
+  "Agentic SDLC workflow tooling",
+  "Security-learning archive",
+  "Reconciled professional and competition profile",
+];
+
+const OBSERVED_EVIDENCE = [
+  "TypeScript web and realtime application structure is publicly visible across WordyChain, JMC, and the harness-agentic-sdlc workflow tooling.",
+  "WordyChain visibly separates realtime and web applications from shared, dictionary, and game-core packages, with unit-flow, end-to-end, and package-level tests; OOT-AI-Agent-Practice pairs a Java store with JUnit 5 tests and a business-rule verifier.",
+  "JMC documents Next.js App Router, TypeScript, PostgreSQL/Prisma, NextAuth.js v5, Tailwind CSS v4, Bun, Docker, Piston-backed code execution, and multiple submission languages.",
+  "harness-agentic-sdlc publishes a TypeScript CLI and repository-local governance: a request-to-deploy lifecycle, structured YAML workflows, approval and CI evidence, a Mission Control projection, and machine-readable JSON output.",
+  "A public cybersecurity archive spans cryptography, digital forensics, reverse engineering, binary exploitation, and smart-contract security, drawn from many CTF platforms and paired with supporting tools and cheatsheets.",
+  "The LinkedIn Source Profile lists an engineering role at Six Zenith Digital, study at Politeknik Negeri Malang, and active Capture The Flag participation; the linked CTFtime profile records competition teams and published writeups since 2023.",
+];
+
+const QUALIFICATIONS = [
+  "Public repositories establish hosted project material, not individual proficiency level, employment history, or sole authorship.",
+  "Visible project structure and tests do not establish authorship of every component.",
+  "This is JMC’s documented stack, not a personal proficiency claim; the README says the project was written by AI.",
+  "This describes the project’s documented capabilities, not verified personal authorship, adoption, or production use.",
+  "A learning archive, not professional security work, a certification, or production security responsibility.",
+  "Profile-stated and self-reported; not independently verified, and not a claim of seniority, employment terms, or professional security responsibility.",
+];
+
+test.describe("static content without JavaScript", () => {
   test.use({ javaScriptEnabled: false });
 
-  test("serves complete evidence and working disclosures without JavaScript", async ({
+  test("serves the complete reconciled profile and project records", async ({
     page,
   }) => {
     const response = await page.goto("/");
     expect(response?.ok()).toBeTruthy();
-    await expect(page).toHaveTitle("Signal Ledger — Fikri Flab");
+    await expect(page).toHaveTitle("flab — Fikri Flab");
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(
-      "Fikri Flab",
+      "Fikri Flab — learning in public.",
     );
-    await expect(page.getByRole("heading", { level: 2 })).toHaveText([
-      "00 / identity",
-      "01 / Technical Profile",
-      "02 / selected evidence",
-      "03 / learning archive",
-      "04 / Contact Path",
-    ]);
 
-    const rows = technicalProfileRows(page);
-    await expect(rows).toHaveCount(4);
-    await expect(rows.locator("summary .ledger-capability")).toHaveText([
-      "TypeScript web applications",
-      "Modular application design with automated tests",
-      "Project-specific web-stack exposure",
-      "Security-learning archive",
-    ]);
-    const observedEvidence = [
-      "TypeScript web and realtime application structure is publicly visible across JMC and WordyChain.",
-      "WordyChain visibly separates realtime, web, shared, dictionary, and game-core packages; its public tree includes unit-flow, end-to-end, and package-level tests.",
-      "JMC documents Next.js App Router, TypeScript, PostgreSQL/Prisma, NextAuth.js v5, Tailwind CSS v4, Bun, Docker, Piston-backed code execution, and multiple submission languages.",
-      "A public cybersecurity archive contains CTF-oriented material for cryptography, digital forensics, reverse engineering, and binary exploitation.",
-    ];
-    const qualifications = [
-      "Public repositories establish hosted project material, not individual proficiency level, employment history, or sole authorship.",
-      "Visible project structure and tests do not establish authorship of every component.",
-      "This is JMC’s documented stack, not a personal proficiency claim; the README says the project was written by AI.",
-      "A learning archive, not professional security work, a certification, or production security responsibility.",
-    ];
-
-    for (let index = 0; index < 4; index += 1) {
+    // The six reconciled capability records, with their limits.
+    const rows = profileRows(page);
+    await expect(rows).toHaveCount(6);
+    await expect(rows.locator("summary .ledger-capability")).toHaveText(
+      CAPABILITIES,
+    );
+    for (let index = 0; index < 6; index += 1) {
       const row = rows.nth(index);
       if (index > 0) {
         await row.locator("summary").focus();
@@ -64,22 +71,40 @@ test.describe("static Technical Profile output", () => {
         "Qualification",
       ]);
       await expect(row.locator("dd").first()).toHaveText(
-        observedEvidence[index],
+        OBSERVED_EVIDENCE[index],
       );
-      await expect(row.locator("dd").last()).toHaveText(qualifications[index]);
+      await expect(row.locator("dd").last()).toHaveText(QUALIFICATIONS[index]);
       await expect(row.locator(".ledger-source")).toBeVisible();
     }
+
+    // The three real project records.
+    await expect(page.locator(".work-index > li")).toHaveCount(3);
+    await expect(
+      page.locator(".work-index h3"),
+    ).toHaveText(["WordyChain", "JMC", "harness-agentic-sdlc"]);
     for (const [project, href] of Object.entries(repositoryUrls)) {
       await expect(
         page.getByRole("link", { name: new RegExp(project) }).first(),
       ).toHaveAttribute("href", href);
     }
-    await expect(page.locator(".signal-field svg")).toBeVisible();
-    await expect(page.locator(".signal-field canvas")).toHaveCount(0);
+
+    // The Malang identity note and the archive's CTFtime record.
+    await expect(page.locator(".hero-note")).toContainText("Malang, Indonesia");
+    await expect(
+      page.getByRole("link", { name: /CTFtime/ }).first(),
+    ).toHaveAttribute("href", "https://ctftime.org/user/156246");
+    await expect(
+      page.getByRole("link", { name: /Cybers_security/ }).first(),
+    ).toHaveAttribute("href", "https://github.com/FlaBBB/Cybers_security");
+
+    // No-JS shows the real mark, not an empty stage or a dead control.
+    await expect(page.locator(".flab-mark svg")).toBeVisible();
+    await expect(page.locator(".sculpture-canvas")).toHaveCount(0);
+    await expect(page.locator(".sculpture-control")).toBeHidden();
   });
 });
 
-test("publishes canonical metadata, a favicon, and direct Contact Paths", async ({
+test("publishes canonical metadata, the mark favicon, and direct Contact Paths", async ({
   page,
   request,
 }) => {
@@ -98,12 +123,17 @@ test("publishes canonical metadata, a favicon, and direct Contact Paths", async 
   );
   await expect(page.locator('meta[property="og:title"]')).toHaveAttribute(
     "content",
-    "Signal Ledger — Fikri Flab",
+    "flab — Fikri Flab",
+  );
+  await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute(
+    "content",
+    "#17131e",
   );
   await expect(page.locator('meta[name="twitter:card"]')).toHaveAttribute(
     "content",
     "summary",
   );
+
   const icon = await request.get("/favicon.svg");
   expect(icon.ok()).toBeTruthy();
   expect(icon.headers()["content-type"]).toContain("image/svg+xml");
@@ -118,61 +148,55 @@ test("publishes canonical metadata, a favicon, and direct Contact Paths", async 
   await expect(
     contact.getByRole("link", { name: "Email Start a conversation" }),
   ).toHaveAttribute("href", "mailto:f12345ff67@gmail.com");
-  await expect(
-    page.getByRole("link", {
-      name: "Inspect public work (opens in a new tab)",
-    }),
-  ).toHaveAttribute("target", "_blank");
 });
 
-test("makes the skip link and numbered navigation keyboard reachable", async ({
+test("makes the skip link and section navigation keyboard reachable", async ({
   page,
 }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto("/");
   await page.keyboard.press("Tab");
-  await expect(
-    page.getByRole("link", { name: "Skip to content" }),
-  ).toBeFocused();
+  await expect(page.getByRole("link", { name: "Skip to content" })).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(page.getByRole("main")).toBeFocused();
+
+  // Continuing forward from the main region reaches the hero action first.
   await page.keyboard.press("Tab");
   await expect(
-    page.getByRole("link", { name: "Explore selected evidence" }),
+    page.getByRole("link", { name: "Explore the work" }),
   ).toBeFocused();
-  await page.keyboard.press("Enter");
-  await expect(page).toHaveURL(/#selected-evidence$/);
-  const headingTop = await page
-    .locator("#selected-evidence-heading")
-    .evaluate((el) => el.getBoundingClientRect().top);
-  const headerBottom = await page
-    .locator(".site-header")
-    .evaluate((el) => el.getBoundingClientRect().bottom);
-  expect(headingTop).toBeGreaterThanOrEqual(headerBottom);
-  const navigationLabels = await page
+
+  // The wordmark is reachable by keyboard from the top of the document.
+  await page.goto("/");
+  await page.keyboard.press("Tab");
+  await page.keyboard.press("Tab");
+  await expect(
+    page.getByRole("link", { name: "flab — back to Fikri Flab’s identity" }),
+  ).toBeFocused();
+
+  const labels = await page
     .getByRole("navigation")
     .getByRole("link")
-    .evaluateAll((links) =>
-      links.map((link) => link.getAttribute("aria-label")),
-    );
-  expect(navigationLabels).toEqual([
-    "00 / identity",
-    "01 / Technical Profile",
-    "02 / selected evidence",
-    "03 / learning archive",
-    "04 / Contact Path",
-  ]);
+    .evaluateAll((links) => links.map((link) => link.textContent?.trim()));
+  expect(labels).toEqual(["Work", "Profile", "Archive", "Contact"]);
+
+  await page.getByRole("link", { name: "Contact" }).focus();
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/#contact-path$/);
+  const header = await page.locator(".site-header").boundingBox();
+  const heading = await page.locator("#contact-path-heading").boundingBox();
+  expect(heading?.y).toBeGreaterThanOrEqual(
+    (header?.y ?? 0) + (header?.height ?? 0) - 1,
+  );
 });
 
 test("uses native keyboard disclosure without hiding sources", async ({
   page,
 }) => {
   await page.goto("/");
-  const rows = technicalProfileRows(page);
+  const rows = profileRows(page);
   await expect(rows.locator("details[open]")).toHaveCount(1);
   await expect(rows.first().locator("details")).toHaveAttribute("open", "");
-  await expect(page.locator(".signal-field canvas")).toHaveCount(1);
-  await expect(rows.locator("details[open]")).toHaveCount(1);
 
   const second = rows.nth(1);
   const summary = second.locator("summary");
@@ -190,60 +214,6 @@ test("uses native keyboard disclosure without hiding sources", async ({
     await expect(row.locator(".ledger-source")).toBeVisible();
 });
 
-test("provides the Reduced-Motion Alternate and handles preference changes after load", async ({
-  page,
-}) => {
-  await page.emulateMedia({ reducedMotion: "reduce" });
-  await page.goto("/");
-  await expect(page.locator(".signal-field canvas")).toHaveCount(0);
-  await expect(page.locator(".signal-field svg")).toBeVisible();
-  await expect(page.locator("html")).toHaveCSS("scroll-behavior", "auto");
-  const thirdRow = technicalProfileRows(page).nth(2);
-  await thirdRow.locator("summary").focus();
-  await page.keyboard.press("Enter");
-  await expect(thirdRow.locator(".ledger-details")).toBeVisible();
-
-  await page.emulateMedia({ reducedMotion: "no-preference" });
-  await expect(page.locator(".signal-field canvas")).toHaveCount(1);
-  await page.emulateMedia({ reducedMotion: "reduce" });
-  await expect(page.locator(".signal-field canvas")).toHaveCount(0);
-  await expect(page.locator(".signal-field svg")).toBeVisible();
-  await expect(thirdRow.locator("details")).toHaveAttribute("open", "");
-});
-
-test("moves the signal within its bounds and resets on pointer leave", async ({
-  page,
-}) => {
-  await page.setViewportSize({ width: 1440, height: 1000 });
-  await page.goto("/");
-  const canvas = page.locator(".signal-field canvas");
-  await expect(canvas).toBeVisible();
-  const field = await page.locator(".signal-field").boundingBox();
-  if (!field) throw new Error("Signal field missing");
-  await page.mouse.move(
-    field.x + field.width * 0.9,
-    field.y + field.height * 0.2,
-  );
-  const translation = () =>
-    canvas.evaluate((el) => {
-      const matrix = new DOMMatrix(getComputedStyle(el).transform);
-      return { x: matrix.m41, y: matrix.m42 };
-    });
-  await expect
-    .poll(async () => Math.abs((await translation()).x - 19.2))
-    .toBeLessThan(0.2);
-  await expect
-    .poll(async () => Math.abs((await translation()).y + 14.4))
-    .toBeLessThan(0.2);
-  await page.mouse.move(1, 1);
-  await expect
-    .poll(async () => Math.abs((await translation()).x))
-    .toBeLessThan(0.1);
-  await expect
-    .poll(async () => Math.abs((await translation()).y))
-    .toBeLessThan(0.1);
-});
-
 for (const width of [320, 390, 768, 801, 1100, 1440]) {
   test(`keeps navigation, content, and touch targets usable at ${width}px`, async ({
     page,
@@ -255,71 +225,34 @@ for (const width of [320, 390, 768, 801, 1100, 1440]) {
       await page.evaluate(() => document.documentElement.scrollWidth),
     ).toBe(width);
     await expect(page.getByRole("navigation")).toBeVisible();
-    if (width <= 800) {
-      for (const link of await page
-        .getByRole("navigation")
-        .getByRole("link")
-        .all()) {
-        const bounds = await link.boundingBox();
-        expect(bounds?.x).toBeGreaterThanOrEqual(0);
-        expect((bounds?.x ?? 0) + (bounds?.width ?? 0)).toBeLessThanOrEqual(
-          width,
-        );
-        expect(bounds?.height).toBeGreaterThanOrEqual(44);
-      }
-      await expect(page.locator(".nav-short")).toHaveText([
-        "Identity",
-        "Profile",
-        "Evidence",
-        "Archive",
-        "Contact",
-      ]);
-    }
-    const contactNav = page
+    for (const link of await page
       .getByRole("navigation")
-      .getByRole("link", { name: "04 / Contact Path" });
+      .getByRole("link")
+      .all()) {
+      const bounds = await link.boundingBox();
+      expect(bounds?.x).toBeGreaterThanOrEqual(0);
+      expect((bounds?.x ?? 0) + (bounds?.width ?? 0)).toBeLessThanOrEqual(width);
+      expect(bounds?.height).toBeGreaterThanOrEqual(44);
+    }
+
+    const contactNav = page.getByRole("link", { name: "Contact" });
     await contactNav.focus();
     await page.keyboard.press("Enter");
     await expect(page).toHaveURL(/#contact-path$/);
-    const header = await page.locator(".site-header").boundingBox();
-    const heading = await page.locator("#contact-path-heading").boundingBox();
-    expect(heading?.y).toBeGreaterThanOrEqual(
-      (header?.y ?? 0) + (header?.height ?? 0),
-    );
     for (const link of await page.locator("#contact-path a").all()) {
       await expect(link).toBeVisible();
       expect((await link.boundingBox())?.height).toBeGreaterThanOrEqual(44);
     }
 
-    const thirdRow = technicalProfileRows(page).nth(2);
+    const thirdRow = profileRows(page).nth(2);
     await thirdRow.locator("summary").click();
     await expect(thirdRow.locator(".ledger-details")).toBeVisible();
     expect(
       (await thirdRow.locator("summary").boundingBox())?.height,
     ).toBeGreaterThanOrEqual(44);
-    const observed = await thirdRow
-      .locator(".ledger-field")
-      .first()
-      .boundingBox();
-    const qualification = await thirdRow
-      .locator(".ledger-qualification")
-      .boundingBox();
-    if (width <= 800)
-      expect(qualification?.y).toBeGreaterThan(observed?.y ?? 0);
-    else expect(qualification?.y).toBe(observed?.y);
 
-    const panels = await page.locator("#selected-evidence article").all();
-    const first = await panels[0].boundingBox();
-    const second = await panels[1].boundingBox();
-    if (width <= 800) {
-      expect(first?.x).toBe(second?.x);
-      expect(second?.y).toBeGreaterThan((first?.y ?? 0) + (first?.height ?? 0));
-    } else {
-      expect(first?.y).toBe(second?.y);
-      expect(second?.x).toBeGreaterThan((first?.x ?? 0) + (first?.width ?? 0));
-    }
     const overflow = await page
-      .locator("#selected-evidence h3, #selected-evidence p, .contact-title")
+      .locator(".work-index h3, .work-index p, #contact-path h2")
       .evaluateAll((elements) =>
         elements
           .filter((el) => el.scrollWidth > el.clientWidth + 1)
@@ -329,13 +262,13 @@ for (const width of [320, 390, 768, 801, 1100, 1440]) {
   });
 }
 
-test("keeps text contrast readable on dark and blue surfaces", async ({
+test("keeps text contrast readable on the plum and violet surfaces", async ({
   page,
 }) => {
   await page.goto("/");
   const contrast = await page
     .locator(
-      ".hero-note, .primary-link, .section-intro, .ledger-qualification dd, #contact-path a, nav a",
+      ".hero-note, .hero-action, .section-intro, .ledger-qualification dd, #contact-path a, nav a",
     )
     .evaluateAll((elements) => {
       const luminance = (color: string) => {
@@ -360,31 +293,84 @@ test("keeps text contrast readable on dark and blue surfaces", async ({
           background = background.parentElement;
         }
         const ink = luminance(getComputedStyle(el).color);
-        const surface = luminance(
-          getComputedStyle(background!).backgroundColor,
-        );
-        return (
-          (Math.max(ink, surface) + 0.05) / (Math.min(ink, surface) + 0.05)
-        );
+        const surface = luminance(getComputedStyle(background!).backgroundColor);
+        return (Math.max(ink, surface) + 0.05) / (Math.min(ink, surface) + 0.05);
       });
     });
   for (const ratio of contrast) expect(ratio).toBeGreaterThanOrEqual(4.5);
 });
 
-test("returns a real 404 with a working recovery path", async ({ page }) => {
+test("keeps a visible focus ring on the violet contact band", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto("/");
+
+  const links = page.locator("#contact-path a");
+  await expect(links).toHaveCount(3);
+
+  // Keyboard intent is required for :focus-visible to apply at all.
+  await page.keyboard.press("Tab");
+
+  for (let index = 0; index < 3; index += 1) {
+    const link = links.nth(index);
+    await link.focus();
+    await expect(link).toBeFocused();
+
+    const ring = await link.evaluate((el) => {
+      const luminance = (color: string) => {
+        const [r, g, b] = color
+          .match(/[\d.]+/g)!
+          .slice(0, 3)
+          .map(Number)
+          .map((c) => {
+            const v = c / 255;
+            return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+          });
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      };
+      const style = getComputedStyle(el);
+      // The band's own background is the surface the ring must read against.
+      const band = document.querySelector("#contact-path")!;
+      const surface = luminance(getComputedStyle(band).backgroundColor);
+      const outline = luminance(style.outlineColor);
+      return {
+        style: style.outlineStyle,
+        width: style.outlineWidth,
+        color: style.outlineColor,
+        ratio:
+          (Math.max(outline, surface) + 0.05) /
+          (Math.min(outline, surface) + 0.05),
+      };
+    });
+
+    // An accent-coloured ring would be invisible on the violet band.
+    expect(ring.style, `link ${index}`).toBe("solid");
+    expect(ring.width, `link ${index}`).toBe("2px");
+    expect(ring.ratio, `link ${index} ring=${ring.color}`).toBeGreaterThanOrEqual(
+      3,
+    );
+  }
+});
+
+test("returns a real 404 that carries the same mark and a recovery path", async ({
+  page,
+}) => {
   const response = await page.goto("/missing-portfolio-page/nested");
   expect(response?.status()).toBe(404);
   await expect(page).toHaveTitle("Page not found — Fikri Flab");
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(
-    "No signal here.",
+    "Nothing here after hours.",
   );
   await expect(page.locator('meta[name="robots"]')).toHaveAttribute(
     "content",
     "noindex",
   );
-  await page.getByRole("link", { name: "Back to the Portfolio Site" }).click();
+  await expect(page.locator(".flab-logo svg")).toBeVisible();
+  await page.locator(".return-link").click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(
-    "Fikri Flab",
+    "Fikri Flab — learning in public.",
   );
 });
 
@@ -399,7 +385,7 @@ test("loads the page and its local assets without browser errors", async ({
       failedResponses.push(`${response.status()} ${response.url()}`);
   });
   await page.goto("/");
-  await expect(page.locator(".signal-field canvas")).toBeVisible();
+  await expect(page.locator(".sculpture-canvas")).toBeVisible();
   await page.locator("#technical-profile summary").nth(3).click();
   await expect(page.locator("#evidence-detail-3")).toBeVisible();
   expect(errors).toEqual([]);

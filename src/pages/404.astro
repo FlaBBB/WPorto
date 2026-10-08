@@ -1,64 +1,86 @@
+---
+import { FLAB_PATH, FLAB_FILL_RULE, FLAB_VIEWBOX } from "../lib/flabMark";
+---
+
 <!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width" />
     <meta name="robots" content="noindex" />
-    <meta name="theme-color" content="#0a0b0d" />
+    <meta name="theme-color" content="#17131e" />
     <title>Page not found — Fikri Flab</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   </head>
   <body>
     <main>
-      <p class="eyebrow">Signal Ledger / 404</p>
-      <h1>No signal here.</h1>
+      <a class="flab-logo" href="/" aria-label="flab — back to the Portfolio Site">
+        <svg viewBox={`0 0 ${FLAB_VIEWBOX.width} ${FLAB_VIEWBOX.height}`} aria-hidden="true">
+          <path d={FLAB_PATH} fill="currentColor" fill-rule={FLAB_FILL_RULE} />
+        </svg>
+      </a>
+      <p class="eyebrow">404</p>
+      <h1>Nothing here after hours.</h1>
       <p>This page doesn’t exist. The Portfolio Site is one page — the work is still there.</p>
-      <a href="/">Back to the Portfolio Site <span aria-hidden="true">↗</span></a>
+      <a class="return-link" href="/">Back to the Portfolio Site <span aria-hidden="true">↗</span></a>
     </main>
     <style>
       :global(html) {
         color-scheme: dark;
-        background: #0a0b0d;
+        background: #17131e;
       }
       :global(body) {
         margin: 0;
-        color: #f2f0e9;
-        font-family: "Helvetica Neue", Arial, sans-serif;
+        color: #ece8f4;
+        font-family:
+          ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue",
+          Arial, sans-serif;
+        -webkit-font-smoothing: antialiased;
       }
       main {
-        max-width: 60rem;
+        max-width: 46rem;
         margin-inline: auto;
-        padding: clamp(4rem, 15vh, 10rem) clamp(1.25rem, 5vw, 5rem);
+        padding: clamp(3rem, 12vh, 8rem) clamp(1.25rem, 5vw, 5rem);
+      }
+      .flab-logo {
+        display: inline-flex;
+        color: #ece8f4;
+      }
+      .flab-logo svg {
+        width: 4.5rem;
+        height: auto;
+        display: block;
       }
       .eyebrow {
-        color: #d6ff33;
-        font:
-          0.75rem/1.5 ui-monospace,
-          monospace;
+        margin-top: 2.5rem;
+        color: #a89fb8;
+        font: 500 0.75rem/1.5 ui-monospace, monospace;
+        letter-spacing: 0.08em;
         text-transform: uppercase;
       }
       h1 {
-        margin: 2rem 0;
-        font-size: clamp(3.5rem, 10vw, 7rem);
-        line-height: 0.95;
-        letter-spacing: -0.06em;
+        margin: 1rem 0 1.25rem;
+        font-size: clamp(2.5rem, 8vw, 4.5rem);
+        line-height: 1.02;
+        letter-spacing: -0.045em;
       }
       p:not(.eyebrow) {
-        max-width: 40ch;
-        color: #aeafa7;
+        max-width: 42ch;
+        color: #a89fb8;
         line-height: 1.6;
       }
-      a {
+      .return-link {
         display: inline-flex;
         align-items: center;
-        gap: 1rem;
+        gap: 0.5rem;
         min-height: 2.75rem;
         margin-top: 2rem;
-        color: #d6ff33;
+        color: #d9cffb;
         text-underline-offset: 0.25em;
       }
-      a:focus-visible {
-        outline: 2px solid #d6ff33;
+      .return-link:focus-visible,
+      .flab-logo:focus-visible {
+        outline: 2px solid #a78bfa;
         outline-offset: 4px;
       }
     </style>
