@@ -191,69 +191,75 @@ test("stops every overlapping reveal when reduced motion is requested", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
+  // Control tween time, not native intersection delivery: host frame rate must
+  // not decide whether the first reveal has finished before the second starts.
+  await page.clock.install();
+  await page.clock.pauseAt(new Date(Date.now() + 1000));
   await page.goto("/");
-  // Let the above-the-fold reveals finish so only the two driven groups move.
-  await expect.poll(async () => unsettled(page), { timeout: 15_000 }).toEqual([]);
+  await expect
+    .poll(() => page.evaluate(() => Boolean(window.__afterHoursMotionReady)))
+    .toBe(true);
 
-  // Bring two distinct groups into view less than 0.6s apart, so their staggered
-  // reveals overlap. The first group is confirmed genuinely mid-tween while the
-  // second starts.
-  const sample = await page.evaluate(async () => {
-    const root = document.documentElement;
-    root.style.scrollBehavior = "auto";
-    const frame = () =>
-      new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-    const read = (el: Element) => {
-      const style = getComputedStyle(el);
-      const matrix =
-        style.transform === "none" ? null : new DOMMatrix(style.transform);
-      return { opacity: Number(style.opacity), y: Math.abs(matrix?.m42 ?? 0) };
-    };
-    const groupA = document.querySelector(
-      "#selected-evidence [data-reveal]",
-    ) as HTMLElement;
-    const groupB = document.querySelector(
-      "#technical-profile [data-reveal]",
-    ) as HTMLElement;
+  // Use adjacent sections' boundary targets, not the work section's sticky
+  // heading: a jump across the full project index can finish that earlier
+  // reveal before the profile starts. Both targets must remain in view.
+  const groupA = "#selected-evidence .work-index > li:last-child";
+  const groupB = "#technical-profile-heading";
+  const intoView = (selector: string) =>
+    page.evaluate(
+      (selector) =>
+        new Promise<void>((resolve) => {
+          document.documentElement.style.scrollBehavior = "auto";
+          const target = document.querySelector(selector) as HTMLElement;
+          const observer = new IntersectionObserver(
+            (entries) => {
+              if (!entries.some((entry) => entry.isIntersecting)) return;
+              observer.disconnect();
+              resolve();
+            },
+            { rootMargin: "0px 0px -10% 0px" },
+          );
+          observer.observe(target);
+          window.scrollTo(
+            0,
+            target.getBoundingClientRect().top + window.scrollY - window.innerHeight * 0.5,
+          );
+        }),
+      selector,
+    );
+  const read = () =>
+    page.evaluate(
+      (selectors) =>
+        selectors.map((selector) => {
+          const target = document.querySelector(selector) as HTMLElement;
+          const rect = target.getBoundingClientRect();
+          return {
+            opacity: Number(getComputedStyle(target).opacity),
+            inViewport: rect.bottom > 0 && rect.top < window.innerHeight,
+          };
+        }),
+      [groupA, groupB],
+    );
 
-    const intoView = (el: HTMLElement) =>
-      window.scrollTo(
-        0,
-        el.getBoundingClientRect().top + window.scrollY - window.innerHeight * 0.5,
-      );
-
-    intoView(groupA);
-    // Advance until A is actually tweening (started but not finished).
-    let aMid = read(groupA);
-    for (let step = 0; step < 40; step += 1) {
-      await frame();
-      aMid = read(groupA);
-      if (aMid.opacity > 0.05 && aMid.opacity < 0.95) break;
-    }
-
-    intoView(groupB);
-    // Advance until B has genuinely started tweening, while A is still in
-    // flight, so the two staggered reveals overlap in time.
-    let aWhenB = read(groupA);
-    let bWhenB = read(groupB);
-    for (let step = 0; step < 30; step += 1) {
-      await frame();
-      aWhenB = read(groupA);
-      bWhenB = read(groupB);
-      if (bWhenB.opacity > 0.01) break;
-    }
-    return { aMid, aWhenB, bWhenB };
-  });
+  await intoView(groupA);
+  // Include the first group's stagger, but stay within its 0.6s reveal.
+  await page.clock.runFor(300);
+  const [aMid] = await read();
+  await intoView(groupB);
+  await page.clock.runFor(100);
+  const [aWhenB, bWhenB] = await read();
 
   // The scenario is real: A was mid-flight, and when B's delivery landed A was
   // still mid-flight while B had just begun. Both must be genuinely tweening
   // together, not merely A before the second jump.
-  expect(sample.aMid.opacity).toBeGreaterThan(0.05);
-  expect(sample.aMid.opacity).toBeLessThan(0.95);
-  expect(sample.aWhenB.opacity).toBeGreaterThan(0.05);
-  expect(sample.aWhenB.opacity).toBeLessThan(0.99);
-  expect(sample.bWhenB.opacity).toBeGreaterThan(0.01);
-  expect(sample.bWhenB.opacity).toBeLessThan(0.99);
+  expect(aMid.opacity).toBeGreaterThan(0.05);
+  expect(aMid.opacity).toBeLessThan(0.95);
+  expect(aWhenB.opacity).toBeGreaterThan(0.05);
+  expect(aWhenB.opacity).toBeLessThan(0.99);
+  expect(bWhenB.opacity).toBeGreaterThan(0.01);
+  expect(bWhenB.opacity).toBeLessThan(0.99);
+  expect(aWhenB.inViewport).toBe(true);
+  expect(bWhenB.inViewport).toBe(true);
 
   await page.emulateMedia({ reducedMotion: "reduce" });
   await expect(page.locator("html")).not.toHaveClass(/\bmotion\b/);
@@ -261,7 +267,7 @@ test("stops every overlapping reveal when reduced motion is requested", async ({
   await expect(page.locator("[data-reveal]").first()).toBeVisible();
   expect(await unsettled(page)).toEqual([]);
   // ...and stay settled.
-  await page.waitForTimeout(500);
+  await page.clock.runFor(500);
   expect(await unsettled(page)).toEqual([]);
 });
 

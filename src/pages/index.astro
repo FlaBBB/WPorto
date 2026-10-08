@@ -1,13 +1,15 @@
 ---
 import EvidenceLedger from "../components/EvidenceLedger.svelte";
 import FlabSculpture from "../components/FlabSculpture.svelte";
+import SparseStars from "../components/SparseStars.svelte";
 import { FLAB_PATH, FLAB_FILL_RULE, FLAB_VIEWBOX } from "../lib/flabMark";
 
 const githubProfile = "https://github.com/FlaBBB";
 const linkedInProfile = "https://www.linkedin.com/in/fikri-flab/";
 const email = "f12345ff67@gmail.com";
+const ownerName = "Fikri Muhammad Abdillah";
 const description =
-  "Fikri Flab’s Portfolio Site: explore TypeScript web and realtime projects, agentic SDLC tooling, and a security-learning archive through public source material.";
+  "Fikri Muhammad Abdillah’s Portfolio Site: explore TypeScript web and realtime projects, agentic SDLC tooling, and a security-learning archive through public source material.";
 
 // Recognizable contact marks. They are decorative (aria-hidden); the adjacent
 // text labels carry the accessible name.
@@ -138,6 +140,8 @@ const sections = [
   { id: "learning-archive", label: "Archive" },
   { id: "contact-path", label: "Contact" },
 ];
+
+const year = new Date().getFullYear();
 ---
 
 <!doctype html>
@@ -145,15 +149,15 @@ const sections = [
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width" />
-    <title>flab — Fikri Flab</title>
+    <title>flab — Fikri Muhammad Abdillah</title>
     <meta name="description" content={description} />
     <meta name="theme-color" content="#17131e" />
     <meta property="og:type" content="website" />
-    <meta property="og:title" content="flab — Fikri Flab" />
+    <meta property="og:title" content="flab — Fikri Muhammad Abdillah" />
     <meta property="og:description" content={description} />
     <meta property="og:url" content="https://flab.my.id/" />
     <meta name="twitter:card" content="summary" />
-    <meta name="twitter:title" content="flab — Fikri Flab" />
+    <meta name="twitter:title" content="flab — Fikri Muhammad Abdillah" />
     <meta name="twitter:description" content={description} />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="canonical" href="https://flab.my.id/" />
@@ -176,7 +180,7 @@ const sections = [
   <body>
     <a class="skip-link" href="#main-content">Skip to content</a>
     <header class="site-header">
-      <a class="flab-logo" href="#identity" aria-label="flab — back to Fikri Flab’s identity">
+      <a class="flab-logo" href="#identity" aria-label="flab — back to Fikri Muhammad Abdillah’s identity">
         <svg viewBox={`0 0 ${FLAB_VIEWBOX.width} ${FLAB_VIEWBOX.height}`} aria-hidden="true">
           <path d={FLAB_PATH} fill="currentColor" fill-rule={FLAB_FILL_RULE} />
         </svg>
@@ -195,139 +199,177 @@ const sections = [
         <FlabSculpture client:media="(prefers-reduced-motion: no-preference)" />
       </section>
 
-      <section id="intro" aria-labelledby="intro-heading">
-        <div class="intro-layout">
-          <div class="intro-lead">
-            <h1 id="intro-heading">Fikri Flab<span class="intro-dot" aria-hidden="true">.</span></h1>
-            <p class="intro-secondary">Web applications. Realtime systems.</p>
+      <!--
+        Each lower section (and the footer) carries its own lightweight local
+        sparse-star layer: DOM/CSS rather than another full-page canvas, clipped
+        to that section and painted above its background but under its content.
+      -->
+      <div class="page-body">
+        <section id="intro" aria-labelledby="intro-heading">
+          <SparseStars seed={1} client:load />
+          <div class="intro-layout">
+            <div class="intro-lead">
+              <h1 id="intro-heading">Fikri Muhammad Abdillah<span class="intro-dot" aria-hidden="true">.</span></h1>
+              <p class="intro-secondary">Web applications. Realtime systems.</p>
+            </div>
+            <div class="intro-body">
+              <p class="intro-note" data-reveal>
+                Based in Malang, Indonesia, my focus is TypeScript across web and realtime
+                applications and agentic workflow tooling, with the public repositories in
+                that space open to read.
+              </p>
+              <p class="intro-note intro-note-soft" data-reveal>
+                Capture the flag is where I keep learning — cryptography, digital forensics,
+                reverse engineering, binary exploitation and smart-contract security — kept
+                as notes rather than presented as professional security work.
+              </p>
+              <a class="intro-link" href="#selected-evidence" data-reveal>
+                Selected work <span aria-hidden="true">↓</span>
+              </a>
+            </div>
           </div>
-          <div class="intro-aside">
-            <p class="intro-note" data-reveal>
-              Public projects and learning, reconciled from GitHub and LinkedIn, based in
-              Malang, Indonesia.
-            </p>
-            <a class="intro-link" href="#selected-evidence" data-reveal>
-              Selected work <span aria-hidden="true">↓</span>
-            </a>
-          </div>
-        </div>
-      </section>
+        </section>
 
-      <section id="selected-evidence" aria-labelledby="selected-evidence-heading">
-        <div class="work-layout">
-          <div class="work-intro">
-            <p class="eyebrow">01 / Work</p>
-            <h2 id="selected-evidence-heading" data-reveal>Look inside the work.</h2>
-            <p class="section-intro" data-reveal>
-              Three public repositories. Different systems, with the source material open to
-              inspection.
-            </p>
-          </div>
-          <ol class="work-index">
-            {projects.map((project) => (
-              <li data-reveal>
-                <article aria-labelledby={`${project.id}-heading`}>
-                  <p class="project-index" aria-hidden="true">{project.index}</p>
-                  <div class="project-body">
-                    <h3 id={`${project.id}-heading`}>{project.name}</h3>
-                    <p class="project-deck">{project.deck}</p>
-                    <div class="project-structure" aria-label={project.structureLabel}>
-                      {project.structure.map((item) => <span>{item}</span>)}
+        <section id="selected-evidence" aria-labelledby="selected-evidence-heading">
+          <SparseStars seed={2} client:load />
+          <div class="work-layout">
+            <div class="work-intro">
+              <p class="eyebrow">01 / Work</p>
+              <h2 id="selected-evidence-heading" data-reveal>Look inside the work.</h2>
+              <p class="section-intro" data-reveal>
+                Three public repositories. Different systems, with the source material open to
+                inspection.
+              </p>
+            </div>
+            <ol class="work-index">
+              {projects.map((project) => (
+                <li data-reveal>
+                  <article aria-labelledby={`${project.id}-heading`}>
+                    <p class="project-index" aria-hidden="true">{project.index}</p>
+                    <div class="project-body">
+                      <h3 id={`${project.id}-heading`}>{project.name}</h3>
+                      <p class="project-deck">{project.deck}</p>
+                      <div class="project-structure" aria-label={project.structureLabel}>
+                        {project.structure.map((item) => <span>{item}</span>)}
+                      </div>
+                      <p class="project-copy">{project.copy}</p>
+                      <p class="scope-note">{project.scopeNote}</p>
+                      <a class="project-link" href={project.href}>Source: {project.name} <span aria-hidden="true">↗</span></a>
                     </div>
-                    <p class="project-copy">{project.copy}</p>
-                    <p class="scope-note">{project.scopeNote}</p>
-                    <a class="project-link" href={project.href}>Source: {project.name} <span aria-hidden="true">↗</span></a>
-                  </div>
-                </article>
-              </li>
-            ))}
-          </ol>
-        </div>
-      </section>
-
-      <section id="technical-profile" aria-labelledby="technical-profile-heading">
-        <div class="section-heading">
-          <p class="eyebrow">02 / Profile</p>
-          <h2 id="technical-profile-heading" data-reveal>Evidence over claims.</h2>
-          <p class="section-intro" data-reveal>
-            A curated record of publicly visible projects and learning material. Open a record
-            for the evidence and its limits.
-          </p>
-        </div>
-        <EvidenceLedger records={profileRecords} />
-      </section>
-
-      <section id="learning-archive" aria-labelledby="learning-archive-heading">
-        <div class="section-heading">
-          <p class="eyebrow">03 / Archive</p>
-          <h2 id="learning-archive-heading" data-reveal>Still learning. Keeping the notes.</h2>
-        </div>
-        <div class="archive-copy">
-          <p data-reveal>
-            A public CTF-oriented archive spans cryptography, digital forensics, reverse
-            engineering, binary exploitation, and smart-contract security across many
-            competition platforms, with supporting tools and cheatsheets.
-          </p>
-          <p class="scope-note" data-reveal>Learning material, not professional security experience.</p>
-          <div class="archive-links">
-            <a class="text-link" href="https://github.com/FlaBBB/Cybers_security" data-reveal>
-              Inspect Cybers_security <span aria-hidden="true">↗</span>
-            </a>
-            <a class="text-link" href="https://ctftime.org/user/156246" data-reveal>
-              Competition record on CTFtime <span aria-hidden="true">↗</span>
-            </a>
+                  </article>
+                </li>
+              ))}
+            </ol>
           </div>
-        </div>
-      </section>
+        </section>
 
-      <section id="contact-path" aria-labelledby="contact-path-heading">
-        <div class="contact-layout">
-          <div class="contact-intro-block">
-            <p class="eyebrow">04 / Contact</p>
-            <h2 id="contact-path-heading" data-reveal>Let’s talk.</h2>
-            <p class="contact-intro" data-reveal>
-              Explore the source, connect on LinkedIn, or send a note directly.
+        <section id="technical-profile" aria-labelledby="technical-profile-heading">
+          <SparseStars seed={3} client:load />
+          <div class="section-heading">
+            <p class="eyebrow">02 / Profile</p>
+            <h2 id="technical-profile-heading" data-reveal>Evidence over claims.</h2>
+            <p class="section-intro" data-reveal>
+              A curated record of publicly visible projects and learning material. Open a record
+              for the evidence and its limits.
             </p>
           </div>
-          <ul class="contact-paths">
-            <li data-reveal>
-              <a href={githubProfile}>
-                <span class="contact-icon" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" fill="currentColor"><path d={GITHUB_ICON} /></svg>
-                </span>
-                <span class="contact-label"><strong>GitHub</strong><span>Inspect public work</span></span>
-                <span class="contact-arrow" aria-hidden="true">↗</span>
-              </a>
-            </li>
-            <li data-reveal>
-              <a href={linkedInProfile}>
-                <span class="contact-icon" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" fill="currentColor"><path d={LINKEDIN_ICON} /></svg>
-                </span>
-                <span class="contact-label"><strong>LinkedIn</strong><span>Professional profile</span></span>
-                <span class="contact-arrow" aria-hidden="true">↗</span>
-              </a>
-            </li>
-            <li data-reveal>
-              <!--email_off--><a href={`mailto:${email}`}>
-                <span class="contact-icon contact-icon-envelope" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
-                    <rect x="2.5" y="4.5" width="19" height="15" rx="2" />
-                    <path d="m3.5 6.5 8.5 6.5 8.5-6.5" />
-                  </svg>
-                </span>
-                <span class="contact-label"><strong>Email</strong><span>Start a conversation</span></span>
-                <span class="contact-arrow" aria-hidden="true">↗</span>
-              </a><!--/email_off-->
-            </li>
-          </ul>
-        </div>
-      </section>
+          <EvidenceLedger records={profileRecords} />
+        </section>
+
+        <section id="learning-archive" aria-labelledby="learning-archive-heading">
+          <SparseStars seed={4} client:load />
+          <div class="section-heading">
+            <p class="eyebrow">03 / Archive</p>
+            <h2 id="learning-archive-heading" data-reveal>Still learning. Keeping the notes.</h2>
+          </div>
+          <div class="archive-layout">
+            <p class="archive-statement" data-reveal>
+              A public CTF-oriented archive spans cryptography, digital forensics, reverse
+              engineering, binary exploitation, and smart-contract security.
+            </p>
+            <div class="archive-aside">
+              <p class="archive-detail" data-reveal>
+                Drawn from many competition platforms and paired with supporting tools and
+                cheatsheets.
+              </p>
+              <p class="scope-note" data-reveal>Learning material, not professional security experience.</p>
+              <div class="archive-links">
+                <a class="text-link" href="https://github.com/FlaBBB/Cybers_security" data-reveal>
+                  Inspect Cybers_security <span aria-hidden="true">↗</span>
+                </a>
+                <a class="text-link" href="https://ctftime.org/user/156246" data-reveal>
+                  Competition record on CTFtime <span aria-hidden="true">↗</span>
+                </a>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="contact-path" aria-labelledby="contact-path-heading">
+          <SparseStars seed={5} tone="plum" client:load />
+          <div class="contact-layout">
+            <div class="contact-intro-block">
+              <p class="eyebrow">04 / Contact</p>
+              <h2 id="contact-path-heading" data-reveal>Let’s talk.</h2>
+              <p class="contact-intro" data-reveal>
+                Explore the source, connect on LinkedIn, or send a note directly.
+              </p>
+            </div>
+            <ul class="contact-paths">
+              <li data-reveal>
+                <a href={githubProfile}>
+                  <span class="contact-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="currentColor"><path d={GITHUB_ICON} /></svg>
+                  </span>
+                  <span class="contact-label"><strong>GitHub</strong><span>Inspect public work</span></span>
+                  <span class="contact-arrow" aria-hidden="true">↗</span>
+                </a>
+              </li>
+              <li data-reveal>
+                <a href={linkedInProfile}>
+                  <span class="contact-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="currentColor"><path d={LINKEDIN_ICON} /></svg>
+                  </span>
+                  <span class="contact-label"><strong>LinkedIn</strong><span>Professional profile</span></span>
+                  <span class="contact-arrow" aria-hidden="true">↗</span>
+                </a>
+              </li>
+              <li data-reveal>
+                <!--email_off--><a href={`mailto:${email}`}>
+                  <span class="contact-icon contact-icon-envelope" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                      <rect x="2.5" y="4.5" width="19" height="15" rx="2" />
+                      <path d="m3.5 6.5 8.5 6.5 8.5-6.5" />
+                    </svg>
+                  </span>
+                  <span class="contact-label"><strong>Email</strong><span>Start a conversation</span></span>
+                  <span class="contact-arrow" aria-hidden="true">↗</span>
+                </a><!--/email_off-->
+              </li>
+            </ul>
+          </div>
+        </section>
+      </div>
     </main>
 
     <footer class="site-footer">
-      <span>Fikri Flab / flab</span>
-      <a href="#identity">Back to top ↑</a>
+      <SparseStars seed={6} client:load />
+      <div class="footer-inner">
+        <p class="footer-identity">
+          <span class="footer-name">{ownerName}</span>
+          <span class="footer-sep" aria-hidden="true">·</span>
+          <span class="footer-copy">© {year}</span>
+        </p>
+        <!--
+          The right group is the back-to-top link itself, so there is no third
+          visible "Back to top" group. Its accessible name keeps the visible
+          "Still learning." label (Label in Name) while naming the destination.
+        -->
+        <a class="footer-top" href="#identity" aria-label="Back to top — Still learning." title="Back to top">
+          <span class="footer-note">Still learning.</span>
+          <span class="footer-dash" aria-hidden="true"></span>
+        </a>
+      </div>
     </footer>
 
     <style is:global>
@@ -343,7 +385,12 @@ const sections = [
         /* Open contact band: light violet surface with plum ink (6.7:1). */
         --contact-band: #a78bfa;
         --contact-ink: #1b1430;
+        /* Footer: near-black plum with a thin violet rule. */
+        --footer-bg: #141019;
+        --footer-rule: color-mix(in srgb, var(--accent) 62%, transparent);
         --gutter: clamp(1.25rem, 5vw, 5rem);
+        /* Generous, substantial space for every body section. */
+        --section-space: clamp(4.5rem, 12vh, 8rem);
         --font-sans:
           ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue",
           Arial, sans-serif;
@@ -486,19 +533,33 @@ const sections = [
       }
 
       section {
-        padding: 4.5rem var(--gutter);
+        padding-block: var(--section-space);
+        padding-inline: var(--gutter);
+      }
+      .page-body {
+        position: relative;
+      }
+      /*
+        Each lower section and the footer isolate their own stacking context, so
+        the local sparse-star layer (z-index: -1) paints above that section's
+        background but under its content.
+      */
+      .page-body > section,
+      .site-footer {
+        position: relative;
+        isolation: isolate;
       }
       .section-heading {
         display: grid;
-        gap: 0.75rem;
-        max-width: 46rem;
-        margin-bottom: 3rem;
+        gap: 1rem;
+        max-width: 52rem;
+        margin-bottom: 3.5rem;
       }
       h2 {
-        font-size: clamp(2rem, 4.2vw, 3.5rem);
-        font-weight: 600;
-        line-height: 1.04;
-        letter-spacing: -0.04em;
+        font-size: clamp(2.25rem, 5vw, 4.25rem);
+        font-weight: 700;
+        line-height: 1.02;
+        letter-spacing: -0.045em;
       }
       .section-intro {
         max-width: 48ch;
@@ -510,48 +571,55 @@ const sections = [
         padding: 0;
       }
 
-      /* Intro: a concise asymmetric identity statement, not a second hero. */
+      /* Intro: a fuller, human first-person statement, still not a second hero. */
       #intro {
-        padding-top: 3.5rem;
+        padding-block: var(--section-space);
       }
       .intro-layout {
         display: grid;
-        grid-template-columns: minmax(0, 1.45fr) minmax(0, 0.55fr);
-        gap: 2rem 4rem;
-        align-items: end;
+        grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+        gap: 2.5rem 4.5rem;
+        align-items: center;
       }
       .intro-lead {
         display: grid;
-        gap: 0.75rem;
+        gap: 1rem;
       }
       h1 {
-        font-size: clamp(2.25rem, 5vw, 4rem);
-        font-weight: 600;
-        line-height: 1.02;
-        letter-spacing: -0.045em;
+        font-size: clamp(2.5rem, 5.5vw, 4.5rem);
+        font-weight: 700;
+        line-height: 0.98;
+        letter-spacing: -0.05em;
       }
       .intro-dot {
         color: var(--accent);
       }
       .intro-secondary {
-        font-size: clamp(1.125rem, 1.8vw, 1.5rem);
+        font-size: clamp(1.25rem, 2.2vw, 1.75rem);
+        font-weight: 500;
         letter-spacing: -0.02em;
       }
-      .intro-aside {
+      .intro-body {
         display: grid;
-        gap: 0.75rem;
+        gap: 1.25rem;
         justify-items: start;
       }
       .intro-note {
-        max-width: 34ch;
+        max-width: 46ch;
+        color: var(--ink);
+        font-size: clamp(1.0625rem, 1.5vw, 1.3125rem);
+        line-height: 1.6;
+      }
+      .intro-note-soft {
         color: var(--muted-ink);
-        font-size: 0.9375rem;
+        font-size: clamp(1rem, 1.3vw, 1.125rem);
       }
       .intro-link {
         display: inline-flex;
         align-items: center;
         gap: 0.4rem;
         min-height: 2.8125rem;
+        margin-top: 0.25rem;
         color: var(--accent-ink);
         text-decoration: none;
       }
@@ -656,7 +724,7 @@ const sections = [
       }
       .ledger-disclosure {
         display: grid;
-        grid-template-columns: 2.5rem 1fr auto;
+        grid-template-columns: 2.5rem 1fr;
         gap: 1rem;
         align-items: center;
         min-height: 4.5rem;
@@ -676,24 +744,9 @@ const sections = [
         letter-spacing: -0.02em;
         line-height: 1.3;
       }
-      .ledger-disclosure:hover .ledger-capability {
+      .ledger-disclosure:hover .ledger-capability,
+      .evidence-ledger details[open] .ledger-capability {
         color: var(--accent-ink);
-      }
-      .ledger-indicator {
-        width: 2rem;
-        height: 2rem;
-        display: grid;
-        place-items: center;
-        border: 1px solid var(--rule);
-        border-radius: 999px;
-        color: var(--accent-ink);
-        font: 1.25rem/1 var(--font-mono);
-      }
-      details[open] .ledger-indicator::before {
-        content: "−";
-      }
-      details:not([open]) .ledger-indicator::before {
-        content: "+";
       }
       .ledger-details {
         display: grid;
@@ -739,12 +792,34 @@ const sections = [
         font-size: 0.875rem;
       }
 
-      /* Archive */
-      .archive-copy {
+      /* Archive: a heavier statement beside its supporting notes, so the copy
+         never stretches into one very long line on wide screens. */
+      #learning-archive {
+        padding-block: calc(var(--section-space) * 1.15);
+      }
+      .archive-layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+        gap: 2.5rem 4.5rem;
+        align-items: start;
+      }
+      .archive-statement {
+        max-width: 30ch;
+        font-size: clamp(1.5rem, 3vw, 2.375rem);
+        font-weight: 600;
+        line-height: 1.14;
+        letter-spacing: -0.03em;
+        text-wrap: pretty;
+      }
+      .archive-aside {
         display: grid;
         gap: 1.25rem;
-        max-width: 60ch;
+        justify-items: start;
+      }
+      .archive-detail {
+        max-width: 40ch;
         color: var(--muted-ink);
+        font-size: 1rem;
       }
       .archive-links {
         display: flex;
@@ -766,23 +841,29 @@ const sections = [
       #contact-path {
         background: var(--contact-band);
         color: var(--contact-ink);
+        padding-block: calc(var(--section-space) * 1.2);
       }
       .contact-layout {
         display: grid;
         grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
-        gap: 2.5rem 4rem;
+        gap: 3rem 4rem;
         align-items: start;
       }
       #contact-path .eyebrow {
-        color: color-mix(in srgb, var(--contact-ink) 78%, transparent);
+        color: var(--contact-ink);
       }
       #contact-path h2 {
         margin-top: 0.75rem;
+        font-size: clamp(3rem, 8vw, 7rem);
+        font-weight: 800;
+        line-height: 0.94;
+        letter-spacing: -0.05em;
       }
       .contact-intro {
-        margin-top: 1rem;
-        max-width: 38ch;
-        color: color-mix(in srgb, var(--contact-ink) 82%, transparent);
+        margin-top: 1.25rem;
+        max-width: 34ch;
+        font-size: clamp(1.0625rem, 1.4vw, 1.25rem);
+        color: var(--contact-ink);
       }
       .contact-paths {
         display: grid;
@@ -836,7 +917,7 @@ const sections = [
         font-weight: 600;
       }
       .contact-label > span {
-        color: color-mix(in srgb, var(--contact-ink) 82%, transparent);
+        color: var(--contact-ink);
         font-size: 0.875rem;
       }
       .contact-arrow {
@@ -847,21 +928,54 @@ const sections = [
         text-underline-offset: 0.2em;
       }
 
-      /* Footer */
+      /* Footer: near-black plum, a thin violet top rule and one compact muted
+         row — a quiet close, not another tall section. The surface stays
+         full-bleed; an inner layout holds the readable measure. */
       .site-footer {
+        min-height: 6.25rem;
+        padding-block: 1.25rem;
+        background: var(--footer-bg);
+        border-top: 1px solid var(--footer-rule);
+        color: var(--muted-ink);
+        font: 600 0.875rem/1.6 var(--font-mono);
+        letter-spacing: 0.02em;
+      }
+      .footer-inner {
         display: flex;
         flex-wrap: wrap;
-        justify-content: space-between;
         align-items: center;
+        justify-content: space-between;
         gap: 0.5rem 2rem;
-        padding: 1.5rem var(--gutter);
-        color: var(--muted-ink);
-        font-size: 0.8125rem;
+        max-width: 108rem;
+        margin-inline: auto;
+        padding-inline: var(--gutter);
       }
-      .site-footer a {
+      .footer-identity {
         display: inline-flex;
         align-items: center;
-        min-height: 2.8125rem;
+        gap: 0.6rem;
+      }
+      .footer-sep {
+        color: color-mix(in srgb, var(--muted-ink) 55%, transparent);
+      }
+      /* The right group is the back-to-top link; the violet dash closes it. */
+      .footer-top {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.75rem;
+        min-height: 2.75rem;
+        color: var(--muted-ink);
+        text-decoration: none;
+      }
+      .footer-top:hover .footer-note {
+        text-decoration: underline;
+        text-underline-offset: 0.25em;
+      }
+      .footer-dash {
+        width: 1.5rem;
+        height: 2px;
+        border-radius: 1px;
+        background: var(--accent);
       }
 
       @media (min-width: 1700px) {
@@ -873,9 +987,8 @@ const sections = [
         #technical-profile > .section-heading,
         #technical-profile > .evidence-ledger,
         #learning-archive > .section-heading,
-        #learning-archive > .archive-copy,
-        #contact-path > .contact-layout,
-        .site-footer {
+        #learning-archive > .archive-layout,
+        #contact-path > .contact-layout {
           max-width: 108rem;
           margin-inline: auto;
         }
@@ -893,12 +1006,19 @@ const sections = [
       }
       @media (max-width: 900px) {
         .work-layout,
-        .intro-layout {
+        .intro-layout,
+        .archive-layout {
           grid-template-columns: 1fr;
         }
         .intro-layout {
           align-items: start;
           gap: 1.5rem;
+        }
+        .archive-layout {
+          gap: 1.75rem;
+        }
+        .archive-statement {
+          max-width: 34ch;
         }
         .work-intro {
           position: static;
@@ -935,7 +1055,7 @@ const sections = [
           font-size: 0.875rem;
         }
         .ledger-disclosure {
-          grid-template-columns: 1.5rem 1fr auto;
+          grid-template-columns: 1.5rem 1fr;
           gap: 0.75rem;
         }
         .ledger-details,
@@ -968,6 +1088,16 @@ const sections = [
         .contact-icon-envelope svg {
           width: 1.5rem;
           height: 1.5rem;
+        }
+        .site-footer {
+          min-height: 0;
+          padding-block: 1.5rem;
+        }
+        .footer-inner {
+          gap: 0.5rem 1rem;
+        }
+        .footer-top {
+          min-height: 2.75rem;
         }
       }
 
@@ -1146,6 +1276,75 @@ const sections = [
         element.addEventListener("pointerleave", () => nudge(0));
         element.addEventListener("focus", () => nudge(1));
         element.addEventListener("blur", () => nudge(0));
+      }
+
+      // Evidence Ledger: on a fine pointer, hovering a record opens it without a
+      // click, while native details/summary still owns keyboard and touch. The
+      // +/- indicator was removed, so the open state is the only affordance. A
+      // short hover-intent delay keeps the row stable while the pointer crosses
+      // it, and only a genuine mouse click that lands on a row this hover opened
+      // is absorbed, so it cannot immediately toggle the row closed again.
+      const finePointer = window.matchMedia("(hover: hover) and (pointer: fine)");
+      const ledgerRecords = gsap.utils.toArray<HTMLDetailsElement>(
+        ".evidence-ledger details",
+      );
+      const HOVER_INTENT = 110;
+      let hoverTimer = 0;
+      let hoverOpened: HTMLDetailsElement | undefined;
+      let lastPointerType = "mouse";
+
+      function clearIntent() {
+        window.clearTimeout(hoverTimer);
+      }
+
+      function openRecord(details: HTMLDetailsElement) {
+        for (const other of ledgerRecords) {
+          if (other !== details && other.open) other.open = false;
+        }
+        // Only claim a row this hover actually opened; a row already open by
+        // default or keyboard stays a native toggle.
+        const wasOpen = details.open;
+        details.open = true;
+        hoverOpened = wasOpen ? undefined : details;
+      }
+
+      for (const details of ledgerRecords) {
+        const summary = details.querySelector("summary");
+        if (!summary) continue;
+        summary.addEventListener("pointerenter", (event) => {
+          if (!finePointer.matches) return;
+          if ((event as PointerEvent).pointerType === "touch") return;
+          clearIntent();
+          hoverTimer = window.setTimeout(() => openRecord(details), HOVER_INTENT);
+        });
+        summary.addEventListener("pointerleave", clearIntent);
+        summary.addEventListener("pointerdown", (event) => {
+          // A real press ends the hover deliberation: cancel any pending intent
+          // so it cannot open a row the press is about to toggle.
+          lastPointerType = (event as PointerEvent).pointerType || "mouse";
+          clearIntent();
+        });
+        summary.addEventListener("keydown", (event) => {
+          const key = (event as KeyboardEvent).key;
+          if (key === " " || key === "Enter" || key === "Spacebar") {
+            // Keyboard activation is an explicit choice: cancel any pending
+            // hover intent and drop the hover claim, so a following click
+            // (detail 0) is never treated as hover absorption.
+            clearIntent();
+            hoverOpened = undefined;
+          }
+        });
+        summary.addEventListener("click", (event) => {
+          if (!finePointer.matches) return;
+          // Keyboard-generated clicks report detail 0; touch/pen clicks are not
+          // mouse clicks. Both keep their native toggle.
+          if ((event as MouseEvent).detail === 0) return;
+          if (lastPointerType !== "mouse") return;
+          if (details.open && hoverOpened === details) {
+            event.preventDefault();
+            hoverOpened = undefined;
+          }
+        });
       }
 
       function syncMotionPreference() {

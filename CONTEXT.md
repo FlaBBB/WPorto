@@ -1,11 +1,11 @@
 # Portfolio
 
-This context is the personal portfolio website for Fikri Flab. It presents a selected professional identity, work, and a path for prospective collaborators or employers to make contact.
+This context is the personal portfolio website for Fikri Muhammad Abdillah. It presents a selected professional identity, work, and a path for prospective collaborators or employers to make contact.
 
 ## Language
 
 **Portfolio Site**:
-The personal website that represents Fikri Flab through curated professional material and contact paths.
+The personal website that represents Fikri Muhammad Abdillah through curated professional material and contact paths.
 _Avoid_: Personal site, profile website
 
 
@@ -14,7 +14,7 @@ A peer engineering contributor assessing whether to collaborate through visible 
 _Avoid_: Recruiter, client
 
 **Technical Profile**:
-A curated presentation of Fikri Flab's skills and technology stack, serving as the Portfolio Site's primary evidence for Technical Collaborators.
+A curated presentation of Fikri Muhammad Abdillah's skills and technology stack, serving as the Portfolio Site's primary evidence for Technical Collaborators.
 _Avoid_: Skills list, stack list
 
 **Source Profiles**:
@@ -26,7 +26,7 @@ A Portfolio Site whose visual system and interaction design visibly demonstrate 
 _Avoid_: Decorative portfolio, standard template
 
 **Contact Path**:
-The direct outbound route from the Portfolio Site to Fikri Flab's GitHub, LinkedIn, and email.
+The direct outbound route from the Portfolio Site to Fikri Muhammad Abdillah's GitHub, LinkedIn, and email.
 _Avoid_: Contact form, lead capture
 
 **Visual Impact First**:

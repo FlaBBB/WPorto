@@ -48,9 +48,9 @@ test.describe("static content without JavaScript", () => {
   }) => {
     const response = await page.goto("/");
     expect(response?.ok()).toBeTruthy();
-    await expect(page).toHaveTitle("flab — Fikri Flab");
+    await expect(page).toHaveTitle("flab — Fikri Muhammad Abdillah");
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(
-      "Fikri Flab.",
+      "Fikri Muhammad Abdillah.",
     );
 
     // The six reconciled capability records, with their limits.
@@ -89,7 +89,9 @@ test.describe("static content without JavaScript", () => {
     }
 
     // The Malang identity note and the archive's CTFtime record.
-    await expect(page.locator(".intro-note")).toContainText("Malang, Indonesia");
+    await expect(page.locator(".intro-note").first()).toContainText(
+      "Malang, Indonesia",
+    );
     await expect(
       page.getByRole("link", { name: /CTFtime/ }).first(),
     ).toHaveAttribute("href", "https://ctftime.org/user/156246");
@@ -115,7 +117,7 @@ test("publishes canonical metadata, the mark favicon, and direct Contact Paths",
   );
   await expect(page.locator('meta[name="description"]')).toHaveAttribute(
     "content",
-    /Fikri Flab.*TypeScript.*public source material/,
+    /Fikri Muhammad Abdillah.*TypeScript.*public source material/,
   );
   await expect(page.locator('meta[property="og:url"]')).toHaveAttribute(
     "content",
@@ -123,7 +125,7 @@ test("publishes canonical metadata, the mark favicon, and direct Contact Paths",
   );
   await expect(page.locator('meta[property="og:title"]')).toHaveAttribute(
     "content",
-    "flab — Fikri Flab",
+    "flab — Fikri Muhammad Abdillah",
   );
   await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute(
     "content",
@@ -171,7 +173,7 @@ test("makes the skip link and section navigation keyboard reachable", async ({
   await page.keyboard.press("Tab");
   await page.keyboard.press("Tab");
   await expect(
-    page.getByRole("link", { name: "flab — back to Fikri Flab’s identity" }),
+    page.getByRole("link", { name: "flab — back to Fikri Muhammad Abdillah’s identity" }),
   ).toBeFocused();
 
   const labels = await page
@@ -484,7 +486,7 @@ test("returns a real 404 that carries the same mark and a recovery path", async 
 }) => {
   const response = await page.goto("/missing-portfolio-page/nested");
   expect(response?.status()).toBe(404);
-  await expect(page).toHaveTitle("Page not found — Fikri Flab");
+  await expect(page).toHaveTitle("Page not found — Fikri Muhammad Abdillah");
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(
     "Nothing here after hours.",
   );
@@ -495,7 +497,7 @@ test("returns a real 404 that carries the same mark and a recovery path", async 
   await expect(page.locator(".flab-logo svg")).toBeVisible();
   await page.locator(".return-link").click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(
-    "Fikri Flab.",
+    "Fikri Muhammad Abdillah.",
   );
 });
 
@@ -516,3 +518,491 @@ test("loads the page and its local assets without browser errors", async ({
   expect(errors).toEqual([]);
   expect(failedResponses).toEqual([]);
 });
+
+test.describe("section refinement", () => {
+  test("opens an Evidence Ledger record on desktop hover, without a click", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.goto("/");
+    await page.evaluate(() => {
+      document.documentElement.style.scrollBehavior = "auto";
+      document.querySelector("#technical-profile")?.scrollIntoView();
+    });
+    await page.waitForTimeout(400);
+
+    // The +/- indicator is gone entirely, including its column.
+    await expect(page.locator(".ledger-indicator")).toHaveCount(0);
+
+    const rows = page.locator(".evidence-ledger details");
+    await expect(rows).toHaveCount(6);
+    await expect(rows.nth(0)).toHaveAttribute("open", "");
+
+    // Hovering a record opens it and closes the previously open one.
+    await rows.nth(3).locator("summary").hover();
+    await expect(rows.nth(3)).toHaveAttribute("open", "");
+    await expect(rows.nth(0)).not.toHaveAttribute("open", "");
+
+    // The first real mouse click, without leaving the row, is absorbed...
+    await rows.nth(3).locator("summary").click();
+    await expect(rows.nth(3)).toHaveAttribute("open", "");
+
+    // ...and a second real mouse click closes it normally.
+    await rows.nth(3).locator("summary").click();
+    await expect(rows.nth(3)).not.toHaveAttribute("open", "");
+
+    // Leaving and returning does not strand the row: it re-opens on hover.
+    await page.mouse.move(2, 2);
+    await page.waitForTimeout(200);
+    await rows.nth(3).locator("summary").hover();
+    await expect(rows.nth(3)).toHaveAttribute("open", "");
+    await page.mouse.move(2, 2);
+    await page.waitForTimeout(300);
+    await expect(rows.nth(3)).toHaveAttribute("open", "");
+  });
+
+  test("keeps keyboard Space and Enter working after a hover open", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.goto("/");
+    await page.evaluate(() => {
+      document.documentElement.style.scrollBehavior = "auto";
+      document.querySelector("#technical-profile")?.scrollIntoView();
+    });
+    await page.waitForTimeout(400);
+
+    const rows = page.locator(".evidence-ledger details");
+
+    // Hover-open a row, then activate with the keyboard: the native toggle must
+    // still apply (the mouse-absorption path must not swallow it).
+    const hovered = rows.nth(2).locator("summary");
+    await hovered.hover();
+    await expect(rows.nth(2)).toHaveAttribute("open", "");
+    await hovered.focus();
+    await page.keyboard.press("Space");
+    await expect(rows.nth(2)).not.toHaveAttribute("open", "");
+    await page.keyboard.press("Enter");
+    await expect(rows.nth(2)).toHaveAttribute("open", "");
+
+    // Fresh load: the default-open row, activated by keyboard during the pending
+    // hover window, must stay closed — the delayed hover callback cannot reopen it.
+    await page.goto("/");
+    await page.evaluate(() => {
+      document.documentElement.style.scrollBehavior = "auto";
+      document.querySelector("#technical-profile")?.scrollIntoView();
+    });
+    await page.waitForTimeout(400);
+    const fresh = page.locator(".evidence-ledger details");
+    const defaultOpen = fresh.nth(0).locator("summary");
+    await expect(fresh.nth(0)).toHaveAttribute("open", "");
+    await defaultOpen.hover();
+    await defaultOpen.focus();
+    await page.keyboard.press("Space");
+    await expect(fresh.nth(0)).not.toHaveAttribute("open", "");
+    await page.waitForTimeout(300);
+    await expect(fresh.nth(0)).not.toHaveAttribute("open", "");
+  });
+
+  test("keeps the Evidence Ledger usable by touch, toggling once per tap", async ({
+    browser,
+  }) => {
+    const context = await browser.newContext({
+      hasTouch: true,
+      viewport: { width: 393, height: 727 },
+    });
+    const page = await context.newPage();
+    await page.goto("/");
+    await page.evaluate(() => {
+      document.documentElement.style.scrollBehavior = "auto";
+      document.querySelector("#technical-profile")?.scrollIntoView();
+    });
+    await page.waitForTimeout(400);
+
+    const second = page.locator(".evidence-ledger details").nth(1);
+    const summary = second.locator("summary");
+    await expect(second).not.toHaveAttribute("open", "");
+
+    // Three consecutive taps: one toggle each, never a doubled toggle.
+    await summary.tap();
+    await expect(second).toHaveAttribute("open", "");
+    await page.waitForTimeout(200);
+    await expect(second).toHaveAttribute("open", "");
+    await summary.tap();
+    await expect(second).not.toHaveAttribute("open", "");
+    await summary.tap();
+    await expect(second).toHaveAttribute("open", "");
+    await page.waitForTimeout(200);
+    await expect(second).toHaveAttribute("open", "");
+    await context.close();
+  });
+
+  test("renders per-section sparse star layers as decorative, non-interactive DOM", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.goto("/");
+    await page.waitForSelector(".starfield .star", { timeout: 10_000 });
+
+    // One local layer per lower section and the footer.
+    const sections = [
+      "#intro",
+      "#selected-evidence",
+      "#technical-profile",
+      "#learning-archive",
+      "#contact-path",
+      ".site-footer",
+    ];
+    for (const selector of sections) {
+      const field = page.locator(`${selector} .starfield`);
+      await expect(field, selector).toHaveCount(1);
+      await expect(field, selector).toHaveAttribute("aria-hidden", "true");
+      await expect(field, selector).toHaveCSS("pointer-events", "none");
+      const stars = await page.locator(`${selector} .starfield .star`).count();
+      // A small budget per section, far below the opening's density.
+      expect(stars, selector).toBeGreaterThanOrEqual(2);
+      expect(stars, selector).toBeLessThanOrEqual(4);
+    }
+    // No canvas is used for the lower-page decoration.
+    expect(await page.locator(".page-body canvas").count()).toBe(0);
+    expect(await page.locator(".site-footer canvas").count()).toBe(0);
+
+    // The contact surface uses plum stars.
+    const contactColor = await page
+      .locator("#contact-path .starfield .star")
+      .first()
+      .evaluate((el) => getComputedStyle(el).color);
+    expect(contactColor).toBe("rgb(27, 20, 48)");
+
+    // Every star is inside its own section's painted box, and really visible.
+    const bounds = await page.evaluate(() =>
+      [...document.querySelectorAll(".page-body > section, .site-footer")].map(
+        (section) => {
+          const box = section.getBoundingClientRect();
+          return [...section.querySelectorAll(".starfield .star")].map((star) => {
+            const rect = star.getBoundingClientRect();
+            return {
+              withinX: rect.left >= box.left - 2 && rect.right <= box.right + 2,
+              withinY: rect.top >= box.top - 2 && rect.bottom <= box.bottom + 2,
+              size: rect.width * rect.height,
+              opacity: Number(getComputedStyle(star).opacity),
+            };
+          });
+        },
+      ),
+    );
+    for (const sectionStars of bounds) {
+      for (const star of sectionStars) {
+        expect(star.withinX).toBe(true);
+        expect(star.withinY).toBe(true);
+        expect(star.size).toBeGreaterThan(0);
+        expect(star.opacity).toBeGreaterThan(0);
+      }
+    }
+
+    // Glyphs change on their own clock, like the opening field.
+    const stars = page.locator(".starfield .star");
+    const before = await stars.evaluateAll((els) =>
+      els.map((el) => el.textContent).join(""),
+    );
+    await expect
+      .poll(
+        async () =>
+          stars.evaluateAll((els) => els.map((el) => el.textContent).join("")),
+        { timeout: 5_000 },
+      )
+      .not.toBe(before);
+
+    // A real hit test on a *visible* star: scroll it into view manually (the star
+    // is always animating, so Playwright's stability wait would never settle),
+    // then confirm the point does not resolve to the decorative star.
+    const target = page.locator("#contact-path .starfield .star").first();
+    await page.evaluate(() => {
+      document.documentElement.style.scrollBehavior = "auto";
+      document.querySelector("#contact-path")?.scrollIntoView({ block: "center" });
+    });
+    await page.waitForTimeout(200);
+    const hit = await target.evaluate((el) => {
+      const rect = el.getBoundingClientRect();
+      const x = rect.left + rect.width / 2;
+      const y = rect.top + rect.height / 2;
+      const hitEl = document.elementFromPoint(x, y);
+      return {
+        inViewport: y > 0 && y < window.innerHeight && x > 0 && x < window.innerWidth,
+        isStar: hitEl?.classList.contains("star") ?? false,
+      };
+    });
+    expect(hit.inViewport).toBe(true);
+    expect(hit.isStar).toBe(false);
+  });
+
+  test("freezes the sparse stars under reduced motion", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.goto("/");
+    await page.waitForSelector(".starfield .star", { timeout: 10_000 });
+
+    const stars = page.locator(".starfield .star");
+    // CSS animation is not applied under reduced motion.
+    await expect(stars.first()).toHaveCSS("animation-name", "none");
+
+    const before = await stars.evaluateAll((els) =>
+      els.map((el) => el.textContent).join(""),
+    );
+    await page.waitForTimeout(1200);
+    const after = await stars.evaluateAll((els) =>
+      els.map((el) => el.textContent).join(""),
+    );
+    // The glyph clock is stopped too, so nothing moves.
+    expect(after).toBe(before);
+  });
+
+  test("pauses and resumes the sparse stars on visibility and preference changes", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.goto("/");
+    await page.waitForSelector(".starfield .star", { timeout: 10_000 });
+    await page.waitForTimeout(400);
+
+    const stars = page.locator(".starfield .star");
+    const snapshot = () =>
+      stars.evaluateAll((els) => els.map((el) => el.textContent).join(""));
+    // A star carries two animations (drift + twinkle), so the computed value is
+    // a comma-separated list; assert on the shared state.
+    const animationState = () =>
+      stars
+        .first()
+        .evaluate((el) => getComputedStyle(el).animationPlayState);
+    const paused = async () => (await animationState()).includes("paused");
+    const running = async () =>
+      (await animationState()).split(",").every((s) => s.trim() === "running");
+
+    // Running by default.
+    expect(await running()).toBe(true);
+    const first = await snapshot();
+    await expect.poll(snapshot, { timeout: 5_000 }).not.toBe(first);
+
+    // Hidden document: both the CSS motion and the glyph clock pause.
+    await page.evaluate(() => {
+      Object.defineProperty(document, "hidden", { configurable: true, get: () => true });
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    await page.waitForTimeout(100);
+    expect(await paused()).toBe(true);
+    const hidden = await snapshot();
+    await page.waitForTimeout(1200);
+    expect(await snapshot()).toBe(hidden);
+
+    // Visible again: it resumes.
+    await page.evaluate(() => {
+      Object.defineProperty(document, "hidden", { configurable: true, get: () => false });
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    await expect.poll(running, { timeout: 5_000 }).toBe(true);
+    await expect.poll(snapshot, { timeout: 5_000 }).not.toBe(hidden);
+
+    // A live reduced-motion change stops it, and returning resumes it.
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.waitForTimeout(200);
+    const reduced = await snapshot();
+    await page.waitForTimeout(900);
+    expect(await snapshot()).toBe(reduced);
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    await expect.poll(snapshot, { timeout: 5_000 }).not.toBe(reduced);
+  });
+
+  test("gives the body sections generous space and a full-width archive", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.goto("/");
+    await page.evaluate(() => {
+      document.documentElement.style.scrollBehavior = "auto";
+      document.querySelector("#learning-archive")?.scrollIntoView();
+    });
+    await page.waitForTimeout(400);
+
+    // Every body section keeps a substantial vertical rhythm (~12vh at 1000px).
+    for (const selector of ["#intro", "#selected-evidence", "#learning-archive", "#contact-path"]) {
+      const padding = await page
+        .locator(selector)
+        .evaluate((el) => Number.parseFloat(getComputedStyle(el).paddingTop));
+      expect(padding, selector).toBeGreaterThanOrEqual(100);
+    }
+
+    // The archive copy is deliberately grouped, never one very long line.
+    const lines = await page
+      .locator(".archive-statement")
+      .evaluate((el) => {
+        const range = document.createRange();
+        range.selectNodeContents(el);
+        return range.getClientRects().length;
+      });
+    expect(lines).toBeGreaterThanOrEqual(3);
+  });
+
+  test("gives Let's talk. dominant, heavy, unclipped type", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.goto("/");
+
+    const heading = page.locator("#contact-path-heading");
+    const desktop = await heading.evaluate((el) => {
+      const style = getComputedStyle(el);
+      return {
+        size: Number.parseFloat(style.fontSize),
+        weight: Number(style.fontWeight),
+      };
+    });
+    expect(desktop.size).toBeGreaterThanOrEqual(104);
+    expect(desktop.weight).toBeGreaterThanOrEqual(800);
+
+    // Responsive down, and never clipped by the band at any breakpoint.
+    for (const width of [1101, 700, 390, 320]) {
+      await page.setViewportSize({ width, height: 1000 });
+      await page.waitForTimeout(200);
+      const info = await heading.evaluate((el) => {
+        const style = getComputedStyle(el);
+        const range = document.createRange();
+        range.selectNodeContents(el);
+        const ink = range.getBoundingClientRect();
+        const band = el.closest("section")!.getBoundingClientRect();
+        return {
+          size: Number.parseFloat(style.fontSize),
+          clippedRight: ink.right > band.right + 1,
+          clippedLeft: ink.left < band.left - 1,
+          overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        };
+      });
+      expect(info.size, `${width}`).toBeGreaterThanOrEqual(46);
+      expect(info.size, `${width}`).toBeLessThanOrEqual(112);
+      expect(info.clippedRight, `${width}`).toBe(false);
+      expect(info.clippedLeft, `${width}`).toBe(false);
+      expect(info.overflow, `${width}`).toBe(0);
+    }
+  });
+
+  test("center-aligns the intro so the name is not markedly lower than its copy", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.goto("/");
+    await page.waitForTimeout(300);
+
+    const delta = await page.evaluate(() => {
+      const lead = document.querySelector(".intro-lead")!.getBoundingClientRect();
+      const body = document.querySelector(".intro-body")!.getBoundingClientRect();
+      return Math.abs(
+        lead.top + lead.height / 2 - (body.top + body.height / 2),
+      );
+    });
+    expect(delta).toBeLessThanOrEqual(8);
+  });
+
+  test("matches the two-group footer reference and keeps back-to-top reachable", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.goto("/");
+
+    const year = new Date().getFullYear();
+    const footer = page.locator(".site-footer");
+    await expect(footer.locator(".footer-name")).toHaveText(
+      "Fikri Muhammad Abdillah",
+    );
+    await expect(footer.locator(".footer-copy")).toHaveText(`© ${year}`);
+    await expect(footer.locator(".footer-note")).toContainText("Still learning.");
+
+    // Exactly two groups: identity and the right-hand link.
+    const groups = footer.locator(".footer-inner > *");
+    await expect(groups).toHaveCount(2);
+
+    // The right group IS the back-to-top link, with the visible label kept in
+    // its accessible name (Label in Name) and a destination title.
+    const top = footer.locator(".footer-top");
+    await expect(top).toHaveAttribute("aria-label", "Back to top — Still learning.");
+    await expect(top).toHaveAttribute("title", "Back to top");
+    await expect(top).toContainText("Still learning.");
+    // No separate visible "Back to top" text group remains.
+    await expect(footer.getByText("Back to top", { exact: true })).toHaveCount(0);
+
+    // A thin violet rule on a near-black plum surface.
+    const rule = await footer.evaluate((el) => getComputedStyle(el).borderTopColor);
+    expect(rule).not.toBe("rgba(0, 0, 0, 0)");
+
+    const box = await top.boundingBox();
+    expect(box?.height).toBeGreaterThanOrEqual(44);
+    await top.click();
+    await expect(page).toHaveURL(/#identity$/);
+  });
+
+  test("keeps the footer rule full-bleed with a constrained inner layout", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1920, height: 1000 });
+    await page.goto("/");
+    const metrics = await page.evaluate(() => {
+      const footer = document.querySelector(".site-footer")!;
+      const inner = document.querySelector(".footer-inner")!;
+      return {
+        footerWidth: Math.round(footer.getBoundingClientRect().width),
+        innerWidth: Math.round(inner.getBoundingClientRect().width),
+        viewport: window.innerWidth,
+      };
+    });
+    // The surface spans the viewport; the readable measure is constrained.
+    expect(metrics.footerWidth).toBe(metrics.viewport);
+    expect(metrics.innerWidth).toBeLessThan(metrics.footerWidth);
+  });
+
+  test("publishes the full personal name in metadata and the h1", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    await expect(page).toHaveTitle("flab — Fikri Muhammad Abdillah");
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText(
+      "Fikri Muhammad Abdillah.",
+    );
+    await expect(page.locator('meta[property="og:title"]')).toHaveAttribute(
+      "content",
+      "flab — Fikri Muhammad Abdillah",
+    );
+    await expect(page.locator('meta[property="og:description"]')).toHaveAttribute(
+      "content",
+      /Fikri Muhammad Abdillah.*TypeScript.*public source material/,
+    );
+  });
+});
+
+for (const width of [1440, 1101, 1100, 700, 390, 320]) {
+  test(`keeps the refined sections intact at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 1000 });
+    await page.goto("/");
+    await page.evaluate(() => {
+      document.documentElement.style.scrollBehavior = "auto";
+      window.scrollTo(0, document.documentElement.scrollHeight);
+    });
+    await page.waitForTimeout(500);
+
+    // No horizontal overflow, and the name reaches the footer at every width.
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(
+      width,
+    );
+    await expect(page.locator(".footer-name")).toHaveText(
+      "Fikri Muhammad Abdillah",
+    );
+
+    // The archive statement stays a multi-line block, not a single long line.
+    const lines = await page.locator(".archive-statement").evaluate((el) => {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      return range.getClientRects().length;
+    });
+    expect(lines).toBeGreaterThanOrEqual(2);
+
+    // All six evidence records and three projects survive.
+    await expect(page.locator(".evidence-ledger > li")).toHaveCount(6);
+    await expect(page.locator(".work-index > li")).toHaveCount(3);
+    await expect(page.locator("#contact-path a")).toHaveCount(3);
+  });
+}

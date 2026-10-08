@@ -20,7 +20,6 @@
         <summary class="ledger-disclosure" aria-label={`Evidence detail: ${record.capability}`}>
           <span class="ledger-number" aria-hidden="true">0{index + 1}</span>
           <span class="ledger-capability">{record.capability}</span>
-          <span class="ledger-indicator" aria-hidden="true"></span>
         </summary>
         <dl id={`evidence-detail-${index}`} class="ledger-details">
           <div class="ledger-field">
