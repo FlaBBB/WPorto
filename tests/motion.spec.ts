@@ -34,6 +34,9 @@ const unsettled = (page: Page) =>
 test("reveals every scroll target without leaving one stuck", async ({
   page,
 }) => {
+  // The opening scene is ~1.75 viewports tall by design, so this full-page
+  // frame-stepped sweep is legitimately long on slower engines.
+  test.slow();
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/");
   const count = await page.locator("[data-reveal]").count();
@@ -156,8 +159,8 @@ test("clears hover and focus nudges when reduced motion is requested", async ({
     .poll(async () => unsettled(page), { timeout: 15_000 })
     .toEqual([]);
 
-  const arrow = page.locator('.hero-action span[aria-hidden="true"]');
-  await page.locator(".hero-action").hover();
+  const arrow = page.locator('.intro-link span[aria-hidden="true"]');
+  await page.locator(".intro-link").hover();
   await expect
     .poll(async () => Math.abs((await motionState(arrow)).x ?? 0))
     .toBeGreaterThan(0);
@@ -184,6 +187,84 @@ test.describe("page motion without JavaScript", () => {
   });
 });
 
+test("stops every overlapping reveal when reduced motion is requested", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto("/");
+  // Let the above-the-fold reveals finish so only the two driven groups move.
+  await expect.poll(async () => unsettled(page), { timeout: 15_000 }).toEqual([]);
+
+  // Bring two distinct groups into view less than 0.6s apart, so their staggered
+  // reveals overlap. The first group is confirmed genuinely mid-tween while the
+  // second starts.
+  const sample = await page.evaluate(async () => {
+    const root = document.documentElement;
+    root.style.scrollBehavior = "auto";
+    const frame = () =>
+      new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    const read = (el: Element) => {
+      const style = getComputedStyle(el);
+      const matrix =
+        style.transform === "none" ? null : new DOMMatrix(style.transform);
+      return { opacity: Number(style.opacity), y: Math.abs(matrix?.m42 ?? 0) };
+    };
+    const groupA = document.querySelector(
+      "#selected-evidence [data-reveal]",
+    ) as HTMLElement;
+    const groupB = document.querySelector(
+      "#technical-profile [data-reveal]",
+    ) as HTMLElement;
+
+    const intoView = (el: HTMLElement) =>
+      window.scrollTo(
+        0,
+        el.getBoundingClientRect().top + window.scrollY - window.innerHeight * 0.5,
+      );
+
+    intoView(groupA);
+    // Advance until A is actually tweening (started but not finished).
+    let aMid = read(groupA);
+    for (let step = 0; step < 40; step += 1) {
+      await frame();
+      aMid = read(groupA);
+      if (aMid.opacity > 0.05 && aMid.opacity < 0.95) break;
+    }
+
+    intoView(groupB);
+    // Advance until B has genuinely started tweening, while A is still in
+    // flight, so the two staggered reveals overlap in time.
+    let aWhenB = read(groupA);
+    let bWhenB = read(groupB);
+    for (let step = 0; step < 30; step += 1) {
+      await frame();
+      aWhenB = read(groupA);
+      bWhenB = read(groupB);
+      if (bWhenB.opacity > 0.01) break;
+    }
+    return { aMid, aWhenB, bWhenB };
+  });
+
+  // The scenario is real: A was mid-flight, and when B's delivery landed A was
+  // still mid-flight while B had just begun. Both must be genuinely tweening
+  // together, not merely A before the second jump.
+  expect(sample.aMid.opacity).toBeGreaterThan(0.05);
+  expect(sample.aMid.opacity).toBeLessThan(0.95);
+  expect(sample.aWhenB.opacity).toBeGreaterThan(0.05);
+  expect(sample.aWhenB.opacity).toBeLessThan(0.99);
+  expect(sample.bWhenB.opacity).toBeGreaterThan(0.01);
+  expect(sample.bWhenB.opacity).toBeLessThan(0.99);
+
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await expect(page.locator("html")).not.toHaveClass(/\bmotion\b/);
+  // Both groups must settle immediately, not just the most recent one.
+  await expect(page.locator("[data-reveal]").first()).toBeVisible();
+  expect(await unsettled(page)).toEqual([]);
+  // ...and stay settled.
+  await page.waitForTimeout(500);
+  expect(await unsettled(page)).toEqual([]);
+});
+
 test("drops the motion hold when the animation module never loads", async ({
   page,
 }) => {
@@ -196,4 +277,15 @@ test("drops the motion hold when the animation module never loads", async ({
     .toEqual([]);
   await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
   await expect(page.locator("#contact-path a")).toHaveCount(3);
+
+  // The sculpture owns its own scene and canvas, so it must still be drawn even
+  // though the page-reveal module (which owns `html.motion`) was aborted.
+  await page.waitForTimeout(2600);
+  await expect(page.locator(".sculpture-canvas")).toBeVisible();
+  const view = await page.evaluate(() => {
+    const field = document.querySelector(".sculpture-field")!;
+    const rect = field.getBoundingClientRect();
+    return { fieldH: rect.height, vh: window.innerHeight };
+  });
+  expect(Math.abs(view.fieldH - view.vh)).toBeLessThan(2);
 });

@@ -1,31 +1,39 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import gsap from "gsap";
   import { FLAB_PATH, FLAB_FILL_RULE, FLAB_VIEWBOX } from "../lib/flabMark";
 
   /**
-   * The hero sculpture is a canvas star field whose assembled target is sampled
-   * from the same filled `flab` geometry that renders the header logo, so the
-   * gathered shape is the real mark rather than an approximation.
+   * The opening sculpture. Its assembled target is sampled from the same filled
+   * `flab` geometry that renders the header logo, so the gathered shape is the
+   * real mark rather than an approximation.
    *
-   * Depth is a genuine 3D projection: particles carry a z coordinate, the body
-   * rotates with the pointer, and a perspective divide drives scale, opacity and
-   * glyph weight. The sky is deliberately far wider than the mark so the
-   * assembled silhouette is never left visible while scattered.
+   * Motion is driven by native scroll only. The section is a short sticky scene
+   * (1.75 viewports) whose scroll progress breaks the mark into a depth-varied
+   * star cloud; reversing the scroll reforms it, and then the scene leaves
+   * naturally into the page. There is no hover, tap, keyboard or wheel capture.
+   *
+   * A second, sparse ambient population drifts on its own clock behind the mark
+   * so the sky stays alive at rest without touching the mark's legibility.
    */
 
-  const FOCAL_LENGTH = 1000;
   const MAX_DPR = 2;
+  const AMBIENT_DPR = 1.5;
   const DESKTOP_PARTICLES = 900;
   const MOBILE_PARTICLES = 420;
+  const DESKTOP_AMBIENT = 90;
+  const MOBILE_AMBIENT = 46;
   const SAMPLE_GRID = 4.4;
+  /** Particles whose delay is below this never lag the gather at full assembly. */
+  const GATHER_STAGGER = 0.5;
 
   const GLYPHS = ["+", "·", "•", "✳", "✦", "⋆", "✧", "﹡", "⋅", "✶", "*", "⁕"];
   const DENSE_GLYPHS = new Set(["•", "✳", "✦", "✧", "﹡", "✶", "⁕"]);
 
-  const ASSEMBLE_DURATION = 1.25;
-  const SCATTER_DURATION = 1.1;
-  const ASSEMBLE_STAGGER = 0.5;
+  // Maximum body rotation and radial flattening, used both to drive the render
+  // and to bound the projection safely (see buildParticles).
+  const MAX_ROT_Y = 0.3;
+  const MAX_ROT_X = 0.18;
+  const FLATTEN_MAX = 1.18;
 
   type Particle = {
     sx: number;
@@ -42,53 +50,80 @@
     tone: number;
   };
 
-  let stage: HTMLDivElement;
+  type Ambient = {
+    ax: number;
+    ay: number;
+    amp: number;
+    freqX: number;
+    freqY: number;
+    phaseX: number;
+    phaseY: number;
+    glyph: number;
+    glyphRate: number;
+    glyphPhase: number;
+    size: number;
+    tone: number;
+    baseAlpha: number;
+    alphaFreq: number;
+    alphaPhase: number;
+  };
+
+  let scene: HTMLDivElement;
+  let sticky: HTMLDivElement;
   let field: HTMLDivElement;
   let canvas: HTMLCanvasElement | undefined;
   let context: CanvasRenderingContext2D | undefined;
+  let ambientCanvas: HTMLCanvasElement | undefined;
+  let ambientContext: CanvasRenderingContext2D | undefined;
 
   let motionEnabled = $state(false);
-  let assembled = $state(false);
+  let collapsed = $state(false);
+  let gather = $state(1);
   let hasCanvas = $state(false);
-
-  let particles: Particle[] = [];
-  let width = 0;
-  let height = 0;
-  let dpr = 1;
-  let frame = 0;
-  let running = false;
-  let visible = true;
-  let progress = { value: 0 };
-  let tween: gsap.core.Tween | undefined;
-  let pointerTarget = { x: 0, y: 0 };
-  let pointerCurrent = { x: 0, y: 0 };
-  let glyphClock = 0;
-  let fontFamily = "ui-monospace, monospace";
-  // Glyph sizes follow the fitted mark so a small viewport does not fill the
-  // letterform's counters with oversized stars.
-  let assembledSize = 9;
-  let scatteredSize = 10;
   // Observable contracts for tests: how many distinct glyphs the field uses and
   // the maximum particle depth, so glyph variety and 3D extent are verifiable
   // rather than inferred from pixels alone.
   let glyphVariety = $state(0);
   let depthExtent = $state(0);
 
-  let hovered = false;
-  let keyboardFocus = false;
-  let pinned = false;
-  let keyboardIntent = false;
-  let finePointer: MediaQueryList | undefined;
+  let particles: Particle[] = [];
+  let ambient: Ambient[] = [];
+  let width = 0;
+  let height = 0;
+  let dpr = 1;
+  let ambientDpr = 1;
+  // Bound so the perspective divide stays positive for every rotated point: the
+  // focal length always exceeds the deepest z, from a phone through 4K.
+  let focalLength = $state(1000);
+  let spreadZ = 420;
+  // Observable contract for tests: the proven |z| bound the focal length clears.
+  let depthBound = $state(0);
+  let frame = 0;
+  let scrollFrame = 0;
+  let running = false;
+  let visible = true;
+  let clock = 0;
+  let fontFamily = "ui-monospace, monospace";
+  // Glyph sizes follow the fitted mark so a small viewport does not fill the
+  // letterform's counters with oversized stars.
+  let assembledSize = 9;
+  let scatteredSize = 10;
 
-  const wantsAssembly = () => pinned || hovered || keyboardFocus;
+  function clamp01(value: number) {
+    return Math.min(1, Math.max(0, value));
+  }
 
-  function particleCount() {
-    return window.innerWidth < 760 ? MOBILE_PARTICLES : DESKTOP_PARTICLES;
+  /** Deterministic pseudo-random in [0,1) from an index and salt. */
+  function rand(index: number, salt: number) {
+    let value = Math.imul(index + 1, 374761393) ^ Math.imul(salt + 1, 668265263);
+    value = Math.imul(value ^ (value >>> 13), 1274126177);
+    return ((value ^ (value >>> 16)) >>> 0) / 4294967296;
   }
 
   /**
    * Samples the filled mark into evenly spread points in artboard coordinates.
-   * The refined geometry is normalized, so no transform is applied.
+   * The jitter is seeded by grid cell, so resizing rebuilds the same field
+   * instead of reshuffling it.
    */
   function sampleTargets(): { x: number; y: number }[] {
     const probe = document.createElement("canvas");
@@ -98,41 +133,45 @@
     if (!ctx) return [];
 
     const path = new Path2D(FLAB_PATH);
+    const columns = Math.ceil(FLAB_VIEWBOX.width / SAMPLE_GRID);
 
     const points: { x: number; y: number }[] = [];
-    // Jittered grid: even coverage of the filled area without the ordering
-    // artefacts a pure scanline would produce.
+    let row = 0;
     for (let y = 0; y < FLAB_VIEWBOX.height; y += SAMPLE_GRID) {
+      let column = 0;
       for (let x = 0; x < FLAB_VIEWBOX.width; x += SAMPLE_GRID) {
-        const jx = x + (Math.random() - 0.5) * SAMPLE_GRID;
-        const jy = y + (Math.random() - 0.5) * SAMPLE_GRID;
+        const cell = row * columns + column;
+        const jx = x + (rand(cell, 101) - 0.5) * SAMPLE_GRID;
+        const jy = y + (rand(cell, 102) - 0.5) * SAMPLE_GRID;
         if (ctx.isPointInPath(path, jx, jy, FLAB_FILL_RULE)) {
           points.push({ x: jx, y: jy });
         }
+        column += 1;
       }
+      row += 1;
     }
     return points;
   }
 
-  /** Deterministic pseudo-random in [0,1) from a particle index and salt. */
-  function rand(index: number, salt: number) {
-    let value = Math.imul(index + 1, 374761393) ^ Math.imul(salt + 1, 668265263);
-    value = Math.imul(value ^ (value >>> 13), 1274126177);
-    return ((value ^ (value >>> 16)) >>> 0) / 4294967296;
-  }
-
   function buildParticles() {
     const targets = sampleTargets();
-    if (!targets.length) return;
+    if (!targets.length || !width || !height) return;
 
-    const count = particleCount();
+    const count = width < 760 ? MOBILE_PARTICLES : DESKTOP_PARTICLES;
     const centreX = width / 2;
     const centreY = height / 2;
 
-    // Fit the mark to a generous share of the field, preserving its aspect.
+    // Modest assembled scale: ~44% of the viewport width on desktop, wider on
+    // phones so the letterform's counters stay legible. The fitted mark is also
+    // capped by width (20rem mobile / 40rem desktop, matching the static SVG
+    // fallback) and by 52% of the viewport height, so the fixed-size glyphs
+    // never fragment the letterform and the pre-paint SVG matches the canvas.
+    const markRatio = width < 760 ? 0.66 : 0.44;
+    const markCap = (width < 760 ? 20 : 40) * 16;
     const fit = Math.min(
-      (width * 0.62) / FLAB_VIEWBOX.width,
-      (height * 0.68) / FLAB_VIEWBOX.height,
+      (width * markRatio) / FLAB_VIEWBOX.width,
+      (height * 0.52) / FLAB_VIEWBOX.height,
+      markCap / FLAB_VIEWBOX.width,
     );
     const markW = FLAB_VIEWBOX.width * fit;
     const markH = FLAB_VIEWBOX.height * fit;
@@ -142,15 +181,23 @@
 
     // The cloud is far wider than the mark in every direction, so no part of the
     // assembled silhouette can remain legible while scattered.
-    const spreadX = Math.max(width * 0.85, markRadius * 2.6);
-    const spreadY = Math.max(height * 0.85, markRadius * 2.4);
-    const spreadZ = Math.max(420, markRadius * 2.2);
+    const spreadX = Math.max(width * 0.95, markRadius * 2.9);
+    const spreadY = Math.max(height * 0.95, markRadius * 2.7);
+    spreadZ = Math.max(300, markRadius * 2);
 
-    // Glyphs scale with the fitted mark: a small viewport gets small stars that
-    // sit inside the letterform instead of filling its counters. Scattered stars
-    // stay larger because they carry the sky texture.
-    assembledSize = Math.min(Math.max(14 * fit, 2.6), 13);
-    scatteredSize = Math.min(Math.max(23 * fit, 6.5), 16);
+    // Rotation mixes x and y into z, so spreadZ alone does not bound the depth.
+    // For the render's maximum angles, |z2| <= maxY*sin(MAX_ROT_X) +
+    // maxX*sin(MAX_ROT_Y) + spreadZ; keeping the focal length above that bound
+    // keeps every denominator (focalLength + z2) strictly positive — including
+    // very wide, short viewports where x dwarfs z.
+    const maxX = spreadX;
+    const maxY = spreadY * FLATTEN_MAX;
+    depthBound =
+      maxY * Math.sin(MAX_ROT_X) + maxX * Math.sin(MAX_ROT_Y) + spreadZ;
+    focalLength = Math.max(900, depthBound * 1.08);
+
+    assembledSize = Math.min(Math.max(11 * fit, 2.4), 11);
+    scatteredSize = Math.min(Math.max(20 * fit, 6), 15);
 
     const next: Particle[] = [];
     let deepest = 0;
@@ -158,8 +205,8 @@
       const target = targets[Math.floor((index / count) * targets.length)];
 
       // A natural 3D cloud: mass falls off from the centre, so the sky keeps a
-      // populated middle instead of a hollow ring, and the 3D depth term breaks
-      // up any flat disc silhouette.
+      // populated middle instead of a hollow ring, and the depth term breaks up
+      // any flat disc silhouette.
       const angle = rand(index, 1) * Math.PI * 2;
       const radius = Math.pow(rand(index, 2), 0.58);
       const flatten = 0.82 + rand(index, 11) * 0.36;
@@ -174,7 +221,7 @@
         ty: markTop + target.y * fit - centreY,
         // A shallow body of depth so the mark is a sculpture, not a decal.
         tz: (rand(index, 4) - 0.5) * 44,
-        delay: rand(index, 5) * ASSEMBLE_STAGGER,
+        delay: rand(index, 5) * GATHER_STAGGER,
         glyph: Math.floor(rand(index, 6) * GLYPHS.length),
         glyphRate: 0.3 + rand(index, 7) * 0.85,
         glyphPhase: rand(index, 8) * 12,
@@ -185,6 +232,54 @@
     particles = next;
     glyphVariety = new Set(next.map((particle) => particle.glyph)).size;
     depthExtent = deepest;
+
+    buildAmbient();
+  }
+
+  /** Sparse stars that ring the mark and drift on their own clock. */
+  function buildAmbient() {
+    const count = width < 760 ? MOBILE_AMBIENT : DESKTOP_AMBIENT;
+    const reach = Math.min(width, height) * 0.72;
+    // On very large stages a slight optical increase keeps the brighter subset
+    // visible without inflating the soft dots into noise. Ordinary desktop and
+    // mobile stages stay at 1.
+    const ambientScale = Math.min(
+      1.7,
+      Math.max(1, Math.min(width, height) / 1440),
+    );
+    const next: Ambient[] = [];
+    for (let index = 0; index < count; index += 1) {
+      const angle = rand(index, 21) * Math.PI * 2;
+      // Bias the population outward so most stars sit around the silhouette
+      // rather than inside it, keeping the mark legible while the sky reads as
+      // a surrounding field.
+      const radius = 0.4 + rand(index, 22) * 0.6;
+      // A modest subset carries visibly brighter, larger stars so the sky has
+      // real presence; the rest stay soft and small.
+      const bright = rand(index, 36) > 0.68;
+      next.push({
+        ax: width / 2 + Math.cos(angle) * radius * reach,
+        ay: height / 2 + Math.sin(angle) * radius * reach * 0.92,
+        amp: 6 + rand(index, 23) * 16,
+        freqX: 0.05 + rand(index, 24) * 0.13,
+        freqY: 0.05 + rand(index, 25) * 0.13,
+        phaseX: rand(index, 26) * Math.PI * 2,
+        phaseY: rand(index, 27) * Math.PI * 2,
+        glyph: Math.floor(rand(index, 28) * GLYPHS.length),
+        glyphRate: 0.12 + rand(index, 29) * 0.4,
+        glyphPhase: rand(index, 30) * 12,
+        size: bright
+          ? (9 + rand(index, 31) * 6) * ambientScale
+          : 4.5 + rand(index, 31) * 4.5,
+        tone: rand(index, 32),
+        baseAlpha: bright
+          ? 0.42 + rand(index, 33) * 0.28
+          : 0.14 + rand(index, 33) * 0.16,
+        alphaFreq: 0.08 + rand(index, 34) * 0.22,
+        alphaPhase: rand(index, 35) * Math.PI * 2,
+      });
+    }
+    ambient = next;
   }
 
   function easeOutCubic(value: number) {
@@ -210,11 +305,17 @@
     const y1 = y * cosX - z1 * sinX;
     const z2 = y * sinX + z1 * cosX;
 
-    const scale = FOCAL_LENGTH / (FOCAL_LENGTH + z2);
+    // focalLength clears the proven depth bound, so the denominator is always
+    // positive; a null result here would mean the bound is wrong, so the caller
+    // skips the particle rather than drawing inverted geometry. The cap is an
+    // aesthetic limit on the rare near-camera star, not a safety mechanism.
+    const denominator = focalLength + z2;
+    if (denominator <= 1) return undefined;
+    const scale = Math.min(2.2, focalLength / denominator);
     return { x: cx + x1 * scale, y: cy + y1 * scale, scale, depth: z2 };
   }
 
-  function render() {
+  function renderMain() {
     if (!context || !canvas) return;
 
     context.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -223,23 +324,18 @@
     const cx = width / 2;
     const cy = height / 2;
 
-    pointerCurrent.x += (pointerTarget.x - pointerCurrent.x) * 0.06;
-    pointerCurrent.y += (pointerTarget.y - pointerCurrent.y) * 0.06;
-
-    // The tilt follows the pointer and relaxes as the field disperses, so the
-    // scattered sky stays calm while the assembled mark feels solid.
-    const gather = progress.value;
-    const rotY = pointerCurrent.x * 0.45 * gather;
-    const rotX = pointerCurrent.y * 0.28 * gather;
+    // A gentle body rotation as the field opens up, so the cloud reads as a
+    // volume. It relaxes to zero at full assembly, keeping the mark stable. The
+    // amplitudes match MAX_ROT_* that the projection bound is derived from.
+    const opening = 1 - gather;
+    const rotY = Math.sin(clock * 0.12) * MAX_ROT_Y * opening;
+    const rotX = Math.cos(clock * 0.09) * MAX_ROT_X * opening;
 
     context.textAlign = "center";
     context.textBaseline = "middle";
 
     for (const particle of particles) {
-      const local = Math.min(
-        1,
-        Math.max(0, (gather - particle.delay) / (1 - ASSEMBLE_STAGGER)),
-      );
+      const local = clamp01((gather - particle.delay) / (1 - GATHER_STAGGER));
       const eased = easeOutCubic(local);
 
       const x = particle.sx + (particle.tx - particle.sx) * eased;
@@ -247,6 +343,7 @@
       const z = particle.sz + (particle.tz - particle.sz) * eased;
 
       const point = project(x, y, z, rotY, rotX, cx, cy);
+      if (!point) continue;
       if (
         point.x < -48 ||
         point.x > width + 48 ||
@@ -257,7 +354,7 @@
       }
 
       // Nearer particles are larger, brighter and use denser glyphs.
-      const depth = Math.min(1, Math.max(0, (point.depth + 520) / 1040));
+      const depth = clamp01((point.depth + spreadZ) / (2 * spreadZ));
       const near = 1 - depth;
       const size =
         (scatteredSize + (assembledSize - scatteredSize) * gather) *
@@ -267,19 +364,22 @@
 
       const glyphIndex =
         (particle.glyph +
-          Math.floor(glyphClock * particle.glyphRate + particle.glyphPhase)) %
+          Math.floor(clock * particle.glyphRate + particle.glyphPhase)) %
         GLYPHS.length;
       const glyph = GLYPHS[glyphIndex];
       const dense = DENSE_GLYPHS.has(glyph);
 
-      const baseAlpha = assembled ? 0.6 + near * 0.4 : 0.28 + near * 0.64;
+      const scatteredAlpha = 0.3 + near * 0.62;
+      const assembledAlpha = 0.62 + near * 0.38;
+      const baseAlpha =
+        scatteredAlpha + (assembledAlpha - scatteredAlpha) * gather;
       let alpha = baseAlpha * (0.5 + 0.5 * Math.min(1, point.scale));
 
       // Fade fully to zero at the field edge so the cloud dissolves instead of
       // ending on the clipped boundary with a flat-cut glyph.
       const edgeX = Math.min(point.x, width - point.x) / (width * 0.16);
       const edgeY = Math.min(point.y, height - point.y) / (height * 0.16);
-      const edge = Math.min(1, Math.max(0, Math.min(edgeX, edgeY)));
+      const edge = clamp01(Math.min(edgeX, edgeY));
       alpha *= edge;
       if (alpha < 0.01) continue;
 
@@ -293,17 +393,47 @@
     }
   }
 
-  function tick() {
+  function renderAmbient(seconds: number) {
+    if (!ambientContext || !ambientCanvas) return;
+
+    ambientContext.setTransform(ambientDpr, 0, 0, ambientDpr, 0, 0);
+    ambientContext.clearRect(0, 0, width, height);
+    ambientContext.textAlign = "center";
+    ambientContext.textBaseline = "middle";
+
+    for (const star of ambient) {
+      const x = star.ax + Math.sin(seconds * star.freqX + star.phaseX) * star.amp;
+      const y = star.ay + Math.cos(seconds * star.freqY + star.phaseY) * star.amp;
+      if (x < -32 || x > width + 32 || y < -32 || y > height + 32) continue;
+
+      const glyphIndex =
+        (star.glyph +
+          Math.floor(seconds * star.glyphRate + star.glyphPhase)) %
+        GLYPHS.length;
+      const glyph = GLYPHS[glyphIndex];
+      const pulse = 0.62 + 0.38 * Math.sin(seconds * star.alphaFreq + star.alphaPhase);
+      const alpha = star.baseAlpha * pulse;
+      if (alpha < 0.01) continue;
+
+      const violet = star.tone > 0.8;
+      ambientContext.fillStyle = violet
+        ? `rgba(167, 139, 250, ${alpha.toFixed(3)})`
+        : `rgba(236, 232, 244, ${alpha.toFixed(3)})`;
+      const dense = DENSE_GLYPHS.has(glyph);
+      ambientContext.font = `${dense ? 400 : 300} ${star.size.toFixed(1)}px ${fontFamily}`;
+      ambientContext.fillText(glyph, x, y);
+    }
+  }
+
+  function tick(now: number) {
     frame = 0;
-    glyphClock += 1 / 60;
-    render();
+    // performance.now() is a monotonic clock, so the ambient drift and glyph
+    // rotation are refresh-rate independent and never accumulate frame drift.
+    clock = now / 1000;
+    renderAmbient(clock);
+    renderMain();
 
-    const settling = Math.abs(progress.value - (assembled ? 1 : 0)) > 0.001;
-    const drifting =
-      Math.abs(pointerTarget.x - pointerCurrent.x) > 0.002 ||
-      Math.abs(pointerTarget.y - pointerCurrent.y) > 0.002;
-
-    if ((settling || drifting) && visible && !document.hidden) {
+    if (motionEnabled && visible && !document.hidden) {
       frame = requestAnimationFrame(tick);
     } else {
       running = false;
@@ -311,178 +441,123 @@
   }
 
   function start() {
-    if (running || !visible || document.hidden || !motionEnabled) return;
+    if (running || !motionEnabled || !visible || document.hidden) return;
     running = true;
     frame = requestAnimationFrame(tick);
   }
 
+  function sizeCanvas(target: HTMLCanvasElement, ratio: number) {
+    target.width = Math.max(1, Math.round(width * ratio));
+    target.height = Math.max(1, Math.round(height * ratio));
+    target.style.width = `${width}px`;
+    target.style.height = `${height}px`;
+  }
+
   function resize() {
-    if (!canvas) return;
+    if (!canvas || !ambientCanvas) return;
     const rect = field.getBoundingClientRect();
     width = Math.max(1, rect.width);
     height = Math.max(1, rect.height);
-    dpr = Math.min(window.devicePixelRatio || 1, MAX_DPR);
-    canvas.width = Math.round(width * dpr);
-    canvas.height = Math.round(height * dpr);
-    canvas.style.width = `${width}px`;
-    canvas.style.height = `${height}px`;
+    const ratio = window.devicePixelRatio || 1;
+    dpr = Math.min(ratio, MAX_DPR);
+    ambientDpr = Math.min(ratio, AMBIENT_DPR);
+    sizeCanvas(canvas, dpr);
+    sizeCanvas(ambientCanvas, ambientDpr);
     buildParticles();
-    render();
+    computeGather();
+    renderAmbient(clock);
+    renderMain();
   }
 
-  function applyWantedState() {
-    if (!motionEnabled) return;
-    const next = wantsAssembly();
-    if (next === assembled) return;
-    assembled = next;
-    tween?.kill();
-    tween = gsap.to(progress, {
-      value: next ? 1 : 0,
-      duration: next ? ASSEMBLE_DURATION : SCATTER_DURATION,
-      ease: next ? "power2.inOut" : "power2.out",
-      overwrite: true,
-    });
-    start();
+  /**
+   * Native scroll is the only input: the mark is fully gathered at the top of
+   * the scene and fully dispersed by the time the sticky scene leaves. Reading
+   * the live geometry keeps direct hashes, resizes, quick reversals and
+   * back-to-top in sync.
+   */
+  function computeGather() {
+    if (!scene || !sticky) return;
+    const total = scene.offsetHeight - sticky.offsetHeight;
+    const scrolled = -scene.getBoundingClientRect().top;
+    const progress = total > 4 ? clamp01(scrolled / total) : 0;
+    const eased = progress * progress * (3 - 2 * progress);
+    const next = 1 - eased;
+    if (Math.abs(next - gather) > 0.0005) gather = next;
   }
 
-  function handleStageEnter() {
-    if (!finePointer?.matches) return;
-    hovered = true;
-    applyWantedState();
+  function removeCanvases() {
+    canvas?.remove();
+    ambientCanvas?.remove();
+    canvas = undefined;
+    context = undefined;
+    ambientCanvas = undefined;
+    ambientContext = undefined;
+    hasCanvas = false;
   }
 
-  function handleStageLeave() {
-    if (!finePointer?.matches) return;
-    hovered = false;
-    applyWantedState();
-  }
+  function enableMotion() {
+    motionEnabled = true;
+    collapsed = false;
 
-  function handleStageMove(event: PointerEvent) {
-    if (!finePointer?.matches || !motionEnabled) return;
-    const rect = stage.getBoundingClientRect();
-    pointerTarget.x = ((event.clientX - rect.left) / rect.width - 0.5) * 2;
-    pointerTarget.y = ((event.clientY - rect.top) / rect.height - 0.5) * 2;
-    start();
-  }
+    if (!canvas) {
+      const nextCanvas = document.createElement("canvas");
+      nextCanvas.setAttribute("aria-hidden", "true");
+      nextCanvas.className = "sculpture-canvas";
+      const nextContext = nextCanvas.getContext("2d");
 
-  function toggleAssembly() {
-    if (assembled) {
-      pinned = false;
-      hovered = false;
-      keyboardFocus = false;
-    } else {
-      pinned = true;
+      const nextAmbient = document.createElement("canvas");
+      nextAmbient.setAttribute("aria-hidden", "true");
+      nextAmbient.className = "sculpture-ambient";
+      const nextAmbientContext = nextAmbient.getContext("2d");
+
+      // A canvas without a 2D context can never draw, so keep the SVG mark and
+      // collapse the scene rather than leaving a dead sticky spacer.
+      if (!nextContext || !nextAmbientContext) {
+        motionEnabled = false;
+        collapsed = true;
+        return;
+      }
+
+      field.append(nextAmbient, nextCanvas);
+      ambientCanvas = nextAmbient;
+      ambientContext = nextAmbientContext;
+      canvas = nextCanvas;
+      context = nextContext;
+      hasCanvas = true;
     }
-    applyWantedState();
+
+    resize();
+    // If the mark could not be sampled at all, the stage would be blank; fall
+    // back to the SVG mark and collapse the scene instead.
+    if (!particles.length) {
+      removeCanvases();
+      motionEnabled = false;
+      collapsed = true;
+      return;
+    }
+    start();
   }
 
-  function handleStageClick(event: MouseEvent) {
-    // The control has its own click handler; a tap on it also bubbles here, so
-    // ignore that case or the toggle would fire twice and cancel itself out.
-    const node = event.target;
-    if (node instanceof Element && node.closest(".sculpture-control")) return;
-    // A tap focuses the control before it clicks. Only a coarse pointer toggles
-    // from the stage, so a fine-pointer hover is not double-triggered.
-    if (finePointer?.matches) return;
-    toggleAssembly();
-  }
-
-  function handleFocusIn() {
-    // Pointer and touch focus must not assemble on its own, or a tap would
-    // assemble on focus and then toggle straight back on its own click.
-    if (!keyboardIntent) return;
-    keyboardFocus = true;
-    applyWantedState();
-  }
-
-  function handleFocusOut(event: FocusEvent) {
-    const next = event.relatedTarget;
-    if (next instanceof Node && stage.contains(next)) return;
-    if (!keyboardFocus) return;
-    keyboardFocus = false;
-    applyWantedState();
+  function disableMotion() {
+    motionEnabled = false;
+    collapsed = true;
+    if (frame) cancelAnimationFrame(frame);
+    frame = 0;
+    running = false;
+    removeCanvases();
+    gather = 1;
   }
 
   onMount(() => {
     const motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
-    finePointer = window.matchMedia("(hover: hover) and (pointer: fine)");
     fontFamily =
       getComputedStyle(document.documentElement)
         .getPropertyValue("--font-mono")
         .trim() || fontFamily;
 
-    function resetInput() {
-      hovered = false;
-      keyboardFocus = false;
-      pinned = false;
-      pointerTarget.x = 0;
-      pointerTarget.y = 0;
-      pointerCurrent.x = 0;
-      pointerCurrent.y = 0;
-    }
-
-    function enableMotion() {
-      resetInput();
-      motionEnabled = true;
-      assembled = false;
-      progress.value = 0;
-      if (!canvas) {
-        const next = document.createElement("canvas");
-        next.setAttribute("aria-hidden", "true");
-        next.className = "sculpture-canvas";
-        // A canvas without a 2D context can never draw, so keep the SVG mark and
-        // hide the controls rather than presenting a dead stage.
-        const nextContext = next.getContext("2d");
-        if (!nextContext) {
-          motionEnabled = false;
-          return;
-        }
-        field.append(next);
-        canvas = next;
-        context = nextContext;
-        hasCanvas = true;
-      }
-      resize();
-      // If the mark could not be sampled at all, the stage would be blank; fall
-      // back to the SVG mark and hide the controls instead.
-      if (!particles.length) {
-        canvas?.remove();
-        canvas = undefined;
-        context = undefined;
-        hasCanvas = false;
-        motionEnabled = false;
-        return;
-      }
-      start();
-    }
-
-    function disableMotion() {
-      resetInput();
-      motionEnabled = false;
-      assembled = false;
-      progress.value = 0;
-      tween?.kill();
-      tween = undefined;
-      if (frame) cancelAnimationFrame(frame);
-      frame = 0;
-      running = false;
-      canvas?.remove();
-      canvas = undefined;
-      context = undefined;
-      hasCanvas = false;
-    }
-
     function syncPreference() {
       if (motionQuery.matches) disableMotion();
       else enableMotion();
-    }
-
-    function handleKeydown() {
-      keyboardIntent = true;
-    }
-
-    function handlePointerDown() {
-      keyboardIntent = false;
     }
 
     const resizeObserver = new ResizeObserver(() => {
@@ -491,15 +566,25 @@
       start();
     });
     resizeObserver.observe(field);
+    resizeObserver.observe(scene);
 
     const intersectionObserver = new IntersectionObserver(
       (entries) => {
         visible = entries.some((entry) => entry.isIntersecting);
         if (visible) start();
       },
-      { threshold: 0.05 },
+      { threshold: 0.02 },
     );
     intersectionObserver.observe(field);
+
+    function handleScroll() {
+      if (scrollFrame) return;
+      scrollFrame = requestAnimationFrame(() => {
+        scrollFrame = 0;
+        computeGather();
+        start();
+      });
+    }
 
     function handleVisibility() {
       if (document.hidden) {
@@ -511,65 +596,51 @@
       }
     }
 
-    document.addEventListener("keydown", handleKeydown, true);
-    document.addEventListener("pointerdown", handlePointerDown, true);
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    window.addEventListener("hashchange", handleScroll);
     document.addEventListener("visibilitychange", handleVisibility);
     motionQuery.addEventListener("change", syncPreference);
     syncPreference();
 
     return () => {
       motionQuery.removeEventListener("change", syncPreference);
-      document.removeEventListener("keydown", handleKeydown, true);
-      document.removeEventListener("pointerdown", handlePointerDown, true);
+      window.removeEventListener("scroll", handleScroll);
+      window.removeEventListener("hashchange", handleScroll);
       document.removeEventListener("visibilitychange", handleVisibility);
       resizeObserver.disconnect();
       intersectionObserver.disconnect();
-      tween?.kill();
+      if (scrollFrame) cancelAnimationFrame(scrollFrame);
       if (frame) cancelAnimationFrame(frame);
-      canvas?.remove();
+      removeCanvases();
     };
   });
 </script>
 
 <div
   class="sculpture"
-  bind:this={stage}
-  data-assembled={assembled ? "true" : "false"}
-  data-has-canvas={hasCanvas ? "true" : "false"}
+  data-motion={motionEnabled ? "on" : "off"}
+  data-collapsed={collapsed ? "true" : "false"}
+  data-gather={gather.toFixed(3)}
+  data-focal={Math.round(focalLength)}
+  data-depth-bound={Math.round(depthBound)}
   data-glyph-variety={glyphVariety}
   data-depth-extent={Math.round(depthExtent)}
-  onpointerenter={handleStageEnter}
-  onpointerleave={handleStageLeave}
-  onpointermove={handleStageMove}
-  onclick={handleStageClick}
-  onfocusin={handleFocusIn}
-  onfocusout={handleFocusOut}
 >
-  <div class="sculpture-field" bind:this={field}>
-    <!--
-      The filled mark ships in the server HTML and remains the reduced-motion,
-      no-JavaScript and error fallback. It is the same geometry the particle
-      targets are sampled from.
-    -->
-    <div class="flab-mark" aria-hidden="true">
-      <svg viewBox={`0 0 ${FLAB_VIEWBOX.width} ${FLAB_VIEWBOX.height}`}>
-        <path d={FLAB_PATH} fill="currentColor" fill-rule={FLAB_FILL_RULE} />
-      </svg>
+  <div class="sculpture-scene" bind:this={scene}>
+    <div class="sculpture-sticky" bind:this={sticky}>
+      <div class="sculpture-field" bind:this={field}>
+        <!--
+          The filled mark ships in the server HTML and remains the reduced-motion,
+          no-JavaScript and error fallback. It is the same geometry the particle
+          targets are sampled from.
+        -->
+        <div class="flab-mark" aria-hidden="true">
+          <svg viewBox={`0 0 ${FLAB_VIEWBOX.width} ${FLAB_VIEWBOX.height}`}>
+            <path d={FLAB_PATH} fill="currentColor" fill-rule={FLAB_FILL_RULE} />
+          </svg>
+        </div>
+      </div>
     </div>
-  </div>
-  <div class="sculpture-footer">
-    <button
-      class="sculpture-control"
-      type="button"
-      hidden={!motionEnabled}
-      onclick={toggleAssembly}
-    >
-      {assembled ? "Scatter the mark" : "Assemble the mark"}
-    </button>
-    <p class="sculpture-hint" hidden={!motionEnabled}>
-      <span class="hint-fine">Move the pointer to gather the mark</span>
-      <span class="hint-coarse">Tap to assemble or scatter</span>
-    </p>
   </div>
 </div>
 
@@ -577,91 +648,129 @@
   .sculpture {
     position: relative;
     width: 100%;
-    height: 100%;
-    min-height: clamp(20rem, 52vh, 34rem);
-    display: flex;
-    flex-direction: column;
   }
-  /* Stars live only in the field, so they never run under the footer controls. */
+  .sculpture-scene {
+    position: relative;
+    height: auto;
+  }
+  /* Static fallback: the mark sets its own height and the scene stays short. */
+  .sculpture-sticky {
+    position: relative;
+    display: grid;
+    place-items: center;
+    padding-block: clamp(3.5rem, 12vh, 7rem);
+  }
   .sculpture-field {
     position: relative;
-    flex: 1;
-    min-height: 0;
+    width: 100%;
+    display: grid;
+    place-items: center;
     overflow: hidden;
   }
   .flab-mark {
-    position: absolute;
-    inset: 0;
+    width: 100%;
     display: grid;
     place-items: center;
     color: var(--ink);
   }
   .flab-mark svg {
-    width: min(62%, 34rem);
+    width: min(66vw, 20rem);
     height: auto;
+    display: block;
+  }
+  @media (min-width: 760px) {
+    .flab-mark svg {
+      width: min(44vw, 40rem);
+    }
+  }
+  /*
+    Full-motion pre-paint: match the fitted canvas mark exactly (same width
+    ratio, 40rem cap and 52vh height cap) so the server SVG does not shrink or
+    jump when the component hydrates. The static reduced-motion/no-JS layout
+    above stays compact.
+  */
+  :global(html.motion) .flab-mark svg {
+    width: min(66vw, 20rem, calc(52vh * 402 / 272));
+    width: min(66vw, 20rem, calc(52dvh * 402 / 272));
+  }
+  @media (min-width: 760px) {
+    :global(html.motion) .flab-mark svg {
+      width: min(44vw, 40rem, calc(52vh * 402 / 272));
+      width: min(44vw, 40rem, calc(52dvh * 402 / 272));
+    }
   }
   /* Once the canvas owns the field, the static mark steps aside. */
-  .sculpture[data-has-canvas="true"] .flab-mark {
+  .sculpture[data-motion="on"]:not([data-collapsed="true"]) .sculpture-field {
+    height: 100%;
+  }
+  .sculpture[data-motion="on"]:not([data-collapsed="true"]) .flab-mark {
+    position: absolute;
+    inset: 0;
     opacity: 0;
     visibility: hidden;
   }
-  /* The canvas is created in JS, so it cannot receive Svelte's scoped class;
-     without :global it would sit in flow and stretch the field. */
+  /* The canvases are created in JS, so they cannot receive Svelte's scoped
+     class; without :global they would sit in flow and stretch the field. */
+  :global(.sculpture-ambient),
   :global(.sculpture-canvas) {
     position: absolute;
     inset: 0;
     display: block;
   }
-  .sculpture-footer {
-    position: relative;
+  :global(.sculpture-ambient) {
     z-index: 1;
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: center;
-    gap: 0.75rem 1.25rem;
-    padding-top: 1.25rem;
   }
-  .sculpture-control {
-    display: inline-flex;
-    align-items: center;
-    min-height: 2.8125rem;
-    padding: 0 1.1rem;
-    border: 1px solid var(--rule);
-    border-radius: 999px;
-    background: transparent;
-    color: var(--accent-ink);
-    font: 500 0.8125rem/1.4 var(--font-sans);
-    cursor: pointer;
-    transition:
-      border-color 180ms ease,
-      background-color 180ms ease;
+  :global(.sculpture-canvas) {
+    z-index: 2;
   }
-  .sculpture-control:hover {
-    border-color: var(--accent);
-    background: color-mix(in srgb, var(--accent) 14%, transparent);
+
+  /*
+    The sticky scene belongs to the component, not to the page-reveal module: a
+    ready canvas keeps its own full-viewport layout even if that module is
+    aborted and drops `html.motion`. Pre-paint `html.motion` only reserves the
+    initial height so there is no jump before hydration.
+  */
+  :global(html.motion) .sculpture-scene {
+    height: 175vh;
+    height: 175dvh;
   }
-  .sculpture-control:focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 3px;
+  /*
+    Reserve the sticky viewport pre-paint too, so the server-rendered SVG is
+    centred in the same initial full viewport and does not jump ~128px when the
+    component hydrates. Collapsed overrides below win over this.
+  */
+  :global(html.motion) .sculpture-sticky {
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    height: 100dvh;
+    padding-block: 0;
   }
-  .sculpture-control[hidden],
-  .sculpture-hint[hidden] {
-    display: none;
+  .sculpture[data-motion="on"] .sculpture-scene {
+    height: 175vh;
+    height: 175dvh;
   }
-  .sculpture-hint {
-    color: var(--muted-ink);
-    font: 0.8125rem/1.5 var(--font-sans);
+  .sculpture[data-motion="on"] .sculpture-sticky {
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    height: 100dvh;
+    padding-block: 0;
   }
-  .hint-fine {
-    display: none;
+  /*
+    Collapsed means there is no canvas to draw — no JavaScript, reduced motion,
+    or an unavailable 2D context. It must win over BOTH the pre-paint reserve and
+    the ready-canvas rule, so a dead sticky spacer can never remain, even if the
+    page-reveal module loaded and left `html.motion` on.
+  */
+  :global(html.motion) .sculpture[data-collapsed="true"] .sculpture-scene,
+  .sculpture[data-motion="on"][data-collapsed="true"] .sculpture-scene {
+    height: auto;
   }
-  @media (hover: hover) and (pointer: fine) {
-    .hint-fine {
-      display: inline;
-    }
-    .hint-coarse {
-      display: none;
-    }
+  :global(html.motion) .sculpture[data-collapsed="true"] .sculpture-sticky,
+  .sculpture[data-motion="on"][data-collapsed="true"] .sculpture-sticky {
+    position: relative;
+    height: auto;
+    padding-block: clamp(3.5rem, 12vh, 7rem);
   }
 </style>

@@ -50,7 +50,7 @@ test.describe("static content without JavaScript", () => {
     expect(response?.ok()).toBeTruthy();
     await expect(page).toHaveTitle("flab — Fikri Flab");
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(
-      "Fikri Flab — learning in public.",
+      "Fikri Flab.",
     );
 
     // The six reconciled capability records, with their limits.
@@ -89,7 +89,7 @@ test.describe("static content without JavaScript", () => {
     }
 
     // The Malang identity note and the archive's CTFtime record.
-    await expect(page.locator(".hero-note")).toContainText("Malang, Indonesia");
+    await expect(page.locator(".intro-note")).toContainText("Malang, Indonesia");
     await expect(
       page.getByRole("link", { name: /CTFtime/ }).first(),
     ).toHaveAttribute("href", "https://ctftime.org/user/156246");
@@ -100,7 +100,7 @@ test.describe("static content without JavaScript", () => {
     // No-JS shows the real mark, not an empty stage or a dead control.
     await expect(page.locator(".flab-mark svg")).toBeVisible();
     await expect(page.locator(".sculpture-canvas")).toHaveCount(0);
-    await expect(page.locator(".sculpture-control")).toBeHidden();
+    await expect(page.locator(".sculpture-control")).toHaveCount(0);
   });
 });
 
@@ -160,10 +160,10 @@ test("makes the skip link and section navigation keyboard reachable", async ({
   await page.keyboard.press("Enter");
   await expect(page.getByRole("main")).toBeFocused();
 
-  // Continuing forward from the main region reaches the hero action first.
+  // Continuing forward from the main region reaches the intro link first.
   await page.keyboard.press("Tab");
   await expect(
-    page.getByRole("link", { name: "Explore the work" }),
+    page.getByRole("link", { name: "Selected work" }),
   ).toBeFocused();
 
   // The wordmark is reachable by keyboard from the top of the document.
@@ -262,13 +262,51 @@ for (const width of [320, 390, 768, 801, 1100, 1440]) {
   });
 }
 
+test("keeps the 320px header inside the viewport with a wide system font", async ({
+  page,
+}) => {
+  // DejaVu Sans is wider than the default stack and reproduced a real overflow
+  // at 320px before the mobile header gap was narrowed to 1rem. Force it so the
+  // regression cannot silently return with a different default font.
+  await page.setViewportSize({ width: 320, height: 900 });
+  await page.goto("/");
+  await page.addStyleTag({
+    content: 'html { font-family: "DejaVu Sans", sans-serif !important; }',
+  });
+  await page.waitForTimeout(300);
+
+  const applied = await page
+    .locator("nav a")
+    .first()
+    .evaluate((el) => getComputedStyle(el).fontFamily);
+  expect(applied).toContain("DejaVu Sans");
+
+  // No horizontal overflow, and the labels are retained and still fit.
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(
+    320,
+  );
+  const links = await page.getByRole("navigation").getByRole("link").all();
+  expect(
+    (await page.getByRole("navigation").getByRole("link").allTextContents()).map(
+      (label) => label.trim(),
+    ),
+  ).toEqual(["Work", "Profile", "Archive", "Contact"]);
+  for (const link of links) {
+    const box = await link.boundingBox();
+    expect(box?.x).toBeGreaterThanOrEqual(0);
+    expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(320);
+    // Targets stay at least 45px tall; the fix narrows the gap, not the targets.
+    expect(box?.height).toBeGreaterThanOrEqual(44);
+  }
+});
+
 test("keeps text contrast readable on the plum and violet surfaces", async ({
   page,
 }) => {
   await page.goto("/");
   const contrast = await page
     .locator(
-      ".hero-note, .hero-action, .section-intro, .ledger-qualification dd, #contact-path a, nav a",
+      ".intro-note, .intro-link, .section-intro, .ledger-qualification dd, #contact-path a, nav a",
     )
     .evaluateAll((elements) => {
       const luminance = (color: string) => {
@@ -370,7 +408,7 @@ test("returns a real 404 that carries the same mark and a recovery path", async 
   await expect(page.locator(".flab-logo svg")).toBeVisible();
   await page.locator(".return-link").click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(
-    "Fikri Flab — learning in public.",
+    "Fikri Flab.",
   );
 });
 
