@@ -801,6 +801,10 @@ const sections = [
         gap: 0.35rem 1rem;
         min-height: 6.5rem;
         padding-top: 1.25rem;
+        /* Optical inset for the trailing arrow: without it the arrow sits on the
+           column's right edge, touching the next column's separator. 1.25rem
+           leaves >=16px even during the 4px hover nudge. */
+        padding-inline-end: 1.25rem;
         text-decoration: none;
       }
       .contact-icon {
@@ -876,9 +880,19 @@ const sections = [
           margin-inline: auto;
         }
       }
+      /*
+        Contact-only breakpoint: the 3-up contact paths need more room than the
+        work/profile sections, so the contact intro/paths parent stacks until
+        1100px. Below that the paths get full width (no label/arrow collision);
+        at 1101px the 2-column layout is at its narrowest and still clears.
+      */
+      @media (max-width: 1100px) {
+        .contact-layout {
+          grid-template-columns: 1fr;
+        }
+      }
       @media (max-width: 900px) {
         .work-layout,
-        .contact-layout,
         .intro-layout {
           grid-template-columns: 1fr;
         }

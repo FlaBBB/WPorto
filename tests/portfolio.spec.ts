@@ -338,6 +338,93 @@ test("keeps text contrast readable on the plum and violet surfaces", async ({
   for (const ratio of contrast) expect(ratio).toBeGreaterThanOrEqual(4.5);
 });
 
+/** Painted geometry of one contact row: its box, arrow ink and label ink. */
+const contactRowGeometry = (page: Page, index: number) =>
+  page.evaluate((row) => {
+    const ink = (el: Element) => {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      const rects = [...range.getClientRects()];
+      if (!rects.length) {
+        const rect = el.getBoundingClientRect();
+        return { left: rect.left, right: rect.right };
+      }
+      return {
+        left: Math.min(...rects.map((rect) => rect.left)),
+        right: Math.max(...rects.map((rect) => rect.right)),
+      };
+    };
+    const li = document.querySelectorAll(".contact-paths li")[row];
+    const box = li.getBoundingClientRect();
+    const arrow = ink(li.querySelector(".contact-arrow")!);
+    const label = li.querySelector(".contact-label")!;
+    const labelRight = Math.max(
+      ink(label.querySelector("strong")!).right,
+      ink(label.querySelector("span")!).right,
+    );
+    return {
+      boxRight: box.right,
+      boxLeft: box.left,
+      arrowLeft: arrow.left,
+      arrowRight: arrow.right,
+      labelRight,
+    };
+  }, index);
+
+for (const width of [1440, 1101, 1100, 700, 390, 320]) {
+  test(`insets the contact arrows from their column edge at ${width}px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 1000 });
+    await page.goto("/");
+    // Bring the contact band into view with native smooth scrolling disabled so
+    // its reveal targets actually enter the viewport and settle before measuring.
+    await page.evaluate(() => {
+      document.documentElement.style.scrollBehavior = "auto";
+      window.scrollTo(0, document.documentElement.scrollHeight);
+    });
+    // Settle the reveal so a translateY does not offset the measurement.
+    await expect
+      .poll(async () =>
+        page
+          .locator("#contact-path [data-reveal]")
+          .evaluateAll((els) =>
+            els.every(
+              (el) => Number(getComputedStyle(el).opacity) >= 0.999,
+            ),
+          ),
+      )
+      .toBe(true);
+
+    const rows = page.locator(".contact-paths li");
+    await expect(rows).toHaveCount(3);
+
+    for (let index = 0; index < 3; index += 1) {
+      const resting = await contactRowGeometry(page, index);
+
+      // The painted arrow keeps a real inset from its own column/row right edge,
+      // so it never sits on the edge touching the next column's separator.
+      expect(resting.boxRight - resting.arrowRight).toBeGreaterThanOrEqual(12);
+      // It also never overlaps its own label ink.
+      expect(resting.arrowLeft - resting.labelRight).toBeGreaterThanOrEqual(8);
+
+      // The 4px hover nudge must not undo the inset.
+      await rows.nth(index).locator("a").hover();
+      await page.waitForTimeout(450);
+      const hovered = await contactRowGeometry(page, index);
+      expect(hovered.boxRight - hovered.arrowRight).toBeGreaterThanOrEqual(12);
+      expect(hovered.arrowLeft - hovered.labelRight).toBeGreaterThanOrEqual(8);
+      await page.mouse.move(2, 2);
+      await page.waitForTimeout(200);
+    }
+
+    // The inset must not introduce any horizontal overflow.
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(
+      width,
+    );
+  });
+}
+
 test("keeps a visible focus ring on the violet contact band", async ({
   page,
 }) => {
