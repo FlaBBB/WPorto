@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import gsap from "gsap";
   import { FLAB_PATH, FLAB_FILL_RULE, FLAB_VIEWBOX } from "../lib/flabMark";
 
   /**
@@ -7,10 +8,10 @@
    * `flab` geometry that renders the header logo, so the gathered shape is the
    * real mark rather than an approximation.
    *
-   * Motion is driven by native scroll only. The section is a short sticky scene
-   * (1.75 viewports) whose scroll progress breaks the mark into a depth-varied
-   * star cloud; reversing the scroll reforms it, and then the scene leaves
-   * naturally into the page. There is no hover, tap, keyboard or wheel capture.
+   * The opening occupies one viewport. Scroll, including the page's automatic
+   * transition to Intro, breaks the mark into a depth-varied star cloud.
+   * Reversing that transition reforms it. The field stays viewport-centred
+   * during the transition and fades away before the lower sections take over.
    *
    * A second, sparse ambient population drifts on its own clock behind the mark
    * so the sky stays alive at rest without touching the mark's legibility.
@@ -98,11 +99,10 @@
   let spreadZ = 420;
   // Observable contract for tests: the proven |z| bound the focal length clears.
   let depthBound = $state(0);
-  let frame = 0;
-  let scrollFrame = 0;
   let running = false;
   let visible = true;
   let clock = 0;
+  let drawnGather = NaN;
   let fontFamily = "ui-monospace, monospace";
   // Glyph sizes follow the fitted mark so a small viewport does not fill the
   // letterform's counters with oversized stars.
@@ -391,6 +391,7 @@
       context.font = `${dense ? 400 : 300} ${size.toFixed(1)}px ${fontFamily}`;
       context.fillText(glyph, point.x, point.y);
     }
+    drawnGather = gather;
   }
 
   function renderAmbient(seconds: number) {
@@ -425,25 +426,27 @@
     }
   }
 
-  function tick(now: number) {
-    frame = 0;
-    // performance.now() is a monotonic clock, so the ambient drift and glyph
-    // rotation are refresh-rate independent and never accumulate frame drift.
-    clock = now / 1000;
-    renderAmbient(clock);
-    renderMain();
+  function tick() {
+    // GSAP updates the page position before this ticker listener. Read and
+    // paint that pose once, without waiting for a later native scroll event.
+    clock = performance.now() / 1000;
+    computeGather();
+    // Scroll/visibility observers can update the pose before this tick. Compare
+    // with the actual buffer so an instant return still draws the endpoint.
+    if (drawnGather !== gather || (gather > 0 && gather < 1)) renderMain();
+    if (visible) renderAmbient(clock);
+    if (!motionEnabled || !visible || document.hidden) stop();
+  }
 
-    if (motionEnabled && visible && !document.hidden) {
-      frame = requestAnimationFrame(tick);
-    } else {
-      running = false;
-    }
+  function stop() {
+    gsap.ticker.remove(tick);
+    running = false;
   }
 
   function start() {
     if (running || !motionEnabled || !visible || document.hidden) return;
     running = true;
-    frame = requestAnimationFrame(tick);
+    gsap.ticker.add(tick);
   }
 
   function sizeCanvas(target: HTMLCanvasElement, ratio: number) {
@@ -471,18 +474,22 @@
 
   /**
    * Native scroll is the only input: the mark is fully gathered at the top of
-   * the scene and fully dispersed by the time the sticky scene leaves. Reading
+   * the scene and fully dispersed at Intro. Reading
    * the live geometry keeps direct hashes, resizes, quick reversals and
    * back-to-top in sync.
    */
   function computeGather() {
     if (!scene || !sticky) return;
-    const total = scene.offsetHeight - sticky.offsetHeight;
-    const scrolled = -scene.getBoundingClientRect().top;
+    const total = scene.offsetHeight;
+    const box = scene.getBoundingClientRect();
+    visible = box.bottom > 0 && box.top < window.innerHeight;
+    const scrolled = -box.top;
     const progress = total > 4 ? clamp01(scrolled / total) : 0;
     const eased = progress * progress * (3 - 2 * progress);
     const next = 1 - eased;
-    if (Math.abs(next - gather) > 0.0005) gather = next;
+    if (next === gather || (next > 0 && next < 1 && Math.abs(next - gather) <= 0.0005)) return false;
+    gather = next;
+    return true;
   }
 
   function removeCanvases() {
@@ -541,9 +548,7 @@
   function disableMotion() {
     motionEnabled = false;
     collapsed = true;
-    if (frame) cancelAnimationFrame(frame);
-    frame = 0;
-    running = false;
+    stop();
     removeCanvases();
     gather = 1;
   }
@@ -571,33 +576,37 @@
     const intersectionObserver = new IntersectionObserver(
       (entries) => {
         visible = entries.some((entry) => entry.isIntersecting);
-        if (visible) start();
+        if (visible) {
+          computeGather();
+          if (!running) renderMain();
+          start();
+        }
       },
       { threshold: 0.02 },
     );
-    intersectionObserver.observe(field);
+    intersectionObserver.observe(scene);
 
     function handleScroll() {
-      if (scrollFrame) return;
-      scrollFrame = requestAnimationFrame(() => {
-        scrollFrame = 0;
-        computeGather();
-        start();
-      });
+      if (!motionEnabled || document.hidden || running) return;
+      const changed = computeGather();
+      // Offscreen endpoints still need truthful state; visible animation is
+      // painted only by the post-scroll ticker, not twice in the same frame.
+      if (changed && !visible) renderMain();
+      start();
     }
 
     function handleVisibility() {
       if (document.hidden) {
-        if (frame) cancelAnimationFrame(frame);
-        frame = 0;
-        running = false;
+        stop();
       } else {
+        computeGather();
         start();
       }
     }
 
     window.addEventListener("scroll", handleScroll, { passive: true });
     window.addEventListener("hashchange", handleScroll);
+    window.addEventListener("after-hours-flight", handleScroll);
     document.addEventListener("visibilitychange", handleVisibility);
     motionQuery.addEventListener("change", syncPreference);
     syncPreference();
@@ -606,11 +615,11 @@
       motionQuery.removeEventListener("change", syncPreference);
       window.removeEventListener("scroll", handleScroll);
       window.removeEventListener("hashchange", handleScroll);
+      window.removeEventListener("after-hours-flight", handleScroll);
       document.removeEventListener("visibilitychange", handleVisibility);
       resizeObserver.disconnect();
       intersectionObserver.disconnect();
-      if (scrollFrame) cancelAnimationFrame(scrollFrame);
-      if (frame) cancelAnimationFrame(frame);
+      stop();
       removeCanvases();
     };
   });
@@ -628,7 +637,7 @@
 >
   <div class="sculpture-scene" bind:this={scene}>
     <div class="sculpture-sticky" bind:this={sticky}>
-      <div class="sculpture-field" bind:this={field}>
+      <div class="sculpture-field" style:opacity={motionEnabled ? gather : 1} bind:this={field}>
         <!--
           The filled mark ships in the server HTML and remains the reduced-motion,
           no-JavaScript and error fallback. It is the same geometry the particle
@@ -651,18 +660,20 @@
   }
   .sculpture-scene {
     position: relative;
-    height: auto;
+    height: 100vh;
+    height: 100dvh;
   }
-  /* Static fallback: the mark sets its own height and the scene stays short. */
+  /* Full-page composition is stable in motion, static and no-JS modes. */
   .sculpture-sticky {
     position: relative;
     display: grid;
     place-items: center;
-    padding-block: clamp(3.5rem, 12vh, 7rem);
+    height: 100%;
   }
   .sculpture-field {
     position: relative;
     width: 100%;
+    height: 100%;
     display: grid;
     place-items: center;
     overflow: hidden;
@@ -674,34 +685,22 @@
     color: var(--ink);
   }
   .flab-mark svg {
-    width: min(66vw, 20rem);
+    width: min(66vw, 20rem, calc(52dvh * 402 / 272));
     height: auto;
     display: block;
   }
   @media (min-width: 760px) {
     .flab-mark svg {
-      width: min(44vw, 40rem);
-    }
-  }
-  /*
-    Full-motion pre-paint: match the fitted canvas mark exactly (same width
-    ratio, 40rem cap and 52vh height cap) so the server SVG does not shrink or
-    jump when the component hydrates. The static reduced-motion/no-JS layout
-    above stays compact.
-  */
-  :global(html.motion) .flab-mark svg {
-    width: min(66vw, 20rem, calc(52vh * 402 / 272));
-    width: min(66vw, 20rem, calc(52dvh * 402 / 272));
-  }
-  @media (min-width: 760px) {
-    :global(html.motion) .flab-mark svg {
-      width: min(44vw, 40rem, calc(52vh * 402 / 272));
       width: min(44vw, 40rem, calc(52dvh * 402 / 272));
     }
   }
   /* Once the canvas owns the field, the static mark steps aside. */
   .sculpture[data-motion="on"]:not([data-collapsed="true"]) .sculpture-field {
-    height: 100%;
+    position: fixed;
+    inset: 0;
+    height: 100vh;
+    height: 100dvh;
+    pointer-events: none;
   }
   .sculpture[data-motion="on"]:not([data-collapsed="true"]) .flab-mark {
     position: absolute;
@@ -724,53 +723,4 @@
     z-index: 2;
   }
 
-  /*
-    The sticky scene belongs to the component, not to the page-reveal module: a
-    ready canvas keeps its own full-viewport layout even if that module is
-    aborted and drops `html.motion`. Pre-paint `html.motion` only reserves the
-    initial height so there is no jump before hydration.
-  */
-  :global(html.motion) .sculpture-scene {
-    height: 175vh;
-    height: 175dvh;
-  }
-  /*
-    Reserve the sticky viewport pre-paint too, so the server-rendered SVG is
-    centred in the same initial full viewport and does not jump ~128px when the
-    component hydrates. Collapsed overrides below win over this.
-  */
-  :global(html.motion) .sculpture-sticky {
-    position: sticky;
-    top: 0;
-    height: 100vh;
-    height: 100dvh;
-    padding-block: 0;
-  }
-  .sculpture[data-motion="on"] .sculpture-scene {
-    height: 175vh;
-    height: 175dvh;
-  }
-  .sculpture[data-motion="on"] .sculpture-sticky {
-    position: sticky;
-    top: 0;
-    height: 100vh;
-    height: 100dvh;
-    padding-block: 0;
-  }
-  /*
-    Collapsed means there is no canvas to draw — no JavaScript, reduced motion,
-    or an unavailable 2D context. It must win over BOTH the pre-paint reserve and
-    the ready-canvas rule, so a dead sticky spacer can never remain, even if the
-    page-reveal module loaded and left `html.motion` on.
-  */
-  :global(html.motion) .sculpture[data-collapsed="true"] .sculpture-scene,
-  .sculpture[data-motion="on"][data-collapsed="true"] .sculpture-scene {
-    height: auto;
-  }
-  :global(html.motion) .sculpture[data-collapsed="true"] .sculpture-sticky,
-  .sculpture[data-motion="on"][data-collapsed="true"] .sculpture-sticky {
-    position: relative;
-    height: auto;
-    padding-block: clamp(3.5rem, 12vh, 7rem);
-  }
 </style>

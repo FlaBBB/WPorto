@@ -1,0 +1,16 @@
+---
+const { name, year } = Astro.props as { name: string; year: number };
+---
+
+<footer class="site-footer">
+  <div class="footer-inner">
+    <p class="footer-identity">
+      <span class="footer-name">{name}</span>
+      <span class="footer-sep" aria-hidden="true">·</span>
+      <span class="footer-copy">© {year}</span>
+    </p>
+    <a class="footer-top" href="#identity" aria-label="Back to top — Still learning." title="Back to top">
+      <span class="footer-note">Still learning.</span>
+    </a>
+  </div>
+</footer>

@@ -34,16 +34,16 @@ const unsettled = (page: Page) =>
 test("reveals every scroll target without leaving one stuck", async ({
   page,
 }) => {
-  // The opening scene is ~1.75 viewports tall by design, so this full-page
-  // frame-stepped sweep is legitimately long on slower engines.
+  // Visit and settle every target on slower engines too.
   test.slow();
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/");
   const count = await page.locator("[data-reveal]").count();
   expect(count).toBeGreaterThan(8);
 
-  // Drive the scroll through rendered frames and let each position settle, so a
-  // slower engine cannot skip a target between timed scroll steps.
+  // Centre each target so it enters the reveal area, rather than waiting for
+  // unrelated targets grazing the viewport edge. Assert before scrolling away:
+  // the passed-target fallback must not hide a broken entrance reveal.
   await page.evaluate(async () => {
     const root = document.documentElement;
     root.style.scrollBehavior = "auto";
@@ -59,18 +59,14 @@ test("reveals every scroll target without leaving one stuck", async ({
     };
     const frame = () =>
       new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-    const step = Math.round(window.innerHeight * 0.7);
-    for (let y = 0; y <= root.scrollHeight; y += step) {
-      window.scrollTo(0, y);
+    for (const target of targets) {
+      target.scrollIntoView({ block: "center" });
       await frame();
       for (let attempt = 0; attempt < 120; attempt += 1) {
         await frame();
-        const visible = targets.filter((target) => {
-          const rect = target.getBoundingClientRect();
-          return rect.top < window.innerHeight && rect.bottom > 0;
-        });
-        if (visible.every(settled)) break;
+        if (settled(target)) break;
       }
+      if (!settled(target)) throw new Error(`Unsettled reveal: ${target.textContent}`);
     }
     window.scrollTo(0, root.scrollHeight);
     await frame();
@@ -282,7 +278,7 @@ test("drops the motion hold when the animation module never loads", async ({
     .poll(async () => unsettled(page), { timeout: 6000 })
     .toEqual([]);
   await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
-  await expect(page.locator("#contact-path a")).toHaveCount(3);
+  await expect(page.locator("#contact-path .contact-paths a")).toHaveCount(3);
 
   // The sculpture owns its own scene and canvas, so it must still be drawn even
   // though the page-reveal module (which owns `html.motion`) was aborted.

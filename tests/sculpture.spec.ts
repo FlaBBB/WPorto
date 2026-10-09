@@ -105,26 +105,10 @@ const metrics = (page: Page): Promise<Metrics> =>
     };
   });
 
-/** Scroll distance at which the sticky scene is fully dispersed. */
+/** One viewport takes the visitor from Opening to Intro. */
 const sceneRange = async (page: Page) => {
-  const { scene, sticky } = await metrics(page);
-  return scene - sticky;
+  return (await metrics(page)).scene;
 };
-
-/** The gather value the current scroll offset implies (same math as source). */
-const expectedGather = (page: Page) =>
-  page.evaluate(() => {
-    const scene = document.querySelector(".sculpture-scene")!;
-    const sticky = document.querySelector(".sculpture-sticky")!;
-    const range =
-      scene.getBoundingClientRect().height - sticky.getBoundingClientRect().height;
-    const progress = Math.min(
-      1,
-      Math.max(0, -scene.getBoundingClientRect().top / range),
-    );
-    const eased = progress * progress * (3 - 2 * progress);
-    return 1 - eased;
-  });
 
 const scrollTo = async (page: Page, y: number) => {
   await page.evaluate((top) => {
@@ -155,14 +139,12 @@ test.describe("After Hours scroll sculpture", () => {
     await hydrate(page);
     const start = await metrics(page);
 
-    // The opening is genuinely full viewport: a sticky scene of ~1.75 screens
-    // with the field exactly one viewport tall, edge to edge.
+    // No extra travel spacer: both the section and field are one viewport.
     expect(start.gather).toBe(1);
     expect(Math.abs(start.sticky - start.vh)).toBeLessThan(2);
     expect(Math.abs(start.fieldH - start.vh)).toBeLessThan(2);
     expect(Math.abs(start.fieldW - start.vw)).toBeLessThan(2);
-    expect(start.scene).toBeGreaterThan(start.vh * 1.6);
-    expect(start.scene).toBeLessThan(start.vh * 1.9);
+    expect(Math.abs(start.scene - start.vh)).toBeLessThan(2);
     expect(start.docW).toBe(start.vw);
 
     const gathered = await main(page);
@@ -263,7 +245,7 @@ test.describe("After Hours scroll sculpture", () => {
     const before = await main(page);
 
     const field = page.locator(".sculpture-field");
-    await field.hover();
+    await page.mouse.move(640, 400);
     await page.mouse.click(640, 400);
     await page.keyboard.press("Enter");
     await page.waitForTimeout(600);
@@ -290,27 +272,52 @@ test.describe("After Hours scroll sculpture", () => {
   }) => {
     await hydrate(page);
 
-    // Space and PageDown must remain ordinary page scrolling: the browser moves
-    // the document and the sculpture reflects the new position. The component
-    // never intercepts these keys.
+    // Keyboard scrolling starts a native gesture and the page completes it.
     await page.locator("body").press("Space");
-    await page.waitForTimeout(500);
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
     const afterSpace = await page.evaluate(() => window.scrollY);
     expect(afterSpace).toBeGreaterThan(0);
     // The drawn pose follows the live offset rather than staying gathered.
-    const spaceExpected = await expectedGather(page);
-    expect((await metrics(page)).gather).toBeCloseTo(spaceExpected, 2);
+    expect((await metrics(page)).gather).toBeLessThan(1);
 
     await page.locator("body").press("PageDown");
-    await page.waitForTimeout(500);
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(afterSpace);
     const afterPageDown = await page.evaluate(() => window.scrollY);
     expect(afterPageDown).toBeGreaterThan(afterSpace);
-    const pageDownExpected = await expectedGather(page);
-    expect((await metrics(page)).gather).toBeCloseTo(pageDownExpected, 2);
-
-    // Scrolling to the end fully disperses the mark.
-    await scrollTo(page, await sceneRange(page));
     expect((await metrics(page)).gather).toBe(0);
+
+    // Escape ends any pending boundary gesture, so the page can then be placed
+    // at the exact Intro landing. Read the landing from the section geometry,
+    // not from the scroll-completion mapping.
+    await page.locator("body").press("Escape");
+    const introLanding = await page.evaluate(
+      () =>
+        document.querySelector("#intro")!.getBoundingClientRect().top +
+        window.scrollY,
+    );
+    await page.evaluate(
+      (top) => window.scrollTo({ top, behavior: "instant" }),
+      introLanding,
+    );
+    expect(await page.evaluate(() => window.scrollY)).toBeCloseTo(
+      introLanding,
+      0,
+    );
+    expect((await metrics(page)).gather).toBe(0);
+
+    // Shift+Space is the native upward page gesture. From the exact Intro
+    // landing it must complete upward to the Opening and reform the mark,
+    // never reverse the movement back down.
+    await page.locator("body").press("Shift+Space");
+    const openingLanding = await page.evaluate(
+      () =>
+        document.querySelector("#identity")!.getBoundingClientRect().top +
+        window.scrollY,
+    );
+    await expect
+      .poll(() => page.evaluate(() => window.scrollY))
+      .toBeCloseTo(openingLanding, 0);
+    expect((await metrics(page)).gather).toBe(1);
   });
 
   test("does not intercept wheel input", async ({ page }) => {
@@ -517,7 +524,7 @@ test.describe("After Hours sculpture geometry", () => {
 });
 
 test.describe("After Hours sculpture fallbacks", () => {
-  test("collapses to a static mark without a dead sticky spacer", async ({
+  test("keeps the one-page opening with a static reduced-motion mark", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
@@ -531,8 +538,7 @@ test.describe("After Hours sculpture fallbacks", () => {
 
     const view = await metrics(page);
     expect(view.motion).toBe("off");
-    // No full-height sticky spacer is reserved when there is no motion.
-    expect(view.scene).toBeLessThan(view.vh);
+    expect(Math.abs(view.scene - view.vh)).toBeLessThan(2);
     expect(view.stickyTop).toBeGreaterThanOrEqual(0);
   });
 
@@ -554,7 +560,7 @@ test.describe("After Hours sculpture fallbacks", () => {
         .height,
       vh: window.innerHeight,
     }));
-    expect(view.scene).toBeLessThan(view.vh);
+    expect(Math.abs(view.scene - view.vh)).toBeLessThan(2);
     await context.close();
   });
 
@@ -575,7 +581,7 @@ test.describe("After Hours sculpture fallbacks", () => {
     await expect(page.locator(".flab-mark svg")).toBeVisible();
     await expect(page.locator(".sculpture-canvas")).toHaveCount(0);
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
-    await expect(page.locator("#contact-path a")).toHaveCount(3);
+    await expect(page.locator("#contact-path .contact-paths a")).toHaveCount(3);
 
     const view = await page.evaluate(() => ({
       scene: document.querySelector(".sculpture-scene")!.getBoundingClientRect()
@@ -586,9 +592,9 @@ test.describe("After Hours sculpture fallbacks", () => {
       motion: (document.querySelector(".sculpture") as HTMLElement).dataset
         .motion,
     }));
-    // A collapsed scene must win even while the pre-paint class is still on.
+    // Canvas failure must not resize the section or blank the opening.
     expect(view.collapsed).toBe("true");
-    expect(view.scene).toBeLessThan(view.vh);
+    expect(Math.abs(view.scene - view.vh)).toBeLessThan(2);
     await context.close();
   });
 
@@ -614,7 +620,7 @@ test.describe("After Hours sculpture fallbacks", () => {
     await page.waitForTimeout(500);
     const reduced = await metrics(page);
     expect(reduced.motion).toBe("off");
-    expect(reduced.scene).toBeLessThan(reduced.vh);
+    expect(Math.abs(reduced.scene - reduced.vh)).toBeLessThan(2);
 
     await page.emulateMedia({ reducedMotion: "no-preference" });
     await page.waitForSelector('.sculpture[data-motion="on"]', {
