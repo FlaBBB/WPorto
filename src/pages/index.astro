@@ -181,6 +181,15 @@ const year = new Date().getFullYear();
   </head>
   <body>
     <SparseStars client:load />
+    <!--
+      Layering, bottom to top: the base plum background, the violet Contact
+      surface (visible only while Contact is the settled scene), the original
+      sampled particle sky, then the transparent scene screens. The sky stays
+      behind every later section because it is a body-level fixed layer, outside
+      the pinned stage's stacking context.
+    -->
+    <div class="contact-surface" aria-hidden="true"></div>
+    <div class="sky-plane" aria-hidden="true"></div>
     <a class="skip-link" href="#main-content">Skip to content</a>
     <header class="site-header">
       <a class="flab-logo" href="#identity" aria-label="flab — back to Fikri Muhammad Abdillah’s identity">
@@ -198,16 +207,16 @@ const year = new Date().getFullYear();
     </header>
 
     <main id="main-content" tabindex="-1">
-      <section id="identity" aria-label="Identity">
-        <FlabSculpture client:media="(prefers-reduced-motion: no-preference)" />
-      </section>
+      <!-- One tall flow element supplies the native scroll budget; the sticky
+           stage is pinned inside it and the controller scrubs the scene stack
+           from a single global progress. -->
+      <div class="journey" data-journey>
+        <div class="stage" data-stage>
+        <section id="identity" class="scene" data-scene="identity" aria-label="Identity">
+          <FlabSculpture client:media="(prefers-reduced-motion: no-preference)" />
+        </section>
 
-      <!--
-        Slides share a viewport sky and an in-flow footer. Long sections keep
-        native scrolling; no fixed footer can cover their content.
-      -->
-      <div class="page-body">
-        <section id="intro" aria-labelledby="intro-heading">
+        <section id="intro" class="scene" data-scene="intro" aria-labelledby="intro-heading">
           <div class="section-content">
           <div class="intro-layout">
             <div class="intro-lead">
@@ -234,7 +243,7 @@ const year = new Date().getFullYear();
           <SectionFooter name={ownerName} year={year} />
         </section>
 
-        <section id="selected-evidence" aria-labelledby="selected-evidence-heading">
+        <section id="selected-evidence" class="scene" data-scene="selected-evidence" aria-labelledby="selected-evidence-heading">
           <div class="section-content">
           <div class="work-layout">
             <div class="work-intro">
@@ -269,7 +278,7 @@ const year = new Date().getFullYear();
           <SectionFooter name={ownerName} year={year} />
         </section>
 
-        <section id="technical-profile" aria-labelledby="technical-profile-heading">
+        <section id="technical-profile" class="scene" data-scene="technical-profile" aria-labelledby="technical-profile-heading">
           <div class="section-content">
           <div class="section-heading">
             <p class="eyebrow">02 / Profile</p>
@@ -284,7 +293,7 @@ const year = new Date().getFullYear();
           <SectionFooter name={ownerName} year={year} />
         </section>
 
-        <section id="learning-archive" aria-labelledby="learning-archive-heading">
+        <section id="learning-archive" class="scene" data-scene="learning-archive" aria-labelledby="learning-archive-heading">
           <div class="section-content archive-content">
           <div class="section-heading">
             <p class="eyebrow">03 / Archive</p>
@@ -315,7 +324,7 @@ const year = new Date().getFullYear();
           <SectionFooter name={ownerName} year={year} />
         </section>
 
-        <section id="contact-path" aria-labelledby="contact-path-heading">
+        <section id="contact-path" class="scene" data-scene="contact-path" aria-labelledby="contact-path-heading">
           <div class="section-content">
           <div class="contact-layout">
             <div class="contact-intro-block">
@@ -361,6 +370,7 @@ const year = new Date().getFullYear();
           </div>
           <SectionFooter name={ownerName} year={year} />
         </section>
+        </div>
       </div>
     </main>
 
@@ -529,21 +539,74 @@ const year = new Date().getFullYear();
         color: var(--header-ink);
       }
 
-      .page-body {
+      /* Default: an ordinary, fully readable document. Every scene is in flow
+         with its natural height and its own footer at the bottom, so no-JS, an
+         aborted module and reduced motion always expose the whole page. */
+      .journey {
         position: relative;
+        width: 100%;
       }
-      .page-body > section {
+      .scene {
         position: relative;
         display: flex;
         flex-direction: column;
         min-height: 100vh;
-        min-height: 100dvh;
+        min-height: 100svh;
         background: var(--background);
+      }
+      .scene > .section-content {
+        flex: 1;
+      }
+      /* Opt-in pinned presentation, activated only after setup succeeds without
+         a reduced-motion preference. The sticky stage scrubs the scene stack
+         from one global progress; nothing snaps or traps input. */
+      .journey[data-active="true"] .stage {
+        position: sticky;
+        top: 0;
+        z-index: 2;
+        height: 100vh;
+        height: 100svh;
+        /* clip, not hidden: it clips presentation without creating an inner
+           scroll container that focus/fragment navigation could offset. */
+        overflow: clip;
+      }
+      .journey[data-active="true"] .scene {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        background: transparent;
+        will-change: transform;
+      }
+      /* In the pinned presentation the violet is the fixed surface, so the
+         Contact scene itself is transparent and the stars show through it. */
+      .journey[data-active="true"] #contact-path {
+        background: transparent;
+      }
+      /* The violet Contact surface sits below the fixed particle sky, so the
+         original stars stay visible over it. It is driven by the global
+         timeline, not an independent timer. */
+      .contact-surface {
+        position: fixed;
+        inset: 0;
+        z-index: 0;
+        background: var(--contact-band);
+        opacity: 0;
+        pointer-events: none;
+      }
+      /* The persistent sky sits above every scene surface and below all
+         content, footer and nav. Fixed and outside the pinned stage, so the
+         stage's stacking context can never bury it. */
+      .sky-plane {
+        position: fixed;
+        inset: 0;
+        z-index: 1;
+        overflow: hidden;
+        pointer-events: none;
       }
       .section-content {
         position: relative;
         z-index: 2;
-        flex: 1;
         display: grid;
         align-content: center;
         width: 100%;
@@ -1111,63 +1174,6 @@ const year = new Date().getFullYear();
       const root = document.documentElement;
       root.classList.add("js");
       const motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
-      const header = document.querySelector<HTMLElement>(".site-header")!;
-      const contact = document.querySelector<HTMLElement>("#contact-path")!;
-      const foregrounds = [...document.querySelectorAll<HTMLElement>(
-        ".page-body .section-content, .page-body .site-footer",
-      )];
-      let headerFrame = 0;
-      let focusFrame = 0;
-      const syncHeader = () => {
-        if (headerFrame) cancelAnimationFrame(headerFrame);
-        headerFrame = 0;
-        const headerBox = header.getBoundingClientRect();
-        const centre = headerBox.top + headerBox.height / 2;
-        const band = contact.getBoundingClientRect();
-        const cuts = foregrounds.map(element => {
-          const box = element.getBoundingClientRect();
-          return Math.max(0, Math.min(box.height, headerBox.bottom - box.top));
-        });
-        header.dataset.contact = String(band.top <= centre && band.bottom > centre);
-        // Clip foreground only. clip-path changes neither the scrollport nor
-        // document geometry, so sticky Work and native landings stay intact.
-        foregrounds.forEach((element, index) => {
-          const clip = cuts[index] > 0 ? `inset(${cuts[index]}px 0 0)` : "none";
-          if (element.style.clipPath !== clip) element.style.clipPath = clip;
-        });
-      };
-      const requestHeader = () => {
-        if (!headerFrame) headerFrame = requestAnimationFrame(syncHeader);
-      };
-      const exposeFocus = () => {
-        focusFrame = 0;
-        const element = document.activeElement;
-        if (!(element instanceof HTMLElement) || !element.closest(
-          ".page-body .section-content, .page-body .site-footer",
-        )) return;
-        const box = element.getBoundingClientRect();
-        if (box.bottom <= 0) return;
-        const style = getComputedStyle(element);
-        const ring = Math.max(0, parseFloat(style.outlineWidth) + parseFloat(style.outlineOffset));
-        const delta = box.top - header.getBoundingClientRect().bottom - ring - 1;
-        if (delta < 0) window.scrollBy({ top: delta, behavior: "instant" });
-        syncHeader();
-      };
-      const requestFocus = () => {
-        if (!focusFrame) focusFrame = requestAnimationFrame(exposeFocus);
-      };
-      const headerObserver = new ResizeObserver(() => {
-        requestHeader();
-        requestFocus();
-      });
-      headerObserver.observe(header);
-      for (const foreground of foregrounds) headerObserver.observe(foreground);
-      // Native scroll callbacks run before paint. Automatic tween positions
-      // call the same update directly, rather than deferring another frame.
-      window.addEventListener("scroll", syncHeader, { passive: true });
-      window.addEventListener("resize", requestHeader);
-      document.addEventListener("focusin", requestFocus);
-      syncHeader();
       const revealTargets = gsap.utils.toArray<HTMLElement>("[data-reveal]");
       const nudgeLinks = gsap.utils.toArray<HTMLElement>(
         ".intro-link, .project-link, .text-link, .ledger-source a, .site-footer a, #contact-path a",
@@ -1307,16 +1313,51 @@ const year = new Date().getFullYear();
         element.addEventListener("blur", () => nudge(0));
       }
 
+      const sceneEls = gsap.utils.toArray<HTMLElement>("[data-scene]");
+      const foregroundOf = (scene: HTMLElement) =>
+        scene.querySelectorAll<HTMLElement>(".section-content, .site-footer");
+      // Runs after the controller applies its transforms, so outgoing copy can
+      // never pass under the transparent fixed nav. Every scene is clipped to
+      // the header; only foreground/footer are clipped, never the sky.
+      const syncForeground = (activeIndex: number) => {
+        const headerBottom = document
+          .querySelector<HTMLElement>(".site-header")!
+          .getBoundingClientRect().bottom;
+        for (const scene of sceneEls) {
+          foregroundOf(scene).forEach((element) => {
+            const box = element.getBoundingClientRect();
+            const cut =
+              box.bottom <= 0
+                ? 0
+                : Math.max(0, Math.min(box.height, headerBottom - box.top));
+            const clip = cut > 0 ? `inset(${cut}px 0 0)` : "";
+            if (element.style.clipPath !== clip) element.style.clipPath = clip;
+          });
+        }
+        // Expose a focused control's ring below the header within its scene.
+        const scene = sceneEls[activeIndex];
+        const focused = document.activeElement;
+        if (
+          focused instanceof HTMLElement &&
+          focused.closest("[data-scene]") === scene
+        ) {
+          const box = focused.getBoundingClientRect();
+          if (box.bottom > 0) {
+            const style = getComputedStyle(focused);
+            const ring = Math.max(
+              0,
+              parseFloat(style.outlineWidth) + parseFloat(style.outlineOffset),
+            );
+            const delta = box.top - headerBottom - ring - 1;
+            if (delta < 0) window.scrollBy({ top: delta, behavior: "instant" });
+          }
+        }
+      };
+
       const destroyLedger = setupEvidenceLedger();
-      const destroyScroll = setupSectionScroll(syncHeader);
+      const destroyScroll = setupSectionScroll(syncForeground);
       window.addEventListener("pagehide", (event) => {
         if (event.persisted) return;
-        window.removeEventListener("scroll", syncHeader);
-        window.removeEventListener("resize", requestHeader);
-        document.removeEventListener("focusin", requestFocus);
-        headerObserver.disconnect();
-        if (headerFrame) cancelAnimationFrame(headerFrame);
-        if (focusFrame) cancelAnimationFrame(focusFrame);
         destroyLedger();
         destroyScroll();
         stopMotion();

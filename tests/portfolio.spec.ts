@@ -1,4 +1,24 @@
 import { expect, test, type Page } from "@playwright/test";
+import { TIMELINE } from "../src/lib/timeline";
+
+/**
+ * Scroll the pinned timeline so a scene's screen is settled at the top. The
+ * global progress is the single source of truth; native scrollIntoView cannot
+ * reach the transformed pinned scenes.
+ */
+const goToScene = (page: Page, id: string) =>
+  page.evaluate(
+    ({ sceneId, timeline }) => {
+      document.documentElement.style.scrollBehavior = "auto";
+      const scene = timeline.find((entry) => entry.id === sceneId);
+      const scroll = document.documentElement.scrollHeight - window.innerHeight;
+      window.scrollTo({
+        top: (scene?.start ?? 0) * scroll,
+        behavior: "instant",
+      });
+    },
+    { sceneId: id, timeline: TIMELINE },
+  );
 
 const repositoryUrls = {
   WordyChain: "https://github.com/FlaBBB/WordyChain",
@@ -331,19 +351,23 @@ test("keeps text contrast readable on the plum and violet surfaces", async ({
         return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
       };
       return elements.map((el) => {
-        let background: Element | null = el;
+        // In the pinned presentation the Contact scene is transparent and the
+        // violet is a fixed surface behind the sky, so resolve it explicitly.
+        let surface: Element | null = el.closest("#contact-path")
+          ? document.querySelector(".contact-surface")
+          : el;
         while (
-          background &&
-          getComputedStyle(background).backgroundColor === "rgba(0, 0, 0, 0)"
+          surface &&
+          getComputedStyle(surface).backgroundColor === "rgba(0, 0, 0, 0)"
         ) {
-          background = background.parentElement;
+          surface = surface.parentElement;
         }
         const ink = luminance(getComputedStyle(el).color);
-        const surface = luminance(
-          getComputedStyle(background!).backgroundColor,
+        const surfaceInk = luminance(
+          getComputedStyle(surface!).backgroundColor,
         );
         return (
-          (Math.max(ink, surface) + 0.05) / (Math.min(ink, surface) + 0.05)
+          (Math.max(ink, surfaceInk) + 0.05) / (Math.min(ink, surfaceInk) + 0.05)
         );
       });
     });
@@ -526,7 +550,11 @@ test("loads the page and its local assets without browser errors", async ({
   });
   await page.goto("/");
   await expect(page.locator(".sculpture-canvas")).toBeVisible();
-  await page.locator("#technical-profile summary").nth(3).click();
+  // The profile record lives in a later pinned scene, so reach it through the
+  // product's own focus navigation before clicking it open.
+  const summary = page.locator("#technical-profile summary").nth(3);
+  await summary.focus();
+  await summary.click();
   await expect(page.locator("#evidence-detail-3")).toBeVisible();
   expect(errors).toEqual([]);
   expect(failedResponses).toEqual([]);
@@ -539,10 +567,7 @@ test.describe("section refinement", () => {
     await page.setViewportSize({ width: 1440, height: 1000 });
     await page.goto("/");
     await page.waitForFunction(() => window.__afterHoursMotionReady);
-    await page.evaluate(() => {
-      document.documentElement.style.scrollBehavior = "auto";
-      document.querySelector("#technical-profile")?.scrollIntoView();
-    });
+    await goToScene(page, "technical-profile");
 
     const rows = page.locator(".evidence-ledger details");
     expect(await page.evaluate(() => ({
@@ -577,10 +602,7 @@ test.describe("section refinement", () => {
     await page.setViewportSize({ width: 1440, height: 1000 });
     await page.goto("/");
     await page.waitForFunction(() => window.__afterHoursMotionReady);
-    await page.evaluate(() => {
-      document.documentElement.style.scrollBehavior = "auto";
-      document.querySelector("#technical-profile")?.scrollIntoView();
-    });
+    await goToScene(page, "technical-profile");
     const rows = page.locator(".evidence-ledger details");
     // Drive genuine pointer input at measured coordinates. The ambient sky
     // animates hundreds of drifting stars, which the traced Firefox renderer
@@ -644,10 +666,7 @@ test.describe("section refinement", () => {
     await page.setViewportSize({ width: 1440, height: 1000 });
     await page.goto("/");
     await page.waitForFunction(() => window.__afterHoursMotionReady);
-    await page.evaluate(() => {
-      document.documentElement.style.scrollBehavior = "auto";
-      document.querySelector("#technical-profile")?.scrollIntoView();
-    });
+    await goToScene(page, "technical-profile");
     const rows = page.locator(".evidence-ledger details");
 
     // Hover-open a row, then activate with the keyboard: the native toggle must
@@ -672,16 +691,20 @@ test.describe("section refinement", () => {
     await page.goto("/");
     await page.waitForFunction(() => window.__afterHoursMotionReady);
     await page.mouse.move(2, 2);
-    await page.evaluate(() => {
-      document.documentElement.style.scrollBehavior = "auto";
-      document.querySelector("#technical-profile")?.scrollIntoView();
-    });
+    await goToScene(page, "technical-profile");
     const fresh = page.locator(".evidence-ledger details");
     const defaultOpen = fresh.nth(0).locator("summary");
     await defaultOpen.focus();
     await expect(fresh.nth(0)).toHaveAttribute("open", "");
     const before = await page.evaluate(() => performance.now());
-    await defaultOpen.hover();
+    // Real pointer delivery without locator actionability, which waits on
+    // animation frames the paused clock never advances. Move to the measured
+    // summary centre so the pointer genuinely enters the row.
+    const centre = await defaultOpen.evaluate((el) => {
+      const box = el.getBoundingClientRect();
+      return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+    });
+    await page.mouse.move(centre.x, centre.y);
     // Real pointer delivery, but no elapsed timer time: Space genuinely arrives
     // inside the 110ms intent window even on a slow traced renderer.
     expect(await page.evaluate(() => performance.now()) - before).toBeLessThan(110);
@@ -701,10 +724,7 @@ test.describe("section refinement", () => {
     });
     const page = await context.newPage();
     await page.goto("/");
-    await page.evaluate(() => {
-      document.documentElement.style.scrollBehavior = "auto";
-      document.querySelector("#technical-profile")?.scrollIntoView();
-    });
+    await goToScene(page, "technical-profile");
     await page.waitForTimeout(400);
 
     const second = page.locator(".evidence-ledger details").nth(1);
@@ -744,12 +764,16 @@ test.describe("section refinement", () => {
     await expect(page.locator(".site-header")).toHaveCSS("backdrop-filter", "none");
     // Keep the rendered sweep in the browser: protocol/trace snapshots between
     // every geometry read otherwise dominate this five-section test.
-    const states = await field.evaluate(async el => {
+    const states = await field.evaluate(async (el, timeline) => {
       const original = [...el.querySelectorAll(".star")];
       const frame = () => new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+      const scroll = document.documentElement.scrollHeight - window.innerHeight;
       const states = [];
-      for (const selector of ["#intro", "#selected-evidence", "#technical-profile", "#learning-archive", "#contact-path"]) {
-        document.querySelector(selector)!.scrollIntoView({ behavior: "instant" });
+      for (const scene of timeline) {
+        if (scene.id === "identity") continue;
+        const selector = `#${scene.id}`;
+        document.documentElement.style.scrollBehavior = "auto";
+        window.scrollTo({ top: scene.start * scroll, behavior: "instant" });
         await frame();
         const deadline = performance.now() + 5000;
         while (getComputedStyle(el).opacity !== "1" && performance.now() < deadline) await frame();
@@ -763,13 +787,13 @@ test.describe("section refinement", () => {
         });
       }
       return states;
-    });
+    }, TIMELINE);
     for (const state of states) {
       expect(state.opacity, state.selector).toBe("1");
       expect(state.box).toEqual({ x: 0, y: 0, width: 1440, height: 1000 });
       expect(state.sameStars).toBe(true);
     }
-    expect(await page.locator(".page-body canvas").count()).toBe(0);
+    expect(await page.locator(".journey canvas").count()).toBe(0);
     await expect(page.locator(".site-header")).toHaveAttribute("data-contact", "true");
     await expect(page.getByRole("navigation").getByRole("link").first()).toHaveCSS("color", "rgb(27, 20, 48)");
     const visibleColors = await stars.evaluateAll(nodes => nodes.filter(node => {
@@ -875,10 +899,7 @@ test.describe("section refinement", () => {
   }) => {
     await page.setViewportSize({ width: 1440, height: 1000 });
     await page.goto("/");
-    await page.evaluate(() => {
-      document.documentElement.style.scrollBehavior = "auto";
-      document.querySelector("#learning-archive")?.scrollIntoView();
-    });
+    await goToScene(page, "learning-archive");
     await page.waitForTimeout(400);
 
     for (const section of await page.locator("main section").all()) {
@@ -975,46 +996,71 @@ test.describe("section refinement", () => {
     const year = new Date().getFullYear();
     await expect(page.locator(".site-footer")).toHaveCount(5);
     await expect(page.locator("#identity .site-footer")).toHaveCount(0);
-    for (const section of await page.locator(".page-body > section").all()) {
-      await expect(section.locator(".site-footer")).toHaveCount(1);
+
+    // One batched read of all five footers instead of dozens of per-element
+    // round-trips; the assertions below are unchanged.
+    const footers = await page.evaluate(() => {
+      const read = (element: Element) => {
+        const style = getComputedStyle(element);
+        const top = element.querySelector(".footer-top");
+        return {
+          scene:
+            element.closest("[data-scene]")?.getAttribute("data-scene") ?? null,
+          background: style.backgroundColor,
+          borders: [
+            style.borderTopWidth,
+            style.borderRightWidth,
+            style.borderBottomWidth,
+            style.borderLeftWidth,
+          ],
+          name: element.querySelector(".footer-name")?.textContent ?? null,
+          copy: element.querySelector(".footer-copy")?.textContent ?? null,
+          note: element.querySelector(".footer-note")?.textContent ?? null,
+          topText: top?.textContent ?? null,
+          topChildren: element.querySelectorAll(".footer-top > *").length,
+          innerGroups: element.querySelectorAll(".footer-inner > *").length,
+          ariaLabel: top?.getAttribute("aria-label") ?? null,
+          title: top?.getAttribute("title") ?? null,
+          // No separate visible "Back to top" text group remains.
+          exactBackToTop: [...element.querySelectorAll("*")].filter(
+            (child) => child.textContent?.trim() === "Back to top",
+          ).length,
+        };
+      };
+      return [...document.querySelectorAll(".site-footer")].map(read);
+    });
+
+    expect(footers.map((item) => item.scene)).toEqual([
+      "intro",
+      "selected-evidence",
+      "technical-profile",
+      "learning-archive",
+      "contact-path",
+    ]);
+    for (const item of footers) {
+      // Footers are only text on the surrounding section, not separate bands.
+      expect(item.background).toBe("rgba(0, 0, 0, 0)");
+      expect(item.borders).toEqual(["0px", "0px", "0px", "0px"]);
+      expect(item.topText).toBe("Still learning.");
+      expect(item.topChildren).toBe(1);
+      // Exactly two groups: identity and the right-hand back-to-top link.
+      expect(item.innerGroups).toBe(2);
+      // The visible label is kept in the accessible name (Label in Name).
+      expect(item.ariaLabel).toBe("Back to top — Still learning.");
+      expect(item.title).toBe("Back to top");
+      expect(item.exactBackToTop).toBe(0);
     }
-    const footer = page.locator("#contact-path .site-footer");
-    await expect(footer.locator(".footer-name")).toHaveText(
-      "Fikri Muhammad Abdillah",
-    );
-    await expect(footer.locator(".footer-copy")).toHaveText(`© ${year}`);
-    await expect(footer.locator(".footer-note")).toContainText(
-      "Still learning.",
-    );
 
-    // Exactly two groups: identity and the right-hand link.
-    const groups = footer.locator(".footer-inner > *");
-    await expect(groups).toHaveCount(2);
+    const contact = footers[4];
+    expect(contact.name).toBe("Fikri Muhammad Abdillah");
+    expect(contact.copy).toBe(`© ${year}`);
+    expect(contact.note).toContain("Still learning.");
 
-    // The right group IS the back-to-top link, with the visible label kept in
-    // its accessible name (Label in Name) and a destination title.
-    const top = footer.locator(".footer-top");
-    await expect(top).toHaveAttribute(
-      "aria-label",
-      "Back to top — Still learning.",
-    );
-    await expect(top).toHaveAttribute("title", "Back to top");
-    await expect(top).toContainText("Still learning.");
-    // No separate visible "Back to top" text group remains.
-    await expect(footer.getByText("Back to top", { exact: true })).toHaveCount(
-      0,
-    );
-
-    // Footers are only text on the surrounding section, not separate bands.
-    for (const item of await page.locator(".site-footer").all()) {
-      await expect(item).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
-      for (const edge of ["top", "right", "bottom", "left"]) {
-        await expect(item).toHaveCSS(`border-${edge}-width`, "0px");
-      }
-      await expect(item.locator(".footer-top")).toHaveText("Still learning.");
-      await expect(item.locator(".footer-top > *")).toHaveCount(1);
-    }
-
+    // Reach the Contact footer through the product's own navigation, then use
+    // its back-to-top link.
+    await page.locator('.site-header a[href="#contact-path"]').click();
+    const top = page.locator("#contact-path .footer-top");
+    await expect(top).toBeVisible();
     const box = await top.boundingBox();
     expect(box?.height).toBeGreaterThanOrEqual(44);
     await top.click();
@@ -1095,45 +1141,49 @@ for (const width of [1440, 1101, 1100, 700, 390, 320]) {
 }
 
 for (const width of [1440, 390]) {
-  test(`keeps lower foreground below the measured transparent header at ${width}px`, async ({ page }) => {
+  test(`clips outgoing foreground under the measured transparent header at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     await page.goto("/");
     await page.waitForFunction(() => window.__afterHoursMotionReady);
-    const boundaries = () => page.locator("main section").evaluateAll(elements =>
-      elements.map(element => element.getBoundingClientRect().top + scrollY),
-    );
-    const original = await boundaries();
-    for (const [id, end] of [["intro", false], ["selected-evidence", true], ["technical-profile", true]] as const) {
-      await page.locator(`#${id}`).evaluate((element, end) => {
-        const box = element.getBoundingClientRect();
-        window.scrollTo({ top: scrollY + (end ? box.bottom - innerHeight : box.top + 420), behavior: "instant" });
-      }, end);
+    await page.waitForSelector(".sky-plane .sculpture-canvas");
+    const scrollToProgress = async (value: number) => {
+      await page.evaluate((p) => {
+        document.documentElement.style.scrollBehavior = "auto";
+        const scroll = document.documentElement.scrollHeight - window.innerHeight;
+        window.scrollTo({ top: p * scroll, behavior: "instant" });
+      }, value);
+      await page.waitForTimeout(300);
+    };
+
+    // In the middle of each transition the outgoing screen's foreground is
+    // clipped exactly to the header, so its copy cannot pass under the nav.
+    for (const value of [0.135, 0.265, 0.495]) {
+      await scrollToProgress(value);
       await expect.poll(() => page.evaluate(() => {
         const bottom = document.querySelector(".site-header")!.getBoundingClientRect().bottom;
-        return [...document.querySelectorAll(".page-body .section-content, .page-body .site-footer")].every(element => {
+        return [...document.querySelectorAll("[data-scene] .section-content, [data-scene] .site-footer")].every(element => {
           const box = element.getBoundingClientRect();
-          if (box.top >= bottom) return getComputedStyle(element).clipPath === "none";
-          const cut = Number(getComputedStyle(element).clipPath.match(/^inset\(([\d.]+)px/)?.[1]);
+          // Only visible foreground can pass under the nav; a fully scrolled-out
+          // screen is irrelevant.
+          if (box.bottom <= 0) return true;
+          const clip = getComputedStyle(element).clipPath;
+          if (box.top >= bottom) return clip === "none";
+          const cut = Number(clip.match(/^inset\(([\d.]+)px/)?.[1]);
           return Math.abs(cut - Math.min(box.height, bottom - box.top)) < 1;
         });
       })).toBe(true);
-      // DOMRect cancellation can differ by fractions of a device pixel after
-      // scrolling; catch layout movement, not IEEE floating-point noise.
-      (await boundaries()).forEach((y, index) => expect(y).toBeCloseTo(original[index], 2));
     }
+
     await expect(page.locator(".site-header")).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
     await expect(page.locator(".site-header")).toHaveCSS("backdrop-filter", "none");
     await expect(page.locator("#identity")).toHaveCSS("clip-path", "none");
-    await expect(page.locator(".starfield")).toHaveCSS("clip-path", "none");
+    // The persistent sky is never masked by the foreground clip.
+    await expect(page.locator(".sky-plane")).toHaveCSS("clip-path", "none");
 
     // A Source focused from the clipped band must bring its complete keyboard
-    // ring below the responsive header, without changing section boundaries.
+    // ring below the responsive header.
+    await scrollToProgress(0.62);
     const source = page.locator(".evidence-ledger > li").nth(3).locator(".ledger-source a");
-    await source.evaluate(element => {
-      const box = element.getBoundingClientRect();
-      const bottom = document.querySelector(".site-header")!.getBoundingClientRect().bottom;
-      window.scrollTo({ top: scrollY + box.top - bottom / 2, behavior: "instant" });
-    });
     await source.focus();
     await expect(source).toBeFocused();
     await expect.poll(() => source.evaluate(element => {
@@ -1141,173 +1191,381 @@ for (const width of [1440, 390]) {
       const ring = parseFloat(style.outlineWidth) + parseFloat(style.outlineOffset);
       return element.getBoundingClientRect().top - ring - document.querySelector(".site-header")!.getBoundingClientRect().bottom;
     })).toBeGreaterThanOrEqual(0);
-    (await boundaries()).forEach((y, index) => expect(y).toBeCloseTo(original[index], 2));
   });
 }
 
 test.describe("full-page transitions", () => {
   test.use({ viewport: { width: 1440, height: 1000 } });
 
-  // Real wheel input with controlled tween time: the native scroll and its
-  // scroll events arrive in real time, while tween time is fake. Advance
-  // controlled time in observable steps until the boundary completion actually
-  // starts, so the tween is driven from its real start rather than from an
-  // assumed fixed advance.
-  const controlledWheel = async (page: Page) => {
-    await page.clock.install();
-    await page.clock.pauseAt(new Date(Date.now() + 1000));
+  // The whole page shares ONE global progress: scrollY / (scrollHeight -
+  // innerHeight), 0 at the Opening and 1 at the Contact bottom. Sections hold
+  // their initial view while they are read and scrub to the next slide across a
+  // short outgoing window. Native scrolling is free: nothing snaps or completes
+  // a gesture.
+  const scrollToProgress = async (page: Page, value: number) => {
+    await page.evaluate((p) => {
+      document.documentElement.style.scrollBehavior = "auto";
+      const scroll =
+        document.documentElement.scrollHeight - window.innerHeight;
+      window.scrollTo({ top: p * scroll, behavior: "instant" });
+    }, value);
+    await page.waitForTimeout(300);
+  };
+
+  test("keeps genuine Tab progression inside the global timeline, with no inner stage scroll", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    await page.waitForFunction(() => window.__afterHoursMotionReady);
+    await page.waitForSelector(".sky-plane .sculpture-canvas");
+
+    // The clipped stage must never become an independent scroll container:
+    // focus navigation maps a target onto global progress instead.
+    const readState = () =>
+      page.evaluate(() => {
+        const element = document.activeElement as HTMLElement | null;
+        const box = element?.getBoundingClientRect();
+        const headerBottom =
+          document.querySelector(".site-header")?.getBoundingClientRect()
+            .bottom ?? 0;
+        return {
+          stageScrollTop:
+            document.querySelector(".journey .stage")?.scrollTop ?? null,
+          scene:
+            element?.closest("[data-scene]")?.getAttribute("data-scene") ?? null,
+          visible:
+            !!box &&
+            box.bottom > 0 &&
+            box.top >= headerBottom - 2 &&
+            box.bottom <= window.innerHeight + 2,
+        };
+      });
+
+    let reachedProfile = false;
+    for (let index = 0; index < 40 && !reachedProfile; index += 1) {
+      await page.keyboard.press("Tab");
+      let state = await readState();
+      // An already-visible control keeps its position, so only an offscreen
+      // reveal needs a frame for the pinned render to catch up.
+      if (state.scene && !state.visible) {
+        await page.waitForTimeout(240);
+        state = await readState();
+      }
+      expect(state.stageScrollTop, `tab ${index + 1}`).toBe(0);
+      if (!state.scene) continue;
+      // Every control the keyboard reaches is actually revealed at its own read
+      // position, including deep inside the long Work/Profile scenes.
+      expect(state.visible, `tab ${index + 1} in ${state.scene}`).toBe(true);
+      if (state.scene === "technical-profile") reachedProfile = true;
+    }
+    expect(reachedProfile).toBe(true);
+  });
+
+  test("lands deep links, same-hash navigation and footer anchors on the scene start", async ({
+    page,
+  }) => {
+    const progress = () =>
+      page.evaluate(() => {
+        const scroll =
+          document.documentElement.scrollHeight - window.innerHeight;
+        return Number((window.scrollY / scroll).toFixed(3));
+      });
+    const stageScrollTop = () =>
+      page.evaluate(
+        () => document.querySelector(".journey .stage")?.scrollTop ?? null,
+      );
+
+    // A deep link is honoured on load, before any click.
+    await page.goto("/#selected-evidence");
+    await page.waitForFunction(() => window.__afterHoursMotionReady);
+    expect(await progress()).toBeCloseTo(TIMELINE[2].start, 2);
+    expect(await stageScrollTop()).toBe(0);
+
+    // Repeating the same hash still lands on the same scene start.
+    const navLink = page.locator('.site-header a[href="#selected-evidence"]');
+    await navLink.click();
+    await navLink.click();
+    expect(await progress()).toBeCloseTo(TIMELINE[2].start, 2);
+    expect(await stageScrollTop()).toBe(0);
+
+    // A footer anchor at the end of the long Work scene navigates through the
+    // same explicit path, never through a native jump inside the clipped stage.
+    const footerLink = page
+      .locator('[data-scene="selected-evidence"] .site-footer a[href^="#"]')
+      .first();
+    const target = await footerLink.getAttribute("href");
+    // The footer sits at the end of the section, so reveal it the way a keyboard
+    // visitor would before using it.
+    await footerLink.focus();
+    await page.waitForTimeout(400);
+    await footerLink.click();
+    await page.waitForTimeout(300);
+    expect(await page.evaluate(() => location.hash)).toBe(target);
+    expect(await stageScrollTop()).toBe(0);
+  });
+
+  test("holds each short section through its stable interval, then scrubs to the next", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    await page.waitForFunction(() => window.__afterHoursMotionReady);
+    await page.waitForSelector(".sky-plane .sculpture-canvas");
+
+    // The Intro holds its whole screen while read: the section top stays pinned
+    // at the viewport top and its content does not move. Points come from the
+    // configured timeline, not from the human's illustrative 20–25% example.
+    const intro = TIMELINE[1];
+    const midTransition = (intro.outStart + intro.outEnd) / 2;
+    const held = () =>
+      page.evaluate(() => {
+        const scene = document.querySelector("#intro")!;
+        const heading = document.querySelector("#intro-heading")!;
+        return {
+          top: Math.round(scene.getBoundingClientRect().top),
+          headingTop: Math.round(heading.getBoundingClientRect().top),
+        };
+      });
+
+    await scrollToProgress(page, intro.start + (intro.outStart - intro.start) * 0.3);
+    const early = await held();
+    await scrollToProgress(page, intro.outStart - 0.005);
+    const late = await held();
+    expect(Math.abs(early.top)).toBeLessThan(2);
+    expect(Math.abs(late.top)).toBeLessThan(2);
+    expect(Math.abs(late.headingTop - early.headingTop)).toBeLessThan(2);
+
+    // Mid-transition both screens are on stage: the outgoing Intro has lifted
+    // and the incoming Work is already arriving, before either has settled.
+    await scrollToProgress(page, midTransition);
+    const middle = await page.evaluate(() => ({
+      introTop: Math.round(document.querySelector("#intro")!.getBoundingClientRect().top),
+      workTop: Math.round(
+        document.querySelector("#selected-evidence")!.getBoundingClientRect().top,
+      ),
+    }));
+    expect(middle.introTop).toBeLessThan(-8);
+    expect(middle.workTop).toBeGreaterThan(8);
+
+    // Across the end of the outgoing window the next slide has settled.
+    await scrollToProgress(page, intro.outEnd);
+    const settled = await page.evaluate(() => ({
+      workTop: Math.round(
+        document.querySelector("#selected-evidence")!.getBoundingClientRect().top,
+      ),
+      gather: Number(
+        (document.querySelector(".sculpture") as HTMLElement).dataset.gather,
+      ),
+    }));
+    expect(Math.abs(settled.workTop)).toBeLessThan(2);
+    expect(settled.gather).toBe(0);
+  });
+
+  test("leaves a real partial gesture in place with no idle auto-completion", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    await page.waitForFunction(() => window.__afterHoursMotionReady);
+    await page.waitForSelector(".sky-plane .sculpture-canvas");
+
+    // A genuine wheel gesture that stops inside the Intro's outgoing transition,
+    // then settles. No completion, snap or idle motion may move it afterward.
+    const settle = async () => {
+      let last = await page.evaluate(() => window.scrollY);
+      for (let i = 0; i < 20; i += 1) {
+        await page.waitForTimeout(150);
+        const now = await page.evaluate(() => window.scrollY);
+        if (Math.abs(now - last) < 0.5) return now;
+        last = now;
+      }
+      return last;
+    };
+    const progress = () =>
+      page.evaluate(() => {
+        const scroll =
+          document.documentElement.scrollHeight - window.innerHeight;
+        return window.scrollY / scroll;
+      });
+
+    // Stop just before the transition, then wheel to its midpoint so the gesture
+    // genuinely ends mid-scrub instead of inside a hold.
+    const scrollDistance = await page.evaluate(
+      () => document.documentElement.scrollHeight - window.innerHeight,
+    );
+    const beforeTransition = TIMELINE[1].outStart - 0.015;
+    await scrollToProgress(page, beforeTransition);
+    await page.mouse.move(700, 400);
+    await page.mouse.wheel(
+      0,
+      Math.round(
+        ((TIMELINE[1].outStart + TIMELINE[1].outEnd) / 2 - beforeTransition) *
+          scrollDistance,
+      ),
+    );
+    const entered = await settle();
+    const enteredProgress = await progress();
+    expect(entered).toBeGreaterThan(0);
+    expect(enteredProgress).toBeGreaterThan(TIMELINE[1].outStart);
+    expect(enteredProgress).toBeLessThan(TIMELINE[1].outEnd);
+    // Idle: the raw offset is unchanged, so no gesture completion ran.
+    await page.waitForTimeout(1600);
+    expect(await page.evaluate(() => window.scrollY)).toBeCloseTo(entered, 0);
+
+    // The reverse direction behaves the same: a real upward wheel holds where
+    // it stopped, even across the transition boundary.
+    await page.mouse.wheel(0, -260);
+    const backed = await settle();
+    expect(backed).toBeLessThan(entered);
+    await page.waitForTimeout(1600);
+    expect(await page.evaluate(() => window.scrollY)).toBeCloseTo(backed, 0);
+  });
+
+  test("moves the original stars with real scroll speed and direction", async ({
+    page,
+  }) => {
     await page.goto("/");
     await page.waitForFunction(() => window.__afterHoursMotionReady);
     await page.waitForSelector(".starfield .star");
     await page.mouse.move(700, 400);
-    return async () => {
-      const flying = () =>
-        page.evaluate(() => document.documentElement.dataset.flight === "true");
-      for (let step = 0; step < 5 && !(await flying()); step += 1) {
-        await page.clock.fastForward(200);
-      }
-      expect(await flying()).toBe(true);
+
+    // The DOM stars carry real WAAPI drift; read their actual playback rate.
+    const rates = () =>
+      page.evaluate(() =>
+        document
+          .querySelector(".starfield")!
+          .getAnimations({ subtree: true })
+          .map((animation) => animation.playbackRate),
+      );
+    // Record the real drift playback rate across every frame of a gesture, so a
+    // brief pulse is captured regardless of host frame rate.
+    const startRecorder = () =>
+      page.evaluate(() => {
+        const host = document.querySelector(".starfield")!;
+        const state = { min: Infinity, max: -Infinity };
+        (window as unknown as { __rate: typeof state }).__rate = state;
+        const tick = () => {
+          const values = host
+            .getAnimations({ subtree: true })
+            .map((animation) => animation.playbackRate);
+          if (values.length) {
+            state.min = Math.min(state.min, ...values);
+            state.max = Math.max(state.max, ...values);
+          }
+          (window as unknown as { __rateRaf?: number }).__rateRaf =
+            requestAnimationFrame(tick);
+        };
+        (window as unknown as { __rateRaf?: number }).__rateRaf =
+          requestAnimationFrame(tick);
+      });
+    const stopRecorder = () =>
+      page.evaluate(() => {
+        cancelAnimationFrame(
+          (window as unknown as { __rateRaf?: number }).__rateRaf ?? 0,
+        );
+        return (window as unknown as { __rate: { min: number; max: number } })
+          .__rate;
+      });
+    const settleIdle = async () => {
+      await page.waitForTimeout(600);
+      const values = await rates();
+      return { max: Math.max(...values), min: Math.min(...values) };
     };
-  };
 
-  test("returns a below-threshold wheel gesture to the Opening", async ({
-    page,
-  }) => {
-    // Below the 25% threshold the real wheel gesture starts, then the automatic
-    // completion returns the page to the Opening.
-    const advanceUntilFlight = await controlledWheel(page);
-    await page.mouse.wheel(0, 200);
-    // Await the wheel's full intended offset before controlling tween time.
-    await expect.poll(() => page.evaluate(() => Math.round(scrollY))).toBe(200);
-    await advanceUntilFlight();
-    for (const elapsed of [450, 450, 16]) await page.clock.fastForward(elapsed);
-    await expect.poll(() => page.evaluate(() => scrollY)).toBe(0);
-  });
+    // Perform a genuine wheel gesture and record the real drift rate throughout.
+    const sample = async (delta: number) => {
+      const before = await page.evaluate(() => window.scrollY);
+      await startRecorder();
+      await page.mouse.wheel(0, delta);
+      await page.waitForTimeout(200);
+      const recorded = await stopRecorder();
+      return { before, after: await page.evaluate(() => window.scrollY), ...recorded };
+    };
 
-  test("finishes an above-threshold wheel gesture and disperses the mark during the automatic transition", async ({
-    page,
-  }) => {
-    // Above the threshold: no second input, yet the page reaches Intro. A slow
-    // renderer must still expose the exact middle pose and native playback rate.
-    const advanceUntilFlight = await controlledWheel(page);
-
-    await page.mouse.wheel(0, 300);
-    await expect.poll(() => page.evaluate(() => Math.round(scrollY))).toBe(300);
-    await advanceUntilFlight();
-    // The await-flight step above already consumed the idle delay, so advance
-    // only the remaining controlled tween time to sample the middle pose.
-    for (const elapsed of [200, 200, 16]) await page.clock.fastForward(elapsed);
-    const middle = await page.evaluate(() => ({
-      y: scrollY,
-      opacity: Number(getComputedStyle(document.querySelector(".sculpture-field")!).opacity),
-      speed: Math.max(...document.querySelector(".starfield")!
-        .getAnimations({ subtree: true }).map(animation => animation.playbackRate)),
-    }));
-    expect(middle.y).toBeGreaterThan(350);
-    expect(middle.y).toBeLessThan(900);
-    expect(middle.opacity).toBeGreaterThan(0);
-    expect(middle.opacity).toBeLessThan(0.7);
-    expect(middle.speed).toBeGreaterThan(8);
-    for (const elapsed of [450, 450, 16]) await page.clock.fastForward(elapsed);
-    await expect.poll(() => page.evaluate(() => scrollY)).toBe(1000);
-    await expect(page.locator(".sculpture-field")).toHaveCSS("opacity", "0");
-    await page.clock.fastForward(3000);
-    await expect.poll(() => page.locator(".starfield").evaluate(el =>
-      el.getAnimations({ subtree: true }).every(animation => animation.playbackRate === 1),
-    )).toBe(true);
-
-    // Reverse completes too; the assembled mark returns at the same position.
-    await page.mouse.wheel(0, -300);
-    await expect.poll(() => page.evaluate(() => Math.round(scrollY))).toBe(700);
-    await advanceUntilFlight();
-    for (const elapsed of [450, 450, 16]) await page.clock.fastForward(elapsed);
-    await expect.poll(() => page.evaluate(() => scrollY)).toBe(0);
-    await expect(page.locator(".sculpture-field")).toHaveCSS("opacity", "1");
-  });
-
-  test("leaves long sections free to scroll and returns to their last viewport", async ({
-    page,
-  }) => {
-    await page.goto("/");
-    await page.waitForFunction(() => window.__afterHoursMotionReady);
-    const work = await page.locator("#selected-evidence").evaluate((el) => {
-      const box = el.getBoundingClientRect();
-      return { top: box.top + scrollY, bottom: box.bottom + scrollY };
+    // A slow gesture accelerates the drift only modestly.
+    await page.evaluate(() => {
+      document.documentElement.style.scrollBehavior = "auto";
     });
-    expect(work.bottom - work.top).toBeGreaterThan(1000);
-    await page.evaluate(
-      (y) => window.scrollTo({ top: y, behavior: "instant" }),
-      work.top + 100,
-    );
-    await page.mouse.move(3, 400);
-    await page.mouse.wheel(0, 100);
-    await page.waitForTimeout(1400);
-    expect(
-      Math.abs((await page.evaluate(() => scrollY)) - (work.top + 200)),
-    ).toBeLessThan(2);
+    const slow = await sample(60);
+    expect(slow.after).not.toBe(slow.before);
+    await settleIdle();
 
-    const end = work.bottom - 1000;
-    await page.evaluate(
-      (y) => window.scrollTo({ top: y, behavior: "instant" }),
-      end,
-    );
-    await page.mouse.wheel(0, 300);
-    await expect
-      .poll(async () =>
-        Math.abs((await page.evaluate(() => scrollY)) - work.bottom),
-      )
-      .toBeLessThan(2);
-    await page.mouse.wheel(0, -300);
-    await expect
-      .poll(async () => Math.abs((await page.evaluate(() => scrollY)) - end))
-      .toBeLessThan(2);
+    // A fast gesture accelerates it much more.
+    const fast = await sample(900);
+    expect(fast.after).not.toBe(fast.before);
+    expect(fast.max).toBeGreaterThan(slow.max);
+    expect(fast.max).toBeGreaterThan(1.5);
+
+    // Reverse runs the real drift animations backward (signed rate).
+    await settleIdle();
+    const reverse = await sample(-900);
+    expect(reverse.after).toBeLessThan(reverse.before);
+    expect(reverse.min).toBeLessThan(0);
+
+    // Idle drift resumes when input stops.
+    const idle = await settleIdle();
+    expect(idle.max).toBeLessThan(2);
+    expect(idle.min).toBeGreaterThanOrEqual(0);
   });
 
-  test("cancels an in-flight snap on new input and on a reduced-motion change", async ({
+  test("keeps the original sampled cloud composited behind a later section", async ({
     page,
   }) => {
-    test.setTimeout(60_000);
-    await page.clock.install();
-    await page.clock.pauseAt(new Date(Date.now() + 1000));
     await page.goto("/");
     await page.waitForFunction(() => window.__afterHoursMotionReady);
-    await page.mouse.move(700, 400);
-    await page.mouse.wheel(0, 300);
-    await expect.poll(() => page.evaluate(() => scrollY)).toBe(300);
-    // Advance elapsed time in steps below GSAP's 500ms lag threshold. The
-    // contract is the mid-flight and stopped positions, not fake frame count.
-    for (let step = 0; step < 3; step += 1) await page.clock.fastForward(200);
-    expect(await page.evaluate(() => scrollY)).toBeGreaterThan(400);
-    await page.keyboard.press("Escape");
-    const interrupted = await page.evaluate(() => scrollY);
-    expect(interrupted).toBeLessThan(1000);
-    for (let step = 0; step < 4; step += 1) await page.clock.fastForward(250);
-    expect(await page.evaluate(() => scrollY)).toBe(interrupted);
+    await page.waitForSelector(".sky-plane .sculpture-canvas");
+    // A settled later screen, with the violet Contact surface visible.
+    await scrollToProgress(page, 0.95);
+    await page.waitForTimeout(800);
 
-    await page.evaluate(() => window.scrollTo({ top: 0, behavior: "instant" }));
-    await page.mouse.wheel(0, 300);
-    await expect.poll(() => page.evaluate(() => scrollY)).toBe(300);
-    for (let step = 0; step < 3; step += 1) await page.clock.fastForward(200);
-    expect(await page.evaluate(() => scrollY)).toBeGreaterThan(400);
-    await page.emulateMedia({ reducedMotion: "reduce" });
-    // The media change is delivered as a task, so let it run and cancel the
-    // snap before sampling the frozen position; sampling first would race the
-    // still-running tween and record a pre-cancel offset.
-    await page.clock.runFor(60);
-    const reduced = await page.evaluate(() => scrollY);
-    expect(reduced).toBeLessThan(1000);
-    await page.clock.runFor(1000);
-    expect(await page.evaluate(() => scrollY)).toBe(reduced);
-    await page.mouse.wheel(0, 100);
-    await expect
-      .poll(async () =>
-        Math.abs((await page.evaluate(() => scrollY)) - (reduced + 100)),
-      )
-      .toBeLessThan(2);
-    await page.clock.runFor(1200);
-    expect(
-      Math.abs((await page.evaluate(() => scrollY)) - (reduced + 100)),
-    ).toBeLessThan(2);
+    const canvas = page.locator(".sky-plane .sculpture-canvas");
+    await expect(canvas).toBeVisible();
+    // The original cloud is still painting its own buffer.
+    const painted = await canvas.evaluate((element) => {
+      const c = element as HTMLCanvasElement;
+      const ctx = c.getContext("2d")!;
+      const data = ctx.getImageData(0, 0, c.width, c.height).data;
+      let count = 0;
+      for (let i = 3; i < data.length; i += 4) if (data[i] > 16) count += 1;
+      return count;
+    });
+    expect(painted).toBeGreaterThan(200);
+
+    // Freeze every rendered clock first, so an A/B/A2 comparison isolates the
+    // canvas's own compositing rather than confounding ambient motion.
+    await page.evaluate(() => {
+      Object.defineProperty(document, "hidden", {
+        configurable: true,
+        get: () => true,
+      });
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    await page.waitForTimeout(200);
+
+    // Visible-output proof: with the original canvas shown the rendered frame
+    // differs from the same frozen frame with the canvas hidden, and restoring
+    // the canvas reproduces the exact original frame.
+    const clip = { x: 0, y: 0, width: 1440, height: 1000 };
+    const shown = await page.screenshot({ clip });
+    await canvas.evaluate((element) => {
+      (element as HTMLCanvasElement).style.visibility = "hidden";
+    });
+    await page.waitForTimeout(120);
+    const hidden = await page.screenshot({ clip });
+    await canvas.evaluate((element) => {
+      (element as HTMLCanvasElement).style.visibility = "";
+    });
+    await page.waitForTimeout(120);
+    const restored = await page.screenshot({ clip });
+
+    expect(shown.equals(restored)).toBe(true);
+    expect(shown.equals(hidden)).toBe(false);
+
+    await page.evaluate(() => {
+      Object.defineProperty(document, "hidden", {
+        configurable: true,
+        get: () => false,
+      });
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
   });
 
   test("animates a Source-hover disclosure and reverses it without stranding content", async ({
@@ -1317,21 +1575,10 @@ test.describe("full-page transitions", () => {
     await page.clock.pauseAt(new Date(Date.now() + 1000));
     await page.goto("/");
     await page.waitForFunction(() => window.__afterHoursMotionReady);
-    await page.evaluate(
-      () =>
-        new Promise<void>((resolve) => {
-          const ledger = document.querySelector(".evidence-ledger")!;
-          const observer = new IntersectionObserver((entries) => {
-            if (!entries.some((entry) => entry.isIntersecting)) return;
-            observer.disconnect();
-            resolve();
-          });
-          observer.observe(ledger);
-          document
-            .querySelector("#technical-profile")!
-            .scrollIntoView({ behavior: "instant" });
-        }),
-    );
+    // Reach the Profile scene through the global timeline (native scrollIntoView
+    // cannot move the transformed pinned scenes), then let the controller render.
+    await goToScene(page, "technical-profile");
+    await page.clock.runFor(60);
     const row = page.locator(".evidence-ledger > li").nth(2);
     const panel = row.locator(".ledger-panel");
     // Focus settles this row's entrance through the page's public keyboard

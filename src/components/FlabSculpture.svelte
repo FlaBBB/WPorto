@@ -2,16 +2,16 @@
   import { onMount } from "svelte";
   import gsap from "gsap";
   import { FLAB_PATH, FLAB_FILL_RULE, FLAB_VIEWBOX } from "../lib/flabMark";
+  import { skyState } from "../lib/timeline";
 
   /**
-   * The opening sculpture. Its assembled target is sampled from the same filled
-   * `flab` geometry that renders the header logo, so the gathered shape is the
-   * real mark rather than an approximation.
+   * The opening sculpture's particle field.
    *
-   * The opening occupies one viewport. Scroll, including the page's automatic
-   * transition to Intro, breaks the mark into a depth-varied star cloud.
-   * Reversing that transition reforms it. The field stays viewport-centred
-   * during the transition and fades away before the lower sections take over.
+   * Its assembled target is sampled from the same filled `flab` geometry that
+   * renders the header logo, so the gathered shape is the real mark. The cloud
+   * is a persistent backdrop: it lives in the global sky plane and stays behind
+   * every later section, dispersing with the global timeline progress and
+   * drifting with the signed scroll velocity. Reversing reforms the same mark.
    *
    * A second, sparse ambient population drifts on its own clock behind the mark
    * so the sky stays alive at rest without touching the mark's legibility.
@@ -26,6 +26,9 @@
   const SAMPLE_GRID = 4.4;
   /** Particles whose delay is below this never lag the gather at full assembly. */
   const GATHER_STAGGER = 0.5;
+  /** Quiet radius, in px, around a real text line box. */
+  const QUIET_CORE = 14;
+  const QUIET_FEATHER = 46;
 
   const GLYPHS = ["+", "·", "•", "✳", "✦", "⋆", "✧", "﹡", "⋅", "✶", "*", "⁕"];
   const DENSE_GLYPHS = new Set(["•", "✳", "✦", "✧", "﹡", "✶", "⁕"]);
@@ -49,6 +52,11 @@
     glyphPhase: number;
     size: number;
     tone: number;
+    // Gentle ambient drift, applied only away from the assembled mark so the
+    // gathered letterform stays exact while the dispersed cloud stays alive.
+    driftAmp: number;
+    driftFreq: number;
+    driftPhase: number;
   };
 
   type Ambient = {
@@ -69,9 +77,10 @@
     alphaPhase: number;
   };
 
-  let scene: HTMLDivElement;
-  let sticky: HTMLDivElement;
   let field: HTMLDivElement;
+  // The persistent cloud lives in the global sky plane, outside the pinned
+  // stage, so the stage's stacking context can never trap it.
+  let plane: HTMLElement | undefined;
   let canvas: HTMLCanvasElement | undefined;
   let context: CanvasRenderingContext2D | undefined;
   let ambientCanvas: HTMLCanvasElement | undefined;
@@ -100,9 +109,12 @@
   // Observable contract for tests: the proven |z| bound the focal length clears.
   let depthBound = $state(0);
   let running = false;
-  let visible = true;
+  // Accumulated motion time (seconds), read from the shared timeline clock.
   let clock = 0;
-  let drawnGather = NaN;
+  // Idle particle-field repaint interval, in ms. The field still drifts, just
+  // at a cadence a slow renderer can sustain.
+  const IDLE_PAINT_MS = 50;
+  let lastMainPaint = 0;
   let fontFamily = "ui-monospace, monospace";
   // Glyph sizes follow the fitted mark so a small viewport does not fill the
   // letterform's counters with oversized stars.
@@ -111,6 +123,16 @@
 
   function clamp01(value: number) {
     return Math.min(1, Math.max(0, value));
+  }
+
+  function smoothstep(value: number) {
+    const t = clamp01(value);
+    return t * t * (3 - 2 * t);
+  }
+
+  /** Positive modulo: reverse motion can drive the phase below zero. */
+  function wrap(value: number, mod: number) {
+    return ((value % mod) + mod) % mod;
   }
 
   /** Deterministic pseudo-random in [0,1) from an index and salt. */
@@ -227,6 +249,9 @@
         glyphPhase: rand(index, 8) * 12,
         size: 0.7 + rand(index, 9) * 0.75,
         tone: rand(index, 10),
+        driftAmp: 4 + rand(index, 12) * 10,
+        driftFreq: 0.12 + rand(index, 13) * 0.3,
+        driftPhase: rand(index, 14) * Math.PI * 2,
       });
     }
     particles = next;
@@ -331,6 +356,12 @@
     const rotY = Math.sin(clock * 0.12) * MAX_ROT_Y * opening;
     const rotX = Math.cos(clock * 0.09) * MAX_ROT_X * opening;
 
+    // Over the violet Contact surface the cloud switches to plum ink so it stays
+    // readable instead of leaving white specks on a light surface. The surface
+    // visibility is published by the timeline controller, not read from an
+    // inactive scene's geometry.
+    const contact = skyState.contact > 0.5;
+
     context.textAlign = "center";
     context.textBaseline = "middle";
 
@@ -338,8 +369,21 @@
       const local = clamp01((gather - particle.delay) / (1 - GATHER_STAGGER));
       const eased = easeOutCubic(local);
 
-      const x = particle.sx + (particle.tx - particle.sx) * eased;
-      const y = particle.sy + (particle.ty - particle.sy) * eased;
+      // Subtle ambient drift that vanishes at full assembly, so the dispersed
+      // cloud stays alive behind every section while the gathered mark is exact.
+      const drift = 1 - gather;
+      const wobbleX =
+        Math.sin(clock * particle.driftFreq + particle.driftPhase) *
+        particle.driftAmp *
+        drift;
+      const wobbleY =
+        Math.cos(clock * particle.driftFreq * 0.83 + particle.driftPhase) *
+        particle.driftAmp *
+        0.7 *
+        drift;
+
+      const x = particle.sx + (particle.tx - particle.sx) * eased + wobbleX;
+      const y = particle.sy + (particle.ty - particle.sy) * eased + wobbleY;
       const z = particle.sz + (particle.tz - particle.sz) * eased;
 
       const point = project(x, y, z, rotY, rotX, cx, cy);
@@ -362,18 +406,34 @@
         point.scale;
       if (size < 1.1) continue;
 
-      const glyphIndex =
-        (particle.glyph +
-          Math.floor(clock * particle.glyphRate + particle.glyphPhase)) %
-        GLYPHS.length;
+      const glyphIndex = wrap(
+        particle.glyph +
+          Math.floor(clock * particle.glyphRate + particle.glyphPhase),
+        GLYPHS.length,
+      );
       const glyph = GLYPHS[glyphIndex];
       const dense = DENSE_GLYPHS.has(glyph);
 
-      const scatteredAlpha = 0.3 + near * 0.62;
+      const scatteredAlpha = 0.24 + near * 0.5;
       const assembledAlpha = 0.62 + near * 0.38;
       const baseAlpha =
         scatteredAlpha + (assembledAlpha - scatteredAlpha) * gather;
       let alpha = baseAlpha * (0.5 + 0.5 * Math.min(1, point.scale));
+
+      // Feather the dispersed cloud around real text line boxes so it never
+      // collides with prose, without masking whole rectangular columns. The
+      // gathered mark is untouched: quiet relaxes to 1 as gather rises.
+      if (quietBoxes.length) {
+        let distance = Infinity;
+        for (const box of quietBoxes) {
+          const dx = Math.max(box.left - point.x, point.x - box.right, 0);
+          const dy = Math.max(box.top - point.y, point.y - box.bottom, 0);
+          distance = Math.min(distance, Math.hypot(dx, dy));
+          if (distance <= QUIET_CORE) break;
+        }
+        const quiet = smoothstep((distance - QUIET_CORE) / QUIET_FEATHER);
+        alpha *= quiet + (1 - quiet) * gather;
+      }
 
       // Fade fully to zero at the field edge so the cloud dissolves instead of
       // ending on the clipped boundary with a flat-cut glyph.
@@ -383,15 +443,17 @@
       alpha *= edge;
       if (alpha < 0.01) continue;
 
-      const violet = particle.tone > 0.84;
-      context.fillStyle = violet
-        ? `rgba(167, 139, 250, ${alpha.toFixed(3)})`
-        : `rgba(236, 232, 244, ${alpha.toFixed(3)})`;
+      const overContact = contact;
+      const violet = !overContact && particle.tone > 0.84;
+      context.fillStyle = overContact
+        ? `rgba(27, 20, 48, ${alpha.toFixed(3)})`
+        : violet
+          ? `rgba(167, 139, 250, ${alpha.toFixed(3)})`
+          : `rgba(236, 232, 244, ${alpha.toFixed(3)})`;
 
       context.font = `${dense ? 400 : 300} ${size.toFixed(1)}px ${fontFamily}`;
       context.fillText(glyph, point.x, point.y);
     }
-    drawnGather = gather;
   }
 
   function renderAmbient(seconds: number) {
@@ -402,24 +464,32 @@
     ambientContext.textAlign = "center";
     ambientContext.textBaseline = "middle";
 
+    const contact = document
+      .querySelector("#contact-path")
+      ?.getBoundingClientRect();
+
     for (const star of ambient) {
       const x = star.ax + Math.sin(seconds * star.freqX + star.phaseX) * star.amp;
       const y = star.ay + Math.cos(seconds * star.freqY + star.phaseY) * star.amp;
       if (x < -32 || x > width + 32 || y < -32 || y > height + 32) continue;
 
-      const glyphIndex =
-        (star.glyph +
-          Math.floor(seconds * star.glyphRate + star.glyphPhase)) %
-        GLYPHS.length;
+      const glyphIndex = wrap(
+        star.glyph +
+          Math.floor(seconds * star.glyphRate + star.glyphPhase),
+        GLYPHS.length,
+      );
       const glyph = GLYPHS[glyphIndex];
       const pulse = 0.62 + 0.38 * Math.sin(seconds * star.alphaFreq + star.alphaPhase);
       const alpha = star.baseAlpha * pulse;
       if (alpha < 0.01) continue;
 
-      const violet = star.tone > 0.8;
-      ambientContext.fillStyle = violet
-        ? `rgba(167, 139, 250, ${alpha.toFixed(3)})`
-        : `rgba(236, 232, 244, ${alpha.toFixed(3)})`;
+      const overContact = !!contact && y >= contact.top && y <= contact.bottom;
+      const violet = !overContact && star.tone > 0.8;
+      ambientContext.fillStyle = overContact
+        ? `rgba(27, 20, 48, ${alpha.toFixed(3)})`
+        : violet
+          ? `rgba(167, 139, 250, ${alpha.toFixed(3)})`
+          : `rgba(236, 232, 244, ${alpha.toFixed(3)})`;
       const dense = DENSE_GLYPHS.has(glyph);
       ambientContext.font = `${dense ? 400 : 300} ${star.size.toFixed(1)}px ${fontFamily}`;
       ambientContext.fillText(glyph, x, y);
@@ -427,15 +497,26 @@
   }
 
   function tick() {
-    // GSAP updates the page position before this ticker listener. Read and
-    // paint that pose once, without waiting for a later native scroll event.
-    clock = performance.now() / 1000;
-    computeGather();
-    // Scroll/visibility observers can update the pose before this tick. Compare
-    // with the actual buffer so an instant return still draws the endpoint.
-    if (drawnGather !== gather || (gather > 0 && gather < 1)) renderMain();
-    if (visible) renderAmbient(clock);
-    if (!motionEnabled || !visible || document.hidden) stop();
+    // The controller owns one shared motion clock and rate; the cloud only
+    // reads them, so a scroll pulse that starts and ends between slow frames is
+    // already integrated and the phase never jumps.
+    clock = skyState.motionClock;
+    const changed = computeGather();
+    const now = performance.now();
+    // Repaint the heavy particle field while the pose is changing or the page
+    // is scrolling, and keep the dispersed cloud alive at rest, throttled so a
+    // slow renderer is never saturated by a full-field redraw every frame. At
+    // full assembly the mark's geometry and drift are both exactly static, so an
+    // idle repaint could only cycle its glyphs and make the stable mark shimmer.
+    const scrolling = Math.abs(skyState.velocity) >= 30;
+    const idle = scrolling || now - lastMainPaint >= IDLE_PAINT_MS;
+    if (changed || (gather < 1 && idle)) {
+      lastMainPaint = now;
+      collectQuietBoxes();
+      renderMain();
+    }
+    renderAmbient(clock);
+    if (!motionEnabled || document.hidden) stop();
   }
 
   function stop() {
@@ -444,7 +525,7 @@
   }
 
   function start() {
-    if (running || !motionEnabled || !visible || document.hidden) return;
+    if (running || !motionEnabled || document.hidden) return;
     running = true;
     gsap.ticker.add(tick);
   }
@@ -458,7 +539,7 @@
 
   function resize() {
     if (!canvas || !ambientCanvas) return;
-    const rect = field.getBoundingClientRect();
+    const rect = (plane ?? field).getBoundingClientRect();
     width = Math.max(1, rect.width);
     height = Math.max(1, rect.height);
     const ratio = window.devicePixelRatio || 1;
@@ -473,23 +554,48 @@
   }
 
   /**
-   * Native scroll is the only input: the mark is fully gathered at the top of
-   * the scene and fully dispersed at Intro. Reading
-   * the live geometry keeps direct hashes, resizes, quick reversals and
-   * back-to-top in sync.
+   * The controller owns the global timeline: it publishes the gather, the
+   * signed velocity and the active scene. The cloud only reads them, so it
+   * never computes its own independent progress.
    */
   function computeGather() {
-    if (!scene || !sticky) return;
-    const total = scene.offsetHeight;
-    const box = scene.getBoundingClientRect();
-    visible = box.bottom > 0 && box.top < window.innerHeight;
-    const scrolled = -box.top;
-    const progress = total > 4 ? clamp01(scrolled / total) : 0;
-    const eased = progress * progress * (3 - 2 * progress);
-    const next = 1 - eased;
-    if (next === gather || (next > 0 && next < 1 && Math.abs(next - gather) <= 0.0005)) return false;
+    const next = skyState.gather;
+    if (next === gather) return false;
     gather = next;
     return true;
+  }
+
+  /**
+   * Real text line boxes of the active scene, used to feather the dispersed
+   * cloud's alpha so it never collides with prose. Recomputed only when the
+   * scene or its offset changes, not on every idle frame.
+   */
+  let quietBoxes: DOMRect[] = [];
+  let quietKey = "";
+  function collectQuietBoxes() {
+    const key = `${skyState.active}:${Math.round(skyState.offset)}:${skyState.layoutVersion}`;
+    if (key === quietKey) return;
+    quietKey = key;
+    // Gather real line boxes from every scene that is on screen, so incoming
+    // copy is protected during an outgoing scrub, not only the active scene.
+    const boxes: DOMRect[] = [];
+    const viewportHeight = window.innerHeight;
+    for (const scene of document.querySelectorAll<HTMLElement>("[data-scene]")) {
+      const sceneBox = scene.getBoundingClientRect();
+      if (sceneBox.bottom <= 0 || sceneBox.top >= viewportHeight) continue;
+      const walker = document.createTreeWalker(scene, NodeFilter.SHOW_TEXT);
+      let text: Node | null;
+      while ((text = walker.nextNode())) {
+        if (!text.textContent?.trim()) continue;
+        const range = document.createRange();
+        range.selectNodeContents(text);
+        for (const box of range.getClientRects()) {
+          if (box.bottom < -40 || box.top > viewportHeight + 40) continue;
+          boxes.push(box);
+        }
+      }
+    }
+    quietBoxes = boxes;
   }
 
   function removeCanvases() {
@@ -525,7 +631,7 @@
         return;
       }
 
-      field.append(nextAmbient, nextCanvas);
+      (plane ?? field).append(nextAmbient, nextCanvas);
       ambientCanvas = nextAmbient;
       ambientContext = nextAmbientContext;
       canvas = nextCanvas;
@@ -555,15 +661,27 @@
 
   onMount(() => {
     const motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+    plane = document.querySelector<HTMLElement>(".sky-plane") ?? undefined;
     fontFamily =
       getComputedStyle(document.documentElement)
         .getPropertyValue("--font-mono")
         .trim() || fontFamily;
 
     function syncPreference() {
-      if (motionQuery.matches) disableMotion();
+      // The persistent fixed cloud belongs to the pinned timeline. Without the
+      // controller (aborted module) or under reduced motion, keep the in-flow
+      // static mark so no gathered cloud overlays the ordinary document.
+      const pinned = document.documentElement.dataset.pinned === "true";
+      if (motionQuery.matches || !pinned) disableMotion();
       else enableMotion();
     }
+
+    // The controller activates asynchronously; react to that signal.
+    const pinnedObserver = new MutationObserver(syncPreference);
+    pinnedObserver.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["data-pinned"],
+    });
 
     const resizeObserver = new ResizeObserver(() => {
       if (!motionEnabled) return;
@@ -571,29 +689,7 @@
       start();
     });
     resizeObserver.observe(field);
-    resizeObserver.observe(scene);
-
-    const intersectionObserver = new IntersectionObserver(
-      (entries) => {
-        visible = entries.some((entry) => entry.isIntersecting);
-        if (visible) {
-          computeGather();
-          if (!running) renderMain();
-          start();
-        }
-      },
-      { threshold: 0.02 },
-    );
-    intersectionObserver.observe(scene);
-
-    function handleScroll() {
-      if (!motionEnabled || document.hidden || running) return;
-      const changed = computeGather();
-      // Offscreen endpoints still need truthful state; visible animation is
-      // painted only by the post-scroll ticker, not twice in the same frame.
-      if (changed && !visible) renderMain();
-      start();
-    }
+    if (plane) resizeObserver.observe(plane);
 
     function handleVisibility() {
       if (document.hidden) {
@@ -604,21 +700,15 @@
       }
     }
 
-    window.addEventListener("scroll", handleScroll, { passive: true });
-    window.addEventListener("hashchange", handleScroll);
-    window.addEventListener("after-hours-flight", handleScroll);
     document.addEventListener("visibilitychange", handleVisibility);
     motionQuery.addEventListener("change", syncPreference);
     syncPreference();
 
     return () => {
       motionQuery.removeEventListener("change", syncPreference);
-      window.removeEventListener("scroll", handleScroll);
-      window.removeEventListener("hashchange", handleScroll);
-      window.removeEventListener("after-hours-flight", handleScroll);
       document.removeEventListener("visibilitychange", handleVisibility);
+      pinnedObserver.disconnect();
       resizeObserver.disconnect();
-      intersectionObserver.disconnect();
       stop();
       removeCanvases();
     };
@@ -635,40 +725,28 @@
   data-glyph-variety={glyphVariety}
   data-depth-extent={Math.round(depthExtent)}
 >
-  <div class="sculpture-scene" bind:this={scene}>
-    <div class="sculpture-sticky" bind:this={sticky}>
-      <div class="sculpture-field" style:opacity={motionEnabled ? gather : 1} bind:this={field}>
-        <!--
-          The filled mark ships in the server HTML and remains the reduced-motion,
-          no-JavaScript and error fallback. It is the same geometry the particle
-          targets are sampled from.
-        -->
-        <div class="flab-mark" aria-hidden="true">
-          <svg viewBox={`0 0 ${FLAB_VIEWBOX.width} ${FLAB_VIEWBOX.height}`}>
-            <path d={FLAB_PATH} fill="currentColor" fill-rule={FLAB_FILL_RULE} />
-          </svg>
-        </div>
-      </div>
+  <div class="sculpture-field" bind:this={field}>
+    <!--
+      The filled mark ships in the server HTML and remains the reduced-motion,
+      no-JavaScript and error fallback. It is the same geometry the particle
+      targets are sampled from.
+    -->
+    <div class="flab-mark" aria-hidden="true">
+      <svg viewBox={`0 0 ${FLAB_VIEWBOX.width} ${FLAB_VIEWBOX.height}`}>
+        <path d={FLAB_PATH} fill="currentColor" fill-rule={FLAB_FILL_RULE} />
+      </svg>
     </div>
   </div>
 </div>
 
 <style>
+  /* The Opening screen is one viewport, centred. It sizes the scene the
+     timeline scrubs; the persistent cloud itself lives in the sky plane. */
   .sculpture {
     position: relative;
     width: 100%;
-  }
-  .sculpture-scene {
-    position: relative;
     height: 100vh;
-    height: 100dvh;
-  }
-  /* Full-page composition is stable in motion, static and no-JS modes. */
-  .sculpture-sticky {
-    position: relative;
-    display: grid;
-    place-items: center;
-    height: 100%;
+    height: 100svh;
   }
   .sculpture-field {
     position: relative;
@@ -694,22 +772,16 @@
       width: min(44vw, 40rem, calc(52dvh * 402 / 272));
     }
   }
-  /* Once the canvas owns the field, the static mark steps aside. */
-  .sculpture[data-motion="on"]:not([data-collapsed="true"]) .sculpture-field {
-    position: fixed;
-    inset: 0;
-    height: 100vh;
-    height: 100dvh;
-    pointer-events: none;
-  }
+  /* Once the canvas owns the mark, the static fallback steps aside. */
   .sculpture[data-motion="on"]:not([data-collapsed="true"]) .flab-mark {
     position: absolute;
     inset: 0;
     opacity: 0;
     visibility: hidden;
   }
-  /* The canvases are created in JS, so they cannot receive Svelte's scoped
-     class; without :global they would sit in flow and stretch the field. */
+  /* The canvases live in the global sky plane and are created in JS, so they
+     cannot receive Svelte's scoped class; without :global they would sit in
+     flow and stretch the plane. */
   :global(.sculpture-ambient),
   :global(.sculpture-canvas) {
     position: absolute;

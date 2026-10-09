@@ -15,6 +15,12 @@ type Painted = {
   spanX: number;
   spanY: number;
   density: number;
+  /**
+   * RMS distance of painted pixels from their centroid, in px. Unlike the
+   * bounding box, which saturates as soon as the extreme particles reach the
+   * field edge, this keeps growing as the cloud disperses.
+   */
+  spread: number;
   /** Sum of the alpha channel, a cheap signature of the whole frame. */
   alphaSum: number;
 };
@@ -32,12 +38,20 @@ const painted = (page: Page, selector: string, step = 2): Promise<Painted> =>
       let minY = height;
       let maxX = -1;
       let maxY = -1;
+      let sumX = 0;
+      let sumY = 0;
+      let sumX2 = 0;
+      let sumY2 = 0;
       for (let y = 0; y < height; y += scan) {
         for (let x = 0; x < width; x += scan) {
           const alpha = data[(y * width + x) * 4 + 3];
           if (alpha > 16) {
             count += 1;
             alphaSum += alpha;
+            sumX += x;
+            sumY += y;
+            sumX2 += x * x;
+            sumY2 += y * y;
             if (x < minX) minX = x;
             if (x > maxX) maxX = x;
             if (y < minY) minY = y;
@@ -47,6 +61,10 @@ const painted = (page: Page, selector: string, step = 2): Promise<Painted> =>
       }
       const boxW = maxX - minX + 1;
       const boxH = maxY - minY + 1;
+      const meanX = sumX / count;
+      const meanY = sumY / count;
+      const variance =
+        sumX2 / count - meanX * meanX + (sumY2 / count - meanY * meanY);
       return {
         count,
         minX,
@@ -58,6 +76,7 @@ const painted = (page: Page, selector: string, step = 2): Promise<Painted> =>
         spanX: boxW / width,
         spanY: boxH / height,
         density: count / (boxW * boxH),
+        spread: Math.sqrt(Math.max(0, variance)),
         alphaSum,
       };
     },
@@ -70,14 +89,14 @@ const ambient = (page: Page, step = 2) =>
 
 type Metrics = {
   scene: number;
-  sticky: number;
-  stickyTop: number;
   fieldW: number;
   fieldH: number;
   vw: number;
   vh: number;
   docW: number;
   gather: number;
+  progress: number;
+  scroll: number;
   motion: string;
   collapsed: string;
 };
@@ -86,29 +105,27 @@ const metrics = (page: Page): Promise<Metrics> =>
   page.evaluate(() => {
     const rect = (selector: string) =>
       document.querySelector(selector)!.getBoundingClientRect();
-    const scene = rect(".sculpture-scene");
-    const sticky = rect(".sculpture-sticky");
+    const scene = rect(".sculpture");
     const field = rect(".sculpture-field");
     const sculpture = document.querySelector(".sculpture") as HTMLElement;
+    const scroll = document.documentElement.scrollHeight - window.innerHeight;
     return {
       scene: scene.height,
-      sticky: sticky.height,
-      stickyTop: sticky.top,
       fieldW: field.width,
       fieldH: field.height,
       vw: window.innerWidth,
       vh: window.innerHeight,
       docW: document.documentElement.scrollWidth,
       gather: Number(sculpture.dataset.gather),
+      progress: scroll > 0 ? window.scrollY / scroll : 0,
+      scroll,
       motion: sculpture.dataset.motion ?? "",
       collapsed: sculpture.dataset.collapsed ?? "",
     };
   });
 
-/** One viewport takes the visitor from Opening to Intro. */
-const sceneRange = async (page: Page) => {
-  return (await metrics(page)).scene;
-};
+/** The global progress that drives the whole timeline. */
+const sceneRange = async (page: Page) => (await metrics(page)).scroll;
 
 const scrollTo = async (page: Page, y: number) => {
   await page.evaluate((top) => {
@@ -116,6 +133,12 @@ const scrollTo = async (page: Page, y: number) => {
     window.scrollTo(0, top);
   }, y);
   await page.waitForTimeout(420);
+};
+
+/** Scroll to a point on the single global progress. */
+const scrollToProgress = async (page: Page, p: number) => {
+  const scroll = await sceneRange(page);
+  await scrollTo(page, p * scroll);
 };
 
 const hydrate = async (page: Page) => {
@@ -139,9 +162,8 @@ test.describe("After Hours scroll sculpture", () => {
     await hydrate(page);
     const start = await metrics(page);
 
-    // No extra travel spacer: both the section and field are one viewport.
+    // The Opening screen is one full viewport, edge to edge.
     expect(start.gather).toBe(1);
-    expect(Math.abs(start.sticky - start.vh)).toBeLessThan(2);
     expect(Math.abs(start.fieldH - start.vh)).toBeLessThan(2);
     expect(Math.abs(start.fieldW - start.vw)).toBeLessThan(2);
     expect(Math.abs(start.scene - start.vh)).toBeLessThan(2);
@@ -161,9 +183,9 @@ test.describe("After Hours scroll sculpture", () => {
   }) => {
     await hydrate(page);
     const gathered = await main(page);
-    const total = await sceneRange(page);
 
-    await scrollTo(page, total);
+    // Past the Opening's outgoing transition the cloud is fully dispersed.
+    await scrollToProgress(page, 0.2);
     expect((await metrics(page)).gather).toBe(0);
 
     const scattered = await main(page);
@@ -207,27 +229,30 @@ test.describe("After Hours scroll sculpture", () => {
     page,
   }) => {
     await hydrate(page);
-    const total = await sceneRange(page);
 
-    // Sample each state independently, from its own scroll position.
+    // Sample each state independently, from its own point on the global
+    // timeline. The Opening's outgoing window is 12% to 15%.
     const gathered = await main(page);
 
-    await scrollTo(page, total * 0.45);
+    await scrollToProgress(page, 0.135);
     const mid = await metrics(page);
     expect(mid.gather).toBeGreaterThan(0.3);
     expect(mid.gather).toBeLessThan(0.8);
     const midPainted = await main(page);
 
-    await scrollTo(page, total);
+    await scrollToProgress(page, 0.2);
     expect((await metrics(page)).gather).toBe(0);
     const dispersed = await main(page);
 
     // The three drawn states are genuinely different poses, not the same frame
     // sampled three times: the mark's footprint grows from gathered, through
-    // mid, to a cloud that spans most of the field.
+    // mid, to a cloud that spans most of the field. The bounding box saturates
+    // as soon as the extreme particles reach the field edge (measured: 0.935 at
+    // mid against 0.933 fully dispersed), so the monotonic comparison uses the
+    // RMS spread, which keeps growing (measured: 222px -> 411px).
     expect(midPainted.spanX).toBeGreaterThan(gathered.spanX * 1.15);
-    expect(dispersed.spanX).toBeGreaterThan(midPainted.spanX);
     expect(dispersed.spanX).toBeGreaterThan(0.8);
+    expect(dispersed.spread).toBeGreaterThan(midPainted.spread * 1.3);
     // Spread particles overlap less, so the mid frame paints more separate
     // pixels than the tightly packed mark.
     expect(midPainted.count).toBeGreaterThan(gathered.count);
@@ -273,54 +298,64 @@ test.describe("After Hours scroll sculpture", () => {
     await hydrate(page);
 
     const state = () =>
-      page.evaluate(() => ({
-        y: window.scrollY,
-        gather: Number(
-          (document.querySelector(".sculpture") as HTMLElement).dataset.gather,
-        ),
-      }));
-    const landing = (selector: string) =>
-      page.evaluate(
-        (s) =>
-          document.querySelector(s)!.getBoundingClientRect().top + window.scrollY,
-        selector,
-      );
-    const landed = (target: number, gather: number) =>
-      expect
-        .poll(async () => {
-          const now = await state();
-          return Math.abs(now.y - target) < 0.5 && now.gather === gather;
-        })
-        .toBe(true);
+      page.evaluate(() => {
+        const scroll =
+          document.documentElement.scrollHeight - window.innerHeight;
+        return {
+          y: window.scrollY,
+          progress: scroll > 0 ? window.scrollY / scroll : 0,
+          gather: Number(
+            (document.querySelector(".sculpture") as HTMLElement).dataset.gather,
+          ),
+        };
+      });
+    // The mark's gather is a function of the single global progress; derive the
+    // expected pose from the observed offset rather than assuming a fixed one.
+    const expectedGather = (progress: number) => {
+      const start = 0.12;
+      const end = 0.15;
+      if (progress <= start) return 1;
+      if (progress >= end) return 0;
+      const local = (progress - start) / (end - start);
+      return 1 - local * local * (3 - 2 * local);
+    };
+    const settled = async () => {
+      await page.waitForTimeout(700);
+      return state();
+    };
 
-    // Keyboard scrolling starts a native gesture that completes at the next
-    // section boundary. Measure each landing from geometry rather than assuming
-    // an offset, and await the drawn pose that matches it.
-    const introLanding = await landing("#intro");
-    await page.locator("body").press("Space");
-    // The pose is live while the page is inside the Opening, not stuck gathered.
-    await expect.poll(async () => (await state()).gather).toBeLessThan(1);
-    await landed(introLanding, 0);
+    // Start inside the Opening's outgoing window, where a native key can move
+    // the mark. The pose follows the real offset and matches the timeline.
+    await page.evaluate(() => {
+      document.documentElement.style.scrollBehavior = "auto";
+      const scroll = document.documentElement.scrollHeight - window.innerHeight;
+      window.scrollTo({ top: 0.135 * scroll, behavior: "instant" });
+    });
+    const inside = await settled();
+    expect(inside.gather).toBeGreaterThan(0);
+    expect(inside.gather).toBeLessThan(1);
+    expect(Math.abs(inside.gather - expectedGather(inside.progress))).toBeLessThan(0.02);
 
-    const evidenceLanding = await landing("#selected-evidence");
+    // Native keyboard scrolling is free: a key moves the real offset and the
+    // pose follows; stopping leaves that exact position.
     await page.locator("body").press("PageDown");
-    await landed(evidenceLanding, 0);
+    await expect.poll(async () => (await state()).y).toBeGreaterThan(inside.y);
+    const afterKey = await settled();
+    expect(afterKey.progress).toBeGreaterThan(inside.progress);
+    expect(Math.abs(afterKey.gather - expectedGather(afterKey.progress))).toBeLessThan(0.02);
+    // No idle movement: the position holds where the key left it.
+    expect((await settled()).y).toBeCloseTo(afterKey.y, 0);
 
-    // Escape ends any pending boundary gesture, so the page can then be placed
-    // at the exact Intro landing, which must also keep the dispersed pose.
-    await page.locator("body").press("Escape");
-    await page.evaluate(
-      (top) => window.scrollTo({ top, behavior: "instant" }),
-      introLanding,
-    );
-    await landed(introLanding, 0);
+    // Away from the Opening the cloud is fully dispersed.
+    expect(afterKey.gather).toBe(0);
 
-    // Shift+Space is the native upward page gesture. From the exact Intro
-    // landing it must complete upward to the Opening and reform the mark,
-    // never reverse the movement back down.
-    const openingLanding = await landing("#identity");
-    await page.locator("body").press("Shift+Space");
-    await landed(openingLanding, 1);
+    // Shift+Space scrolls natively upward; enough presses reform the same mark.
+    for (let i = 0; i < 14 && (await state()).y > 0; i += 1) {
+      await page.locator("body").press("Shift+Space");
+      await page.waitForTimeout(250);
+    }
+    await expect.poll(async () => (await state()).y).toBe(0);
+    await expect.poll(async () => (await state()).gather).toBe(1);
   });
 
   test("does not intercept wheel input", async ({ page }) => {
@@ -427,7 +462,7 @@ test.describe("After Hours sculpture geometry", () => {
     expect((await metrics(page)).fieldW).toBe(3840);
 
     const total = await sceneRange(page);
-    await scrollTo(page, total);
+    await scrollTo(page, total * 0.2);
     const scattered = await main(page, 4);
     expect(scattered.count).toBeGreaterThan(200);
     expect(scattered.spanX).toBeGreaterThan(0.8);
@@ -542,7 +577,6 @@ test.describe("After Hours sculpture fallbacks", () => {
     const view = await metrics(page);
     expect(view.motion).toBe("off");
     expect(Math.abs(view.scene - view.vh)).toBeLessThan(2);
-    expect(view.stickyTop).toBeGreaterThanOrEqual(0);
   });
 
   test("shows the static mark and content without JavaScript", async ({
@@ -559,7 +593,7 @@ test.describe("After Hours sculpture fallbacks", () => {
     await expect(page.locator(".work-index > li")).toHaveCount(3);
 
     const view = await page.evaluate(() => ({
-      scene: document.querySelector(".sculpture-scene")!.getBoundingClientRect()
+      scene: document.querySelector(".sculpture")!.getBoundingClientRect()
         .height,
       vh: window.innerHeight,
     }));
@@ -587,7 +621,7 @@ test.describe("After Hours sculpture fallbacks", () => {
     await expect(page.locator("#contact-path .contact-paths a")).toHaveCount(3);
 
     const view = await page.evaluate(() => ({
-      scene: document.querySelector(".sculpture-scene")!.getBoundingClientRect()
+      scene: document.querySelector(".sculpture")!.getBoundingClientRect()
         .height,
       vh: window.innerHeight,
       collapsed: (document.querySelector(".sculpture") as HTMLElement).dataset
@@ -613,8 +647,7 @@ test.describe("After Hours sculpture fallbacks", () => {
 
     // A nonzero scroll position is what exposes desynchronization: the scene
     // must rebuild and reflect this offset, not reset to the top.
-    const total = await sceneRange(page);
-    await scrollTo(page, total * 0.5);
+    await scrollToProgress(page, 0.135);
     const beforePreference = await metrics(page);
     expect(beforePreference.gather).toBeLessThan(0.95);
     expect(beforePreference.gather).toBeGreaterThan(0.05);
@@ -632,7 +665,7 @@ test.describe("After Hours sculpture fallbacks", () => {
     await page.waitForTimeout(600);
     const restored = await metrics(page);
     expect(restored.motion).toBe("on");
-    expect(Math.abs(restored.sticky - restored.vh)).toBeLessThan(2);
+    expect(Math.abs(restored.scene - restored.vh)).toBeLessThan(2);
     // Full motion resumes at the current scroll position: the drawn pose matches
     // where the page actually is.
     expect(Math.abs(restored.gather - beforePreference.gather)).toBeLessThan(0.05);
@@ -640,24 +673,22 @@ test.describe("After Hours sculpture fallbacks", () => {
     expect(paintedAgain.count).toBeGreaterThan(200);
   });
 
-  test("keeps drawing when the page-reveal module is aborted", async ({
+  test("falls back to the readable document when the page module is aborted", async ({
     page,
   }) => {
-    // The page's own animation module owns `html.motion`; aborting it must not
-    // collapse the sculpture's independently-owned scene.
+    // Aborting the controller must leave the ordinary, fully readable document:
+    // no fixed cloud, the in-flow static mark, and later sections intact.
     await page.route(/index\.astro_astro_type_script/, (route) => route.abort());
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.goto("/");
-    await page.waitForSelector(".sculpture-canvas", { timeout: 10_000 });
+    await expect(page.locator(".flab-mark svg")).toBeVisible();
     // Wait past the 2s fallback that removes `html.motion`.
     await page.waitForTimeout(2600);
 
-    await expect(page.locator(".sculpture-canvas")).toBeVisible();
-    const view = await metrics(page);
-    expect(view.motion).toBe("on");
-    expect(Math.abs(view.sticky - view.vh)).toBeLessThan(2);
-    const drawn = await main(page);
-    expect(drawn.count).toBeGreaterThan(200);
+    await expect(page.locator(".sculpture-canvas")).toHaveCount(0);
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+    await expect(page.locator("#contact-path .contact-paths a")).toHaveCount(3);
+    await page.locator("#learning-archive-heading").scrollIntoViewIfNeeded();
+    await expect(page.locator("#learning-archive-heading")).toBeVisible();
   });
 });

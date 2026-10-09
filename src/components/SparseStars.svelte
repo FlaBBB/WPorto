@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import gsap from "gsap";
+  import { skyState } from "../lib/timeline";
 
   // One persistent DOM sky, mounted directly inside body. The opening canvas
   // owns the assembled mark; this layer only takes over its dispersed sky.
@@ -8,18 +8,28 @@
   const INK = "#ece8f4";
   const VIOLET = "#a78bfa";
   const PLUM = "#1b1430";
-  const FLIGHT_RATE = 14;
+
+  // Drift belongs to a small number of scattered parallax layers, not to each
+  // glyph. Software-rendered Firefox re-rasterises every animated element each
+  // frame, so one animation per glyph (~440 layers) starved the main thread;
+  // four transform-only layers keep the same sky drift at a fraction of the
+  // cost. Stars are dealt round-robin, so each layer is spatially mixed.
+  const LAYERS = 4;
+  const DRIFT_STEPS = 32;
 
   type Star = {
     node: HTMLSpanElement;
     glyphNode: HTMLSpanElement;
-    drift: Animation;
-    twinkle: Animation;
     glyph: number;
     period: number;
     peak: number;
     ink: string;
     plum: boolean;
+  };
+
+  type Layer = {
+    node: HTMLDivElement;
+    drift: Animation;
   };
 
   let host: HTMLDivElement;
@@ -42,22 +52,51 @@
   onMount(() => {
     const preference = window.matchMedia("(prefers-reduced-motion: reduce)");
     const stars: Star[] = [];
+    const layers: Layer[] = [];
     let ranges: Range[] = [];
     let symbols: Element[] = [];
     let paused = document.hidden || preference.matches;
     let destroyed = false;
-    // Hydration can finish after a gesture has already started.
-    let flight = document.documentElement.dataset.flight === "true";
-    let direction = document.documentElement.dataset.flightDirection === "-1" ? -1 : 1;
+    // The shared timeline controller owns the signed motion rate; these stars
+    // only read it, so they follow real scroll speed and direction.
     let rate = 1;
-    let pulseUntil = 0;
-    let previousY = window.scrollY;
     let previousFrame = 0;
     let rateFrame = 0;
     let paintFrame = 0;
     let glyphTimer = 0;
     let quietTimer = 0;
     let ticks = 0;
+
+    function createLayers() {
+      for (let index = 0; index < LAYERS; index += 1) {
+        const node = document.createElement("div");
+        node.className = "star-layer";
+        host.append(node);
+        const duration = 50000 + rand(index, 44) * 45000;
+        const amplitude = 18 + rand(index, 45) * 24;
+        const phase = rand(index, 46) * Math.PI * 2;
+        // Transform-only: an animated full-viewport opacity layer costs a whole
+        // re-raster every frame in software Firefox, while a promoted transform
+        // stays on the compositor. Life comes from the drift and the glyph cycle.
+        const keyframes = Array.from({ length: DRIFT_STEPS + 1 }, (_, step) => {
+          const angle = (step / DRIFT_STEPS) * Math.PI * 2 + phase;
+          return {
+            transform: `translate(${(Math.sin(angle) * amplitude).toFixed(3)}px, ${(Math.cos(angle) * amplitude * 0.8).toFixed(3)}px)`,
+            offset: step / DRIFT_STEPS,
+          };
+        });
+        const drift = node.animate(keyframes, { duration, iterations: Infinity });
+        // Pause immediately, including hydration in an initially hidden tab.
+        // A large whole-cycle offset leaves room for signed reverse playback;
+        // only the fractional phase is visible.
+        drift.pause();
+        drift.currentTime = duration * (10000 + rand(index, 48));
+        drift.updatePlaybackRate(rate);
+        if (!paused) drift.play();
+        layers.push({ node, drift });
+      }
+      host.dataset.layers = String(LAYERS);
+    }
 
     function addStar(index: number) {
       const node = document.createElement("span");
@@ -74,41 +113,20 @@
       node.style.top = `${(rand(index, 22) * 100).toFixed(3)}%`;
       node.style.fontSize = `${size.toFixed(1)}px`;
       node.style.color = ink;
-      // The outer opacity is the text-quiet envelope; the inner opacity is a
-      // compositor twinkle. Their product can never exceed the envelope cap.
+      // The outer opacity is the text-quiet envelope; the surrounding parallax
+      // layer carries the sky's shared drift.
       node.style.opacity = "0";
       node.append(glyphNode);
-      host.append(node);
-
-      const duration = 50000 + rand(index, 24) * 45000;
-      const amplitude = 18 + rand(index, 23) * 24;
-      const phase = rand(index, 26) * Math.PI * 2;
-      const keyframes = Array.from({ length: 33 }, (_, step) => {
-        const angle = (step / 32) * Math.PI * 2 + phase;
-        return {
-          transform: `translate(${(Math.sin(angle) * amplitude).toFixed(3)}px, ${(Math.cos(angle) * amplitude * 0.8).toFixed(3)}px)`,
-          offset: step / 32,
-        };
+      layers[index % LAYERS].node.append(node);
+      stars.push({
+        node,
+        glyphNode,
+        glyph,
+        period: 8 + Math.floor(rand(index, 29) * 23),
+        peak,
+        ink,
+        plum: false,
       });
-      const drift = node.animate(keyframes, { duration, iterations: Infinity });
-      const twinkle = glyphNode.animate(
-        [{ opacity: 0.4 }, { opacity: 1 }, { opacity: 0.4 }],
-        { duration: 18000 + rand(index, 34) * 26000, iterations: Infinity, easing: "ease-in-out" },
-      );
-      // Pause immediately, including hydration in an initially hidden tab.
-      // A large whole-cycle offset leaves room for signed reverse playback;
-      // only the fractional phase is visible. Neither clock is ever rebuilt
-      // for scrolling, disclosure changes or preference changes.
-      drift.pause();
-      twinkle.pause();
-      drift.currentTime = duration * (10000 + rand(index, 27));
-      twinkle.currentTime = rand(index, 35) * 40000;
-      drift.updatePlaybackRate(rate);
-      if (!paused) {
-        drift.play();
-        twinkle.play();
-      }
-      stars.push({ node, glyphNode, drift, twinkle, glyph, period: 8 + Math.floor(rand(index, 29) * 23), peak, ink, plum: false });
     }
 
     function resize() {
@@ -123,8 +141,6 @@
       while (stars.length < count) addStar(stars.length);
       while (stars.length > count) {
         const star = stars.pop()!;
-        star.drift.cancel();
-        star.twinkle.cancel();
         star.node.remove();
       }
       host.dataset.count = String(count);
@@ -154,7 +170,7 @@
       if (destroyed || document.hidden) return;
       const height = host.clientHeight;
       const width = host.clientWidth;
-      const opening = document.querySelector(".sculpture-scene") ?? document.querySelector("#identity");
+      const opening = document.querySelector("#identity");
       const openingBox = opening?.getBoundingClientRect();
       // The same native, one-viewport smoothstep as FlabSculpture's gather.
       // Reduced motion keeps a quiet frozen sky behind the static opening mark.
@@ -203,31 +219,47 @@
     }
 
     function schedulePaint() {
-      if (paintFrame || document.hidden || destroyed || (flight && !paused)) return;
+      if (paintFrame || document.hidden || destroyed) return;
       paintFrame = requestAnimationFrame(() => {
         paintFrame = 0;
         paint();
       });
     }
 
+    // Commit the signed rate to the real drift animations immediately, keeping
+    // the current phase, so a fast pulse that starts and decays between slow
+    // frames is not missed. Easing only smooths the return to idle.
+    function commitRate(next: number) {
+      if (paused || destroyed) return;
+      for (const layer of layers) {
+        const time = layer.drift.currentTime;
+        layer.drift.playbackRate = next;
+        layer.drift.currentTime = time;
+      }
+      rate = next;
+      host.dataset.rate = next.toFixed(3);
+    }
+
     function updateRate(now: number) {
       rateFrame = 0;
       if (paused || destroyed) return;
-      // Ease by elapsed time even on slow rendering pipelines. startRate()
-      // resets the clock after a visibility/preference pause.
-      const delta = Math.max(0, now - previousFrame);
+      const target = skyState.rate;
+      if (Math.abs(target) >= Math.abs(rate) || Math.sign(target) !== Math.sign(rate)) {
+        // Instant attack: a pulse that starts and ends between slow frames still
+        // commits the accelerated rate to the real animations.
+        rate = target;
+      } else {
+        // Ease only the return to idle, so it settles instead of snapping.
+        const delta = Math.max(0, now - previousFrame);
+        const easing = 1 - Math.exp(-delta / 220);
+        rate += (target - rate) * easing;
+        if (Math.abs(target - rate) < 0.015) rate = target;
+      }
       previousFrame = now;
-      const target = direction * (flight ? FLIGHT_RATE : now < pulseUntil ? 4 : 1);
-      const easing = 1 - Math.exp(-delta / (flight ? 100 : 340));
-      const previousRate = rate;
-      rate += (target - rate) * easing;
-      if (Math.abs(target - rate) < 0.015) rate = target;
-      if (rate !== previousRate) for (const star of stars) star.drift.updatePlaybackRate(rate);
+      for (const layer of layers) layer.drift.updatePlaybackRate(rate);
       host.dataset.rate = rate.toFixed(3);
-      // Flight geometry changes quickly: refresh the feather every rendered
-      // frame, while resting drift stays entirely on the compositor.
       schedulePaint();
-      if (flight || now < pulseUntil || rate !== target) rateFrame = requestAnimationFrame(updateRate);
+      if (rate !== target) rateFrame = requestAnimationFrame(updateRate);
     }
 
     function startRate() {
@@ -236,49 +268,15 @@
       rateFrame = requestAnimationFrame(updateRate);
     }
 
-    function syncFlight() {
-      gsap.ticker.remove(paint);
-      if (flight && !paused) {
-        if (rateFrame) cancelAnimationFrame(rateFrame);
-        if (paintFrame) cancelAnimationFrame(paintFrame);
-        rateFrame = paintFrame = 0;
-        // Commit native acceleration before the tween can move the page. Keep
-        // the phase continuous; only the return to idle needs rate relaxation.
-        rate = direction * FLIGHT_RATE;
-        for (const star of stars) {
-          // updatePlaybackRate waits for a compositor-ready task, which may
-          // arrive after the first slide frame. Preserve the current phase
-          // explicitly while committing the rate synchronously instead.
-          const time = star.drift.currentTime;
-          star.drift.playbackRate = rate;
-          star.drift.currentTime = time;
-        }
-        host.dataset.rate = rate.toFixed(3);
-        gsap.ticker.add(paint);
-      } else {
-        startRate();
-      }
-      paint();
-    }
-
-    function handleFlight(event: Event) {
-      const detail = (event as CustomEvent<{ active: boolean; direction: number }>).detail;
-      if (!detail || typeof detail.active !== "boolean") return;
-      flight = detail.active;
-      if (Number.isFinite(detail.direction) && detail.direction !== 0) direction = Math.sign(detail.direction);
-      pulseUntil = 0;
-      host.dataset.flight = String(flight);
-      syncFlight();
+    function syncRate() {
+      commitRate(skyState.rate);
+      startRate();
+      schedulePaint();
     }
 
     function handleScroll() {
-      const y = window.scrollY;
-      if (!paused && !flight && Math.abs(y - previousY) > 1) {
-        direction = Math.sign(y - previousY);
-        pulseUntil = performance.now() + 180;
-        startRate();
-      }
-      previousY = y;
+      commitRate(skyState.rate);
+      startRate();
       schedulePaint();
     }
 
@@ -286,14 +284,9 @@
       paused = document.hidden || preference.matches;
       host.classList.toggle("paused", paused);
       host.dataset.motion = paused ? "off" : "on";
-      for (const star of stars) {
-        if (paused) {
-          star.drift.pause();
-          star.twinkle.pause();
-        } else {
-          star.drift.play();
-          star.twinkle.play();
-        }
+      for (const layer of layers) {
+        if (paused) layer.drift.pause();
+        else layer.drift.play();
       }
       window.clearInterval(glyphTimer);
       window.clearInterval(quietTimer);
@@ -302,8 +295,6 @@
       rateFrame = 0;
       if (paintFrame) cancelAnimationFrame(paintFrame);
       paintFrame = 0;
-      pulseUntil = 0;
-      previousY = window.scrollY;
       if (!paused) {
         glyphTimer = window.setInterval(() => {
           ticks += 1;
@@ -313,9 +304,14 @@
             star.glyphNode.textContent = GLYPHS[star.glyph];
           }
         }, 240);
-        quietTimer = window.setInterval(schedulePaint, 100);
+        quietTimer = window.setInterval(() => {
+          // Keep the real animations tracking the shared rate even after the
+          // scroll pulse ends and the controller relaxes it back to idle.
+          startRate();
+          schedulePaint();
+        }, 100);
       }
-      syncFlight();
+      syncRate();
       schedulePaint();
     }
 
@@ -327,26 +323,23 @@
       contentObserver.observe(scope);
       mutationObserver.observe(scope, { subtree: true, childList: true, attributes: true, attributeFilter: ["open"] });
     }
-    window.addEventListener("after-hours-flight", handleFlight);
     window.addEventListener("scroll", handleScroll, { passive: true });
     window.addEventListener("hashchange", schedulePaint);
     document.addEventListener("toggle", schedulePaint, true);
     document.addEventListener("visibilitychange", syncMotion);
     preference.addEventListener("change", syncMotion);
+    createLayers();
     resize();
     collectText();
     syncMotion();
-    host.dataset.flight = String(flight);
     host.dataset.rate = rate.toFixed(3);
     host.dataset.glyphVariety = String(GLYPHS.length);
 
     return () => {
       destroyed = true;
-      gsap.ticker.remove(paint);
       resizeObserver.disconnect();
       contentObserver.disconnect();
       mutationObserver.disconnect();
-      window.removeEventListener("after-hours-flight", handleFlight);
       window.removeEventListener("scroll", handleScroll);
       window.removeEventListener("hashchange", schedulePaint);
       document.removeEventListener("toggle", schedulePaint, true);
@@ -356,11 +349,13 @@
       if (paintFrame) cancelAnimationFrame(paintFrame);
       window.clearInterval(glyphTimer);
       window.clearInterval(quietTimer);
-      for (const star of stars) {
-        star.drift.cancel();
-        star.twinkle.cancel();
-        star.node.remove();
+      for (const star of stars) star.node.remove();
+      stars.length = 0;
+      for (const layer of layers) {
+        layer.drift.cancel();
+        layer.node.remove();
       }
+      layers.length = 0;
       ranges = [];
       symbols = [];
     };
@@ -381,16 +376,19 @@
     font-family: var(--font-mono, ui-monospace, monospace);
   }
   /* Imperatively created spans do not receive Svelte's scoped class. */
+  :global(.starfield .star-layer) {
+    position: absolute;
+    inset: 0;
+    will-change: transform;
+  }
   :global(.starfield .star) {
     position: absolute;
     width: 1em;
     height: 1em;
     line-height: 1;
     text-align: center;
-    will-change: transform;
   }
   :global(.starfield .star-glyph) {
     display: block;
-    will-change: opacity;
   }
 </style>
