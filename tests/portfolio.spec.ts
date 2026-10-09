@@ -1148,28 +1148,55 @@ for (const width of [1440, 390]) {
 test.describe("full-page transitions", () => {
   test.use({ viewport: { width: 1440, height: 1000 } });
 
-  test("finishes partial wheel gestures and disperses the mark during the automatic transition", async ({
-    page,
-  }) => {
-    // Real wheel input, controlled tween time: a slow renderer must still
-    // expose the exact middle pose and actual native WAAPI playback rates.
+  // Real wheel input with controlled tween time: the native scroll and its
+  // scroll events arrive in real time, while tween time is fake. Advance
+  // controlled time in observable steps until the boundary completion actually
+  // starts, so the tween is driven from its real start rather than from an
+  // assumed fixed advance.
+  const controlledWheel = async (page: Page) => {
     await page.clock.install();
     await page.clock.pauseAt(new Date(Date.now() + 1000));
     await page.goto("/");
     await page.waitForFunction(() => window.__afterHoursMotionReady);
     await page.waitForSelector(".starfield .star");
     await page.mouse.move(700, 400);
+    return async () => {
+      const flying = () =>
+        page.evaluate(() => document.documentElement.dataset.flight === "true");
+      for (let step = 0; step < 5 && !(await flying()); step += 1) {
+        await page.clock.fastForward(200);
+      }
+      expect(await flying()).toBe(true);
+    };
+  };
 
-    // Below the 25% threshold: the real wheel gesture starts, then returns.
+  test("returns a below-threshold wheel gesture to the Opening", async ({
+    page,
+  }) => {
+    // Below the 25% threshold the real wheel gesture starts, then the automatic
+    // completion returns the page to the Opening.
+    const advanceUntilFlight = await controlledWheel(page);
     await page.mouse.wheel(0, 200);
-    await expect.poll(() => page.evaluate(() => scrollY)).toBeGreaterThan(100);
-    for (const elapsed of [200, 450, 450, 16]) await page.clock.fastForward(elapsed);
+    // Await the wheel's full intended offset before controlling tween time.
+    await expect.poll(() => page.evaluate(() => Math.round(scrollY))).toBe(200);
+    await advanceUntilFlight();
+    for (const elapsed of [450, 450, 16]) await page.clock.fastForward(elapsed);
     await expect.poll(() => page.evaluate(() => scrollY)).toBe(0);
+  });
 
-    // Above the threshold: no second input, yet the page reaches Intro.
+  test("finishes an above-threshold wheel gesture and disperses the mark during the automatic transition", async ({
+    page,
+  }) => {
+    // Above the threshold: no second input, yet the page reaches Intro. A slow
+    // renderer must still expose the exact middle pose and native playback rate.
+    const advanceUntilFlight = await controlledWheel(page);
+
     await page.mouse.wheel(0, 300);
-    await expect.poll(() => page.evaluate(() => scrollY)).toBe(300);
-    for (const elapsed of [200, 200, 200, 16]) await page.clock.fastForward(elapsed);
+    await expect.poll(() => page.evaluate(() => Math.round(scrollY))).toBe(300);
+    await advanceUntilFlight();
+    // The await-flight step above already consumed the idle delay, so advance
+    // only the remaining controlled tween time to sample the middle pose.
+    for (const elapsed of [200, 200, 16]) await page.clock.fastForward(elapsed);
     const middle = await page.evaluate(() => ({
       y: scrollY,
       opacity: Number(getComputedStyle(document.querySelector(".sculpture-field")!).opacity),
@@ -1191,8 +1218,9 @@ test.describe("full-page transitions", () => {
 
     // Reverse completes too; the assembled mark returns at the same position.
     await page.mouse.wheel(0, -300);
-    await expect.poll(() => page.evaluate(() => scrollY)).toBe(700);
-    for (const elapsed of [200, 450, 450, 16]) await page.clock.fastForward(elapsed);
+    await expect.poll(() => page.evaluate(() => Math.round(scrollY))).toBe(700);
+    await advanceUntilFlight();
+    for (const elapsed of [450, 450, 16]) await page.clock.fastForward(elapsed);
     await expect.poll(() => page.evaluate(() => scrollY)).toBe(0);
     await expect(page.locator(".sculpture-field")).toHaveCSS("opacity", "1");
   });

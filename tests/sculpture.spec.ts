@@ -272,52 +272,55 @@ test.describe("After Hours scroll sculpture", () => {
   }) => {
     await hydrate(page);
 
-    // Keyboard scrolling starts a native gesture and the page completes it.
-    await page.locator("body").press("Space");
-    await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
-    const afterSpace = await page.evaluate(() => window.scrollY);
-    expect(afterSpace).toBeGreaterThan(0);
-    // The drawn pose follows the live offset rather than staying gathered.
-    expect((await metrics(page)).gather).toBeLessThan(1);
+    const state = () =>
+      page.evaluate(() => ({
+        y: window.scrollY,
+        gather: Number(
+          (document.querySelector(".sculpture") as HTMLElement).dataset.gather,
+        ),
+      }));
+    const landing = (selector: string) =>
+      page.evaluate(
+        (s) =>
+          document.querySelector(s)!.getBoundingClientRect().top + window.scrollY,
+        selector,
+      );
+    const landed = (target: number, gather: number) =>
+      expect
+        .poll(async () => {
+          const now = await state();
+          return Math.abs(now.y - target) < 0.5 && now.gather === gather;
+        })
+        .toBe(true);
 
+    // Keyboard scrolling starts a native gesture that completes at the next
+    // section boundary. Measure each landing from geometry rather than assuming
+    // an offset, and await the drawn pose that matches it.
+    const introLanding = await landing("#intro");
+    await page.locator("body").press("Space");
+    // The pose is live while the page is inside the Opening, not stuck gathered.
+    await expect.poll(async () => (await state()).gather).toBeLessThan(1);
+    await landed(introLanding, 0);
+
+    const evidenceLanding = await landing("#selected-evidence");
     await page.locator("body").press("PageDown");
-    await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(afterSpace);
-    const afterPageDown = await page.evaluate(() => window.scrollY);
-    expect(afterPageDown).toBeGreaterThan(afterSpace);
-    expect((await metrics(page)).gather).toBe(0);
+    await landed(evidenceLanding, 0);
 
     // Escape ends any pending boundary gesture, so the page can then be placed
-    // at the exact Intro landing. Read the landing from the section geometry,
-    // not from the scroll-completion mapping.
+    // at the exact Intro landing, which must also keep the dispersed pose.
     await page.locator("body").press("Escape");
-    const introLanding = await page.evaluate(
-      () =>
-        document.querySelector("#intro")!.getBoundingClientRect().top +
-        window.scrollY,
-    );
     await page.evaluate(
       (top) => window.scrollTo({ top, behavior: "instant" }),
       introLanding,
     );
-    expect(await page.evaluate(() => window.scrollY)).toBeCloseTo(
-      introLanding,
-      0,
-    );
-    expect((await metrics(page)).gather).toBe(0);
+    await landed(introLanding, 0);
 
     // Shift+Space is the native upward page gesture. From the exact Intro
     // landing it must complete upward to the Opening and reform the mark,
     // never reverse the movement back down.
+    const openingLanding = await landing("#identity");
     await page.locator("body").press("Shift+Space");
-    const openingLanding = await page.evaluate(
-      () =>
-        document.querySelector("#identity")!.getBoundingClientRect().top +
-        window.scrollY,
-    );
-    await expect
-      .poll(() => page.evaluate(() => window.scrollY))
-      .toBeCloseTo(openingLanding, 0);
-    expect((await metrics(page)).gather).toBe(1);
+    await landed(openingLanding, 1);
   });
 
   test("does not intercept wheel input", async ({ page }) => {
