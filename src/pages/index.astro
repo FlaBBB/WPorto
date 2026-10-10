@@ -1318,8 +1318,11 @@ const year = new Date().getFullYear();
         scene.querySelectorAll<HTMLElement>(".section-content, .site-footer");
       // Runs after the controller applies its transforms, so outgoing copy can
       // never pass under the transparent fixed nav. Every scene is clipped to
-      // the header; only foreground/footer are clipped, never the sky.
-      const syncForeground = (activeIndex: number) => {
+      // the header; only foreground/footer are clipped, never the sky. This is
+      // clipping only: exposing a focused control's ring is the one-shot job of
+      // the controller's focus placement, so ordinary reading scroll is never
+      // undone here.
+      const syncForeground = () => {
         const headerBottom = document
           .querySelector<HTMLElement>(".site-header")!
           .getBoundingClientRect().bottom;
@@ -1334,32 +1337,16 @@ const year = new Date().getFullYear();
             if (element.style.clipPath !== clip) element.style.clipPath = clip;
           });
         }
-        // Expose a focused control's ring below the header within its scene.
-        const scene = sceneEls[activeIndex];
-        const focused = document.activeElement;
-        if (
-          focused instanceof HTMLElement &&
-          focused.closest("[data-scene]") === scene
-        ) {
-          const box = focused.getBoundingClientRect();
-          if (box.bottom > 0) {
-            const style = getComputedStyle(focused);
-            const ring = Math.max(
-              0,
-              parseFloat(style.outlineWidth) + parseFloat(style.outlineOffset),
-            );
-            const delta = box.top - headerBottom - ring - 1;
-            if (delta < 0) window.scrollBy({ top: delta, behavior: "instant" });
-          }
-        }
       };
 
-      const destroyLedger = setupEvidenceLedger();
-      const destroyScroll = setupSectionScroll(syncForeground);
+      // The controller is created first so the ledger can use its hold-aware
+      // read placement when a disclosure relayout must preserve the chosen row.
+      const scroll = setupSectionScroll(syncForeground);
+      const destroyLedger = setupEvidenceLedger(scroll.preserveRead);
       window.addEventListener("pagehide", (event) => {
         if (event.persisted) return;
         destroyLedger();
-        destroyScroll();
+        scroll.destroy();
         stopMotion();
       });
 

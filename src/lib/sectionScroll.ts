@@ -55,6 +55,15 @@ export function setupSectionScroll(onAfterRender?: (activeIndex: number) => void
   let loopFrame = 0;
   let lastOffset = NaN;
   let lastProgress = 0;
+  // The exact native scroll position the last paint was computed from. The
+  // shared loop compares against the real position, so a scroll that commits
+  // without a timely event (a programmatic jump, or a coalesced native scroll)
+  // still repaints instead of leaving the presentation stale.
+  let lastRenderedY = NaN;
+  // Pending one-shot corrections (focus placement, initial deep-link re-assert).
+  // Deliberate input cancels them so they never fight the reader's own scroll.
+  let pendingFocus = 0;
+  let pendingHash = 0;
 
   function measure() {
     if (!journey) return;
@@ -97,6 +106,11 @@ export function setupSectionScroll(onAfterRender?: (activeIndex: number) => void
     journey.style.height = `${layout.scroll + viewport}px`;
     // A relayout, disclosure expansion or resize invalidates cached text bounds.
     skyState.layoutVersion += 1;
+    // It also invalidates the render memo: the scene tops have been replaced, so
+    // every transform must be reapplied even when the presentation offset is
+    // unchanged (e.g. a taller Opening at progress 0, where the offset stays 0
+    // but every later scene's top moved).
+    lastOffset = NaN;
     if (pose) {
       const scene = TIMELINE[pose.index];
       const next =
@@ -170,7 +184,12 @@ export function setupSectionScroll(onAfterRender?: (activeIndex: number) => void
   function render() {
     frame = 0;
     if (!layout || !active) return;
-    const p = layout.scroll > 0 ? clamp01(window.scrollY / layout.scroll) : 0;
+    // The native position is the single source of truth. Recording it even when
+    // the presentation offset does not change keeps the loop from re-requesting
+    // a paint for a position already consumed.
+    const y = window.scrollY;
+    lastRenderedY = y;
+    const p = layout.scroll > 0 ? clamp01(y / layout.scroll) : 0;
     lastProgress = p;
     const offset = presentationOffset(p, layout);
     if (offset !== lastOffset) {
@@ -204,11 +223,15 @@ export function setupSectionScroll(onAfterRender?: (activeIndex: number) => void
 
   // The cloud animates continuously, so one shared loop integrates the motion
   // clock and keeps the published state fresh, including through idle holds.
+  // It also watches the real native position: `render` always writes
+  // `skyState.offset` and `lastOffset` together, so comparing those can never
+  // detect a scroll. Comparing the actual `scrollY` is what keeps a position
+  // that committed without a timely event from staying unpainted.
   function loop(now: number) {
     loopFrame = requestAnimationFrame(loop);
     integrateTo(now);
     publish();
-    if (skyState.offset !== lastOffset) requestRender();
+    if (active && layout && window.scrollY !== lastRenderedY) requestRender();
   }
 
   function startLoop() {
@@ -290,30 +313,150 @@ export function setupSectionScroll(onAfterRender?: (activeIndex: number) => void
     history.replaceState(null, "", `#${id}`);
   }
 
-  function focusIn(event: FocusEvent) {
-    const node = event.target;
-    if (!(node instanceof Element)) return;
+  // Map a focus target to its scene's read position and place it there. Shared
+  // by the deferred correction so the geometry stays in one place.
+  function placeFocus(node: Element) {
+    if (!active || !layout) return;
     const scene = node.closest<HTMLElement>("[data-scene]");
-    if (!scene || !layout || !active) return;
+    if (!scene) return;
     const index = TIMELINE.findIndex((s) => s.id === scene.dataset.scene);
     if (index < 0) return;
     const headerBottom = header?.getBoundingClientRect().bottom ?? 0;
     const box = node.getBoundingClientRect();
-    // Keep an already fully visible control stationary.
-    if (box.top >= headerBottom && box.bottom <= window.innerHeight && box.bottom > 0)
+    // Use the control's real ring so a control whose outline would sit under the
+    // header is still revealed, and an already-visible one stays stationary.
+    const style = getComputedStyle(node);
+    const ring = Math.max(
+      0,
+      (parseFloat(style.outlineWidth) || 0) + (parseFloat(style.outlineOffset) || 0),
+    );
+    if (
+      box.top - ring >= headerBottom &&
+      box.bottom + ring <= window.innerHeight &&
+      box.bottom > 0
+    )
       return;
     // Map the target to its read offset WITHIN its scene, then to the timeline's
-    // own progress, so offscreen Tab lands in the right stable/read interval.
+    // own progress, so offscreen focus lands in the right stable/read interval.
+    // The scene-local offset is transform-invariant, so it is correct whether or
+    // not the browser has already scrolled the element into view.
     const sceneTop = scene.getBoundingClientRect().top;
     const localTop = box.top - sceneTop;
     const sceneHeight = layout.heights[index] ?? 0;
-    const ring = 8;
     const desiredRead = Math.min(
-      Math.max(0, localTop - headerBottom - ring),
+      Math.max(0, localTop - headerBottom - ring - 1),
       Math.max(0, sceneHeight - window.innerHeight),
     );
     const next = progressForRead(index, desiredRead, layout);
     window.scrollTo({ top: next * layout.scroll, behavior: "instant" });
+  }
+
+  /**
+   * Keep a node at a given viewport top after a disclosure relayout, without
+   * leaving its scene. In the pinned presentation the scene's read offset is
+   * derived from the same hold/read mapping the timeline uses, so a collapse
+   * that happens while the scene is held cannot drag native progress into the
+   * previous scene: a negative target read offset is clamped into the current
+   * hold position instead of jumping backward. The ordinary/reduced document
+   * has no pinned mapping, so it compensates with physical pixels.
+   */
+  function preserveRead(node: Element, viewportTop: number) {
+    // A disclosure handoff can move prose inside a held scene without changing
+    // the scene's total height or the presentation offset (a collapse and an
+    // expand of equal height), so neither the ResizeObserver nor the offset key
+    // would change. Bump the layout version so the quiet-box cache recomputes
+    // from the real line boxes; the canvas still repaints on its existing budget.
+    skyState.layoutVersion += 1;
+    if (!active || !layout) {
+      const delta = node.getBoundingClientRect().top - viewportTop;
+      if (Math.abs(delta) > 0.5)
+        window.scrollBy({ top: delta, behavior: "instant" });
+      return;
+    }
+    const scene = node.closest<HTMLElement>("[data-scene]");
+    if (!scene) return;
+    const index = TIMELINE.findIndex((s) => s.id === scene.dataset.scene);
+    if (index < 0) return;
+    const entry = TIMELINE[index];
+    const scroll = layout.scroll;
+    if (scroll <= 0) return;
+    const p = clamp01(window.scrollY / scroll);
+    const stableScroll = (entry.outStart - entry.start) * scroll;
+    const overflow = Math.max(
+      0,
+      (layout.heights[index] ?? 0) - layout.viewport,
+    );
+    const holdScroll = Math.max(0, stableScroll - overflow);
+    // The current hold fraction, so a target that stays inside the hold resolves
+    // to the reader's present position rather than the hold's start.
+    const holdFraction =
+      holdScroll > 0
+        ? clamp01(((p - entry.start) * scroll) / holdScroll)
+        : 0;
+    const localTop =
+      node.getBoundingClientRect().top - scene.getBoundingClientRect().top;
+    const readOffset = localTop - viewportTop;
+    const next = progressForRead(index, readOffset, layout, holdFraction);
+    window.scrollTo({ top: next * scroll, behavior: "instant" });
+  }
+
+  // A queued correction is only valid until the user takes over. Any deliberate
+  // wheel, touch, pointer (scrollbar drag) or page-key action cancels it, so the
+  // controller never reasserts a position against the reader's own scrolling.
+  const NAV_KEYS = new Set([
+    "PageUp",
+    "PageDown",
+    "Home",
+    "End",
+    "ArrowUp",
+    "ArrowDown",
+    " ",
+    "Spacebar",
+  ]);
+  function cancelCorrections() {
+    if (pendingFocus) cancelAnimationFrame(pendingFocus);
+    if (pendingHash) cancelAnimationFrame(pendingHash);
+    pendingFocus = 0;
+    pendingHash = 0;
+  }
+  function onDeliberateInput(event: Event) {
+    if (event.type === "keydown") {
+      // Any key returns to keyboard modality, so a pointerdown on a
+      // non-focusable background (which sets the pointer flag but never focuses
+      // a control) cannot suppress a later keyboard placement.
+      pointerFocus = false;
+      if (!NAV_KEYS.has((event as KeyboardEvent).key)) return;
+    }
+    cancelCorrections();
+  }
+
+  // Focus placement exists for keyboard navigation (Tab to an offscreen
+  // control). A pointer or touch that focuses a control must not scroll: the
+  // reader already chose that position, and a disclosure interaction keeps it
+  // via its own anchor, so a second correction here would fight it.
+  let pointerFocus = false;
+  function markPointerFocus() {
+    pointerFocus = true;
+  }
+
+  function focusIn(event: FocusEvent) {
+    const node = event.target;
+    if (!(node instanceof Element)) return;
+    if (!layout || !active) return;
+    if (pointerFocus) {
+      pointerFocus = false;
+      return;
+    }
+    // Focusing makes the browser scroll the target into view, and that native
+    // scroll can land after this handler and overwrite a synchronous placement
+    // (especially while `scroll-behavior: smooth` animates it). Correct once on
+    // the next frame, after the native action. It is a one-shot correction that
+    // deliberate input cancels, never a persistent pin.
+    if (pendingFocus) cancelAnimationFrame(pendingFocus);
+    pendingFocus = requestAnimationFrame(() => {
+      pendingFocus = 0;
+      if (node === document.activeElement && node.isConnected) placeFocus(node);
+    });
   }
 
   function setActive(next: boolean) {
@@ -324,6 +467,11 @@ export function setupSectionScroll(onAfterRender?: (activeIndex: number) => void
     active = next;
     document.documentElement.dataset.pinned = String(active);
     if (journey) journey.dataset.active = String(active);
+    // While pinned, the controller owns placement. The stylesheet requests
+    // `scroll-behavior: smooth`, which would make the browser's own fragment and
+    // focus scrolls animate and land after our instant placement, so they are
+    // disabled here and restored to the stylesheet's value when unpinned.
+    document.documentElement.style.scrollBehavior = active ? "auto" : "";
     if (!active) {
       stopLoop();
       for (const scene of scenes) if (scene) scene.style.transform = "";
@@ -410,19 +558,52 @@ export function setupSectionScroll(onAfterRender?: (activeIndex: number) => void
   setActive(!preference.matches);
   if (active) render();
   else syncOrdinaryHeader();
-  if (window.location.hash) hash();
+  const initialHash = window.location.hash;
+  if (initialHash) hash();
+  if (initialHash && active) {
+    // The pinned layout is applied after the browser's own fragment scroll, and
+    // that layout change can re-anchor the document position. Re-assert the
+    // scene start once on the next frame, so a direct link lands exactly. It is
+    // bounded to the initial load, cancelled by deliberate input, and skips if
+    // the hash has since changed.
+    pendingHash = requestAnimationFrame(() => {
+      pendingHash = 0;
+      if (active && window.location.hash === initialHash) hash();
+    });
+  }
 
-  return () => {
-    window.clearTimeout(velocityTimer);
-    if (frame) cancelAnimationFrame(frame);
-    stopLoop();
-    resizeObserver.disconnect();
-    window.removeEventListener("scroll", scroll);
-    window.removeEventListener("resize", handleResize);
-    window.removeEventListener("hashchange", hash);
-    document.removeEventListener("click", anchorClick);
-    document.removeEventListener("focusin", focusIn);
-    document.removeEventListener("visibilitychange", visibility);
-    preference.removeEventListener("change", preferenceChange);
+  window.addEventListener("wheel", onDeliberateInput, { passive: true });
+  window.addEventListener("touchstart", onDeliberateInput, { passive: true });
+  window.addEventListener("touchmove", onDeliberateInput, { passive: true });
+  window.addEventListener("pointerdown", onDeliberateInput, { passive: true });
+  window.addEventListener("keydown", onDeliberateInput, { passive: true });
+  // Mark pointer/touch-initiated focus so focusIn does not scroll for it. These
+  // fire before the focus event, and a keyboard focus leaves the flag clear.
+  window.addEventListener("pointerdown", markPointerFocus, { passive: true });
+  window.addEventListener("touchstart", markPointerFocus, { passive: true });
+
+  return {
+    destroy() {
+      window.clearTimeout(velocityTimer);
+      if (frame) cancelAnimationFrame(frame);
+      cancelCorrections();
+      stopLoop();
+      resizeObserver.disconnect();
+      window.removeEventListener("scroll", scroll);
+      window.removeEventListener("resize", handleResize);
+      window.removeEventListener("hashchange", hash);
+      document.removeEventListener("click", anchorClick);
+      document.removeEventListener("focusin", focusIn);
+      document.removeEventListener("visibilitychange", visibility);
+      preference.removeEventListener("change", preferenceChange);
+      window.removeEventListener("wheel", onDeliberateInput);
+      window.removeEventListener("touchstart", onDeliberateInput);
+      window.removeEventListener("touchmove", onDeliberateInput);
+      window.removeEventListener("pointerdown", onDeliberateInput);
+      window.removeEventListener("keydown", onDeliberateInput);
+      window.removeEventListener("pointerdown", markPointerFocus);
+      window.removeEventListener("touchstart", markPointerFocus);
+    },
+    preserveRead,
   };
 }

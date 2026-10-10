@@ -728,21 +728,193 @@ test.describe("section refinement", () => {
     await page.waitForTimeout(400);
 
     const second = page.locator(".evidence-ledger details").nth(1);
-    const summary = second.locator("summary");
     await expect(second).not.toHaveAttribute("open", "");
 
+    // Advance the global timeline until the row is visible, then bring it to a
+    // comfortable reading position below the header. That is a realistic place to
+    // read from, and it is high enough that collapsing the row above (which
+    // removes its whole panel) would pull this row out of view. The check and
+    // the scroll share one round-trip so a loaded CI engine stays well inside
+    // the test budget.
+    const nudge = (offset: number) =>
+      page.evaluate((targetOffset) => {
+        const element = document
+          .querySelectorAll(".evidence-ledger details")[1]!
+          .querySelector("summary")!;
+        const box = element.getBoundingClientRect();
+        const header = document
+          .querySelector(".site-header")!
+          .getBoundingClientRect().bottom;
+        const visible = box.top >= header && box.bottom <= window.innerHeight;
+        const delta = box.top - (header + targetOffset);
+        if (!visible || Math.abs(delta) > 2) {
+          const scroll =
+            document.documentElement.scrollHeight - window.innerHeight;
+          window.scrollTo({
+            top: window.scrollY + (visible ? delta : scroll * 0.01),
+            behavior: "instant",
+          });
+        }
+        return {
+          top: box.top,
+          bottom: box.bottom,
+          header,
+          viewport: window.innerHeight,
+        };
+      }, offset);
+
+    let placed = await nudge(120);
+    for (let step = 0; step < 80; step += 1) {
+      const atTarget = Math.abs(placed.top - (placed.header + 120)) <= 2;
+      if (atTarget && placed.bottom <= placed.viewport) break;
+      await page.waitForTimeout(50);
+      placed = await nudge(120);
+    }
+    // The row must be genuinely reachable; if it is not, the failure is a real
+    // navigation defect, not a test artifact.
+    expect(placed.top).toBeGreaterThanOrEqual(placed.header + 100);
+    expect(placed.top).toBeLessThanOrEqual(placed.header + 140);
+    expect(placed.bottom).toBeLessThanOrEqual(placed.viewport);
+
+    // Opening a row must preserve the row being read, not scroll it away. The
+    // disclosure animates, so wait for the layout to stop moving before judging
+    // where the row actually ends up.
+    const readRow = () =>
+      page.evaluate(() => {
+        const element = document
+          .querySelectorAll(".evidence-ledger details")[1]!
+          .querySelector("summary")!;
+        const box = element.getBoundingClientRect();
+        const header = document
+          .querySelector(".site-header")!
+          .getBoundingClientRect().bottom;
+        return {
+          top: box.top,
+          bottom: box.bottom,
+          header,
+          viewport: window.innerHeight,
+        };
+      });
+    const staysVisible = async () => {
+      let last = NaN;
+      let box = await readRow();
+      for (let attempt = 0; attempt < 30; attempt += 1) {
+        box = await readRow();
+        if (box.top === last) break;
+        last = box.top;
+        await page.waitForTimeout(60);
+      }
+      expect(box.top).toBeGreaterThanOrEqual(box.header - 1);
+      expect(box.bottom).toBeLessThanOrEqual(box.viewport + 1);
+    };
+
+    // A genuine touch at the row's currently visible centre. locator.tap runs
+    // actionability (scroll-into-view/stable) against the transformed pinned
+    // scenes, which fights the timeline; a real touchscreen tap at the measured
+    // point is the actual input this test means to deliver. The point must hit
+    // the summary, so the tap is never delivered to an obscured target.
+    const tapSummary = async () => {
+      const point = await page.evaluate(() => {
+        const target = document
+          .querySelectorAll(".evidence-ledger details")[1]!
+          .querySelector("summary")!;
+        const box = target.getBoundingClientRect();
+        const header = document
+          .querySelector(".site-header")!
+          .getBoundingClientRect().bottom;
+        return {
+          x: box.left + box.width / 2,
+          y: Math.min(
+            Math.max(box.top + box.height / 2, header + 4),
+            window.innerHeight - 4,
+          ),
+        };
+      });
+      const hitsSummary = await page.evaluate(
+        ({ x, y }) => !!document.elementFromPoint(x, y)?.closest("summary"),
+        point,
+      );
+      expect(hitsSummary).toBe(true);
+      await page.touchscreen.tap(point.x, point.y);
+    };
+
     // Three consecutive taps: one toggle each, never a doubled toggle.
-    await summary.tap();
+    await tapSummary();
     await expect(second).toHaveAttribute("open", "");
     await page.waitForTimeout(200);
     await expect(second).toHaveAttribute("open", "");
-    await summary.tap();
+    await staysVisible();
+    await tapSummary();
     await expect(second).not.toHaveAttribute("open", "");
-    await summary.tap();
+    await tapSummary();
     await expect(second).toHaveAttribute("open", "");
     await page.waitForTimeout(200);
     await expect(second).toHaveAttribute("open", "");
+    await staysVisible();
     await context.close();
+  });
+
+  test("keeps a disclosure tap inside its scene while the section is held", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.goto("/");
+    await page.waitForFunction(() => window.__afterHoursMotionReady);
+
+    // Profile at the very start of its hold, where the second row is visible.
+    const profile = TIMELINE[3];
+    await page.evaluate((progress) => {
+      document.documentElement.style.scrollBehavior = "auto";
+      const scroll =
+        document.documentElement.scrollHeight - window.innerHeight;
+      window.scrollTo({ top: progress * scroll, behavior: "instant" });
+    }, profile.start);
+    await page.waitForTimeout(400);
+
+    const read = () =>
+      page.evaluate(
+        ({ sceneId }) => {
+          const scroll =
+            document.documentElement.scrollHeight - window.innerHeight;
+          const rows = [
+            ...document.querySelectorAll(".evidence-ledger details"),
+          ];
+          const box = rows[1]!.querySelector("summary")!.getBoundingClientRect();
+          const work = document
+            .querySelector(`[data-scene="${sceneId}"]`)!
+            .getBoundingClientRect();
+          return {
+            progress: window.scrollY / scroll,
+            secondTop: box.top,
+            secondBottom: box.bottom,
+            // The scene before Profile must stay fully off screen.
+            previousVisible: work.bottom > 1,
+            viewport: window.innerHeight,
+          };
+        },
+        { sceneId: TIMELINE[2].id },
+      );
+
+    const before = await read();
+    expect(before.progress).toBeCloseTo(profile.start, 2);
+    expect(before.previousVisible).toBe(false);
+
+    // A real hover opens the second row and collapses the first above it. The
+    // chosen row must stay on screen and the correction must not pull native
+    // progress back into the previous scene.
+    await page
+      .locator(".evidence-ledger details")
+      .nth(1)
+      .locator("summary")
+      .hover();
+    await page.waitForTimeout(700);
+
+    const after = await read();
+    expect(after.progress).toBeGreaterThanOrEqual(profile.start - 0.001);
+    expect(after.progress).toBeLessThan(profile.outStart);
+    expect(after.previousVisible).toBe(false);
+    expect(after.secondTop).toBeGreaterThanOrEqual(0);
+    expect(after.secondBottom).toBeLessThanOrEqual(after.viewport + 1);
   });
 
   test("keeps one decorative viewport sky across every section and behind a transparent navbar", async ({
@@ -920,6 +1092,40 @@ test.describe("section refinement", () => {
       return range.getClientRects().length;
     });
     expect(lines).toBeGreaterThanOrEqual(3);
+
+    // A taller resize must re-lay the held stack: at native top the Opening
+    // keeps the whole screen and Intro begins exactly at its bottom, so no Intro
+    // copy can appear inside the held Opening screen.
+    await page.evaluate(() => {
+      document.documentElement.style.scrollBehavior = "auto";
+      window.scrollTo({ top: 0, behavior: "instant" });
+    });
+    await page.waitForTimeout(300);
+    const sceneGap = () =>
+      page.evaluate(() => {
+        const opening = document.querySelector("#identity")!;
+        const intro = document.querySelector("#intro")!;
+        const introBox = intro.getBoundingClientRect();
+        return {
+          gap: introBox.top - opening.getBoundingClientRect().bottom,
+          openingHeight: opening.getBoundingClientRect().height,
+          introCopyTop: Math.min(
+            ...[...intro.querySelectorAll("h2, p, a")].map(
+              (el) => el.getBoundingClientRect().top,
+            ),
+          ),
+          viewport: window.innerHeight,
+        };
+      });
+    const short = await sceneGap();
+    expect(Math.abs(short.gap)).toBeLessThan(2);
+    await page.setViewportSize({ width: 1440, height: 1200 });
+    await page.waitForTimeout(500);
+    const tall = await sceneGap();
+    expect(Math.abs(tall.gap)).toBeLessThan(2);
+    expect(Math.abs(tall.openingHeight - tall.viewport)).toBeLessThan(2);
+    // No Intro copy is on the held Opening screen.
+    expect(tall.introCopyTop).toBeGreaterThanOrEqual(tall.viewport - 1);
   });
 
   test("gives Let's talk. dominant, heavy, unclipped type", async ({
@@ -1219,6 +1425,11 @@ test.describe("full-page transitions", () => {
     await page.waitForFunction(() => window.__afterHoursMotionReady);
     await page.waitForSelector(".sky-plane .sculpture-canvas");
 
+    // A pointerdown on non-focusable background must not leave the controller
+    // in "pointer" modality: the next keyboard Tab is keyboard-driven and must
+    // still be placed. Click empty sky, then Tab forward as usual below.
+    await page.mouse.click(30, 500);
+
     // The clipped stage must never become an independent scroll container:
     // focus navigation maps a target onto global progress instead.
     const readState = () =>
@@ -1259,6 +1470,74 @@ test.describe("full-page transitions", () => {
       if (state.scene === "technical-profile") reachedProfile = true;
     }
     expect(reachedProfile).toBe(true);
+  });
+
+  test("leaves a focused scene link in place under a small genuine wheel", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    await page.waitForFunction(() => window.__afterHoursMotionReady);
+    await page.waitForSelector(".sky-plane .sculpture-canvas");
+
+    // Sit at the end of the Work reading interval, where the first project
+    // Source link is below the fold. Focusing it makes the controller place its
+    // real ring just below the header.
+    const workEnd = TIMELINE[2].outStart - 0.01;
+    await page.evaluate((progress) => {
+      document.documentElement.style.scrollBehavior = "auto";
+      const scroll =
+        document.documentElement.scrollHeight - window.innerHeight;
+      window.scrollTo({ top: progress * scroll, behavior: "instant" });
+    }, workEnd);
+
+    const source = page.locator("#selected-evidence .project-link").first();
+    await source.focus();
+    await expect(source).toBeFocused();
+    // Wait until the deferred placement has actually run: the whole control,
+    // including its ring, is in the viewport and its top sits just below the
+    // header. Only then is a small wheel meaningful — a 20px nudge crosses the
+    // ring. Without this, a fast round-trip could send the wheel while the focus
+    // correction is still pending and cancel it, a false setup.
+    await expect
+      .poll(() =>
+        source.evaluate((element) => {
+          const box = element.getBoundingClientRect();
+          const style = getComputedStyle(element);
+          const ring =
+            (parseFloat(style.outlineWidth) || 0) +
+            (parseFloat(style.outlineOffset) || 0);
+          const header = document
+            .querySelector(".site-header")!
+            .getBoundingClientRect().bottom;
+          return {
+            aboveHeader: box.top - ring - header,
+            inViewport: box.bottom + ring <= window.innerHeight,
+          };
+        }),
+      )
+      .toMatchObject({ inViewport: true });
+    const placement = await source.evaluate((element) => {
+      const box = element.getBoundingClientRect();
+      const header = document
+        .querySelector(".site-header")!
+        .getBoundingClientRect().bottom;
+      return box.top - header;
+    });
+    expect(placement).toBeGreaterThanOrEqual(0);
+    expect(placement).toBeLessThanOrEqual(24);
+
+    const y0 = await page.evaluate(() => window.scrollY);
+    await page.mouse.move(700, 400);
+    // A small genuine wheel while the link stays focused: the full movement must
+    // survive. The old render-time correction would undo it immediately.
+    await page.mouse.wheel(0, 20);
+    await page.waitForTimeout(400);
+    const y1 = await page.evaluate(() => window.scrollY);
+    expect(y1).toBeCloseTo(y0 + 20, 0);
+    await expect(source).toBeFocused();
+    // No idle completion: the offset holds where the wheel left it.
+    await page.waitForTimeout(1200);
+    expect(await page.evaluate(() => window.scrollY)).toBeCloseTo(y1, 0);
   });
 
   test("lands deep links, same-hash navigation and footer anchors on the scene start", async ({

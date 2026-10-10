@@ -1,7 +1,15 @@
 import gsap from "gsap";
+import { skyState } from "./timeline";
 
-/** Animate native disclosures without hiding Source links or stealing clicks. */
-export function setupEvidenceLedger() {
+/**
+ * Animate native disclosures without hiding Source links or stealing clicks.
+ * `preserveRead` is the timeline controller's hold-aware placement: it keeps the
+ * chosen row where the reader left it without ever leaving its scene, and falls
+ * back to physical pixels in the ordinary/reduced document.
+ */
+export function setupEvidenceLedger(
+  preserveRead?: (node: Element, viewportTop: number) => void,
+) {
   const ledger = document.querySelector<HTMLOListElement>(".evidence-ledger");
   if (!ledger) return () => {};
   const preference = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -23,11 +31,23 @@ export function setupEvidenceLedger() {
   let pointerX = NaN;
   let pointerY = NaN;
   let pointerType = "mouse";
+  // A disclosure toggle that collapses a row above the chosen one would shift
+  // the chosen row out from under the reader. While its opening tween runs, hold
+  // the chosen summary at the viewport position it had when activated. This is
+  // bounded to the tween and is cancelled the moment the reader scrolls again,
+  // so ordinary wheel/touch/key scrolling stays completely free.
+  let anchorActive = false;
+  let anchorTween: gsap.core.Tween | undefined;
   const listeners: (() => void)[] = [];
 
   function listen(element: EventTarget, name: string, handler: EventListener) {
     element.addEventListener(name, handler);
     listeners.push(() => element.removeEventListener(name, handler));
+  }
+  function cancelAnchor() {
+    anchorActive = false;
+    anchorTween?.kill();
+    anchorTween = undefined;
   }
   function clearIntent() {
     window.clearTimeout(timer);
@@ -38,6 +58,12 @@ export function setupEvidenceLedger() {
     record.tween = undefined;
     record.details.open = record.expanded;
     gsap.set(record.panel, { clearProps: "height,opacity,overflow" });
+    // A settled panel can move prose inside a held scene without changing the
+    // scene's total height (equal collapse and expand), so no ResizeObserver
+    // fires and preserveRead may no longer run once its anchor is cancelled.
+    // Invalidate the quiet-box cache here, at the panel-change source of truth,
+    // so the real line-box mask can never stay stale.
+    skyState.layoutVersion += 1;
   }
 
   function expand(record: Record, expanded: boolean) {
@@ -67,8 +93,34 @@ export function setupEvidenceLedger() {
 
   function open(record: Record) {
     const wasOpen = record.expanded;
+    // Collapsing the rows above the chosen one shifts the chosen row up out from
+    // under the reader. Keep it at the viewport position it had when activated,
+    // using the controller's hold-aware mapping so the correction can never drag
+    // native progress into the previous scene. In reduced motion the disclosures
+    // settle immediately, so the anchor is a single immediate placement with no
+    // scrolling tween.
+    const anchorTop = record.summary.getBoundingClientRect().top;
+    anchorActive = true;
     for (const other of records) if (other !== record) expand(other, false);
     expand(record, true);
+    anchorTween?.kill();
+    anchorTween = undefined;
+    if (preference.matches) {
+      preserveRead?.(record.summary, anchorTop);
+    } else {
+      const state = { t: 0 };
+      anchorTween = gsap.to(state, {
+        t: 1,
+        duration: 0.38,
+        ease: "power2.inOut",
+        onUpdate: () => {
+          if (anchorActive) preserveRead?.(record.summary, anchorTop);
+        },
+        onComplete: () => {
+          if (anchorActive) preserveRead?.(record.summary, anchorTop);
+        },
+      });
+    }
     hoverOpened = wasOpen ? undefined : record;
   }
   function intend(record: Record) {
@@ -143,18 +195,30 @@ export function setupEvidenceLedger() {
     });
   }
 
+  // The reader taking over cancels any in-flight anchor, so a disclosure can
+  // never fight a wheel, touch, scrollbar drag or page key.
+  listen(window, "wheel", cancelAnchor);
+  listen(window, "touchstart", cancelAnchor);
+  listen(window, "touchmove", cancelAnchor);
+  listen(window, "pointerdown", cancelAnchor);
+  listen(window, "keydown", cancelAnchor);
+
   listen(ledger, "keydown", () => {
     keyboard = true;
     clearIntent();
     hoverOpened = undefined;
   });
   const changePreference = () => {
+    // A live reduced-motion change settles the disclosures immediately and must
+    // drop any in-flight anchor with them.
+    cancelAnchor();
     if (preference.matches) for (const record of records) settle(record);
   };
   preference.addEventListener("change", changePreference);
 
   return () => {
     clearIntent();
+    anchorTween?.kill();
     for (const record of records) settle(record);
     for (const remove of listeners) remove();
     preference.removeEventListener("change", changePreference);

@@ -330,6 +330,33 @@ test("stops every overlapping reveal when reduced motion is requested", async ({
   await page.clock.runFor(300);
   const [aMid] = await read();
   await setProgress(0.497);
+  // The pinned presentation applies the new position on a controlled frame, so
+  // B is not in the viewport until one frame runs. Watch for B's real native
+  // IntersectionObserver entry (its own public observer, not GSAP state) and wait
+  // for it from the Node side, because page timers are faked here. This is
+  // delivery synchronization, not a fixed sleep: on a loaded engine the entry can
+  // arrive a frame or two after the scroll commits.
+  await page.evaluate(() => {
+    const state = window as unknown as { __revealB?: boolean };
+    state.__revealB = false;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) {
+        state.__revealB = true;
+        observer.disconnect();
+      }
+    });
+    observer.observe(document.querySelector("#technical-profile-heading")!);
+  });
+  await page.clock.runFor(40);
+  await expect
+    .poll(
+      () =>
+        page.evaluate(
+          () => (window as unknown as { __revealB?: boolean }).__revealB,
+        ),
+      { timeout: 5_000 },
+    )
+    .toBe(true);
   await page.clock.runFor(100);
   const [aWhenB, bWhenB] = await read();
 
