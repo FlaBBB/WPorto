@@ -83,13 +83,14 @@ test("reveals every scroll target without leaving one stuck", async ({
       );
       if (!targets.length) continue;
       // Bring each target into the reveal zone directly, instead of stepping
-      // through the whole hold. The read position is derived here from the
+      // through the whole read. The read position is derived here from the
       // public scene-local box and the timeline's own interval (start/outStart),
-      // so no app helper is used and no frames are spent traversing unchanged
-      // holds. Each target must still enter the zone and settle before the next.
+      // so no app helper is used and no frames are spent traversing a scene. A
+      // scene taller than the viewport maps read offset 0..overflow across its
+      // whole stable interval; a viewport-sized scene shows its whole screen
+      // from the scene start.
       const overflow = Math.max(0, (heights[index] ?? 0) - viewport);
-      const stableScroll = (scene.outStart - scene.start) * scroll;
-      const holdScroll = Math.max(0, stableScroll - overflow);
+      const stable = scene.outStart - scene.start;
       for (const target of targets) {
         if (seen.has(target)) continue;
         const localTop =
@@ -99,7 +100,10 @@ test("reveals every scroll target without leaving one stuck", async ({
           Math.max(0, localTop - viewport * 0.4),
           overflow,
         );
-        const p = scene.start + (holdScroll + readOffset) / scroll;
+        const p =
+          overflow > 0
+            ? scene.start + (readOffset / overflow) * stable
+            : scene.start;
         window.scrollTo({ top: p * scroll, behavior: "instant" });
         await frame();
         for (let attempt = 0; attempt < 120 && !revealable(target); attempt += 1) {

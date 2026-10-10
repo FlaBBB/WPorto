@@ -30,7 +30,11 @@ export const TIMELINE: Scene[] = [
 export const MIN_SCROLL_VIEWPORTS = 5;
 /** Shortest transition, in viewports, so a scrub is never a single frame. */
 const MIN_TRANSITION_VIEWPORTS = 0.35;
-/** Readable initial hold per scene, in viewports, before 1:1 reading begins. */
+/**
+ * Readable initial hold, in viewports, for a scene that fits the viewport. A
+ * scene taller than the viewport has no hold: its whole stable interval reads
+ * the overflow, so it moves from the first wheel to the last.
+ */
 const INITIAL_HOLD_VIEWPORTS = 0.25;
 
 export type Layout = {
@@ -47,8 +51,10 @@ export function clamp01(value: number) {
 
 /**
  * Total scrollable distance. It must be large enough that every long scene can
- * be read 1:1 inside its stable interval, and every transition has a minimum
- * length, so reading is never compressed into the outgoing scrub.
+ * be read inside its stable interval, and every transition has a minimum length,
+ * so reading is never compressed into the outgoing scrub. A scene taller than
+ * the viewport budgets its whole stable interval for the overflow, which reads
+ * it at most 1:1; a viewport-sized scene budgets the readable initial hold.
  */
 export function computeScroll(heights: number[], viewport: number) {
   let scroll = MIN_SCROLL_VIEWPORTS * viewport;
@@ -56,10 +62,9 @@ export function computeScroll(heights: number[], viewport: number) {
     const overflow = Math.max(0, (heights[index] ?? 0) - viewport);
     const stable = scene.outStart - scene.start;
     const transition = scene.outEnd - scene.outStart;
-    const hold = INITIAL_HOLD_VIEWPORTS * viewport;
-    // The stable interval must cover a readable initial hold and the whole
-    // 1:1 overflow, so tall content is never compressed into the transition.
-    if (stable > 0) scroll = Math.max(scroll, (overflow + hold) / stable);
+    const budget =
+      overflow > 0 ? overflow : INITIAL_HOLD_VIEWPORTS * viewport;
+    if (stable > 0) scroll = Math.max(scroll, budget / stable);
     if (transition > 0)
       scroll = Math.max(scroll, (MIN_TRANSITION_VIEWPORTS * viewport) / transition);
   });
@@ -82,6 +87,11 @@ export function measureLayout(heights: number[], viewport: number): Layout {
  * The global progress that reproduces a given scene and its read offset in a
  * layout. Used to preserve the reader's pose across a relayout, so a resize or
  * a disclosure expansion never jumps to a different point in the chapter.
+ *
+ * A scene taller than the viewport maps read offset 0..overflow across its whole
+ * stable interval, so a relayout keeps the same physical read offset. A
+ * viewport-sized scene never moves, so the supplied stable-interval fraction is
+ * preserved for any requested read offset.
  */
 export function progressForRead(
   index: number,
@@ -90,33 +100,32 @@ export function progressForRead(
   holdFraction = 0,
 ) {
   const scene = TIMELINE[index] ?? TIMELINE[0];
+  const stable = scene.outStart - scene.start;
   const overflow = Math.max(0, (layout.heights[index] ?? 0) - layout.viewport);
-  const stableScroll = (scene.outStart - scene.start) * layout.scroll;
-  const holdScroll = Math.max(0, stableScroll - overflow);
   if (layout.scroll <= 0) return scene.start;
-  // Inside the hold the content offset is zero for a whole interval; preserve
-  // the fraction through it instead of collapsing to the end of the hold.
-  if (readOffset <= 0) {
-    return clamp01(scene.start + (holdScroll * clamp01(holdFraction)) / layout.scroll);
+  if (overflow > 0) {
+    return clamp01(scene.start + clamp01(readOffset / overflow) * stable);
   }
-  const target = Math.min(readOffset, overflow);
-  return clamp01(scene.start + (holdScroll + target) / layout.scroll);
+  return clamp01(scene.start + stable * clamp01(holdFraction));
 }
 
 /** Where the scene stack is scrolled to, in document pixels, for this progress. */
 export function presentationOffset(progress: number, layout: Layout) {
   const p = clamp01(progress);
-  const { heights, tops, viewport, scroll } = layout;
+  const { heights, tops, viewport } = layout;
   for (let index = 0; index < TIMELINE.length; index += 1) {
     const scene = TIMELINE[index];
     const top = tops[index] ?? 0;
     const overflow = Math.max(0, (heights[index] ?? 0) - viewport);
     if (p < scene.outStart) {
-      // Stable: hold the initial view, then read the rest 1:1 with scroll.
-      const stableScroll = (scene.outStart - scene.start) * scroll;
-      const holdScroll = Math.max(0, stableScroll - overflow);
-      const scrolled = (p - scene.start) * scroll;
-      return top + Math.min(overflow, Math.max(0, scrolled - holdScroll));
+      if (overflow <= 0) return top;
+      // Stable: the whole interval reads the overflow continuously, so a tall
+      // scene moves from its first wheel to the last, with no plateau at either
+      // end. The movement is at most 1:1 (slower when the scroll budget floor
+      // or a transition window dominates).
+      const stable = scene.outStart - scene.start;
+      const read = stable > 0 ? clamp01((p - scene.start) / stable) : 0;
+      return top + read * overflow;
     }
     if (p < scene.outEnd) {
       const nextTop = tops[index + 1] ?? top + (heights[index] ?? 0);

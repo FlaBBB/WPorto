@@ -982,14 +982,14 @@ test.describe("section refinement", () => {
     await context.close();
   });
 
-  test("keeps a disclosure tap inside its scene while the section is held", async ({
+  test("keeps an opened Profile disclosure inside its scene without dragging progress backward", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1440, height: 1000 });
     await page.goto("/");
     await page.waitForFunction(() => window.__afterHoursMotionReady);
 
-    // Profile at the very start of its hold, where the second row is visible.
+    // Profile at its scene start, where the second row is visible.
     const profile = TIMELINE[3];
     await page.evaluate((progress) => {
       document.documentElement.style.scrollBehavior = "auto";
@@ -1201,27 +1201,35 @@ test.describe("section refinement", () => {
     page.on("pageerror", (error) => errors.push(error.message));
     await page.setViewportSize({ width: 1440, height: 1000 });
     await page.goto("/");
+    await page.waitForFunction(() => window.__afterHoursMotionReady);
     await goToScene(page, "learning-archive");
     await page.waitForTimeout(400);
 
-    for (const section of await page.locator("main section").all()) {
-      const box = await section.boundingBox();
-      expect(box?.height).toBeGreaterThanOrEqual(1000);
+    // One round trip for the whole public geometry sweep: the six sequential
+    // protocol/layout reads dominated this story on the traced WebKit renderer.
+    const geometry = await page.evaluate(() => {
+      const sections = [...document.querySelectorAll("main section")].map(
+        (section) => section.getBoundingClientRect().height,
+      );
+      const height = (id: string) =>
+        document.getElementById(id)!.getBoundingClientRect().height;
+      const range = document.createRange();
+      range.selectNodeContents(document.querySelector(".archive-statement")!);
+      return {
+        sections,
+        work: height("selected-evidence"),
+        profile: height("technical-profile"),
+        lines: range.getClientRects().length,
+      };
+    });
+    for (const height of geometry.sections) {
+      expect(height).toBeGreaterThanOrEqual(1000);
     }
-    for (const selector of ["#selected-evidence", "#technical-profile"]) {
-      const height = await page
-        .locator(selector)
-        .evaluate((el) => el.getBoundingClientRect().height);
-      expect(height, selector).toBeGreaterThan(1000);
-    }
+    expect(geometry.work, "#selected-evidence").toBeGreaterThan(1000);
+    expect(geometry.profile, "#technical-profile").toBeGreaterThan(1000);
 
     // The archive copy is deliberately grouped, never one very long line.
-    const lines = await page.locator(".archive-statement").evaluate((el) => {
-      const range = document.createRange();
-      range.selectNodeContents(el);
-      return range.getClientRects().length;
-    });
-    expect(lines).toBeGreaterThanOrEqual(3);
+    expect(geometry.lines).toBeGreaterThanOrEqual(3);
 
     // A taller resize must re-lay the held stack: at native top the Opening
     // keeps the whole screen and Intro begins exactly at its bottom, so no Intro
@@ -1271,6 +1279,139 @@ test.describe("section refinement", () => {
     expect(Math.abs(tall.openingHeight - tall.viewport)).toBeLessThan(2);
     // No Intro copy is on the held Opening screen.
     expect(tall.introCopyTop).toBeGreaterThanOrEqual(tall.viewport - 1);
+
+    // The viewport height also decides whether a long scene is held or read. At
+    // this height Work overflows, so a small wheel immediately moves it. A
+    // taller viewport makes Work exactly one screen, so it holds instead: the
+    // same wheel changes the native offset but not the rendered box. Expected
+    // positions come from public geometry, never from the app's mapping.
+    const work = TIMELINE[2];
+    const workStable = work.outStart - work.start;
+    const workBox = () =>
+      page.evaluate(() => {
+        const box = document
+          .getElementById("selected-evidence")!
+          .getBoundingClientRect();
+        return {
+          top: box.top,
+          overflow: box.height - window.innerHeight,
+          y: window.scrollY,
+          scroll: document.documentElement.scrollHeight - window.innerHeight,
+        };
+      });
+    const landWork = (fraction: number) =>
+      page.evaluate(
+        async ({ p, frac }) => {
+          document.documentElement.style.scrollBehavior = "auto";
+          const scroll =
+            document.documentElement.scrollHeight - window.innerHeight;
+          window.scrollTo({ top: p * scroll, behavior: "instant" });
+          const host = document.getElementById("selected-evidence")!;
+          const want =
+            -frac * (host.getBoundingClientRect().height - window.innerHeight);
+          for (let i = 0; i < 240; i += 1) {
+            if (Math.abs(host.getBoundingClientRect().top - want) < 0.5) break;
+            await new Promise((resolve) => requestAnimationFrame(resolve));
+          }
+        },
+        { p: work.start + workStable * fraction, frac: fraction },
+      );
+    const wheelWork = async (perPixel: number) => {
+      const before = await workBox();
+      await page.mouse.wheel(0, 40);
+      const settled = await page.evaluate(
+        async ({ wantY, wantTop, moved }) => {
+          const host = document.getElementById("selected-evidence")!;
+          let delivered = false;
+          for (let i = 0; i < 240; i += 1) {
+            if (!delivered) delivered = Math.abs(window.scrollY - wantY) < 1;
+            if (
+              delivered &&
+              (!moved ||
+                Math.abs(host.getBoundingClientRect().top - wantTop) < 0.5)
+            )
+              return true;
+            await new Promise((resolve) => requestAnimationFrame(resolve));
+          }
+          return false;
+        },
+        {
+          wantY: before.y + 40,
+          wantTop: before.top - 40 * perPixel,
+          moved: perPixel > 0,
+        },
+      );
+      expect(settled).toBe(true);
+      return { before, after: await workBox() };
+    };
+
+    // A safe empty point, so the wheel never lands on a control.
+    await page.mouse.move(5, 200);
+    await landWork(0);
+    const overflowing = await workBox();
+    expect(overflowing.overflow).toBeGreaterThan(100);
+    const reads = await wheelWork(
+      overflowing.overflow / (workStable * overflowing.scroll),
+    );
+    expect(reads.before.top - reads.after.top).toBeGreaterThan(1);
+
+    // A resize changes the scene heights immediately, but the controller only
+    // re-measures on a later frame; until then the scroll denominator is stale
+    // and any placement computed from it is undone by the relayout. The pinned
+    // stack is flush (each scene's top meets the previous scene's bottom) at any
+    // progress once the new layout has been measured and applied, so that is the
+    // observable that says the resize has settled.
+    const workSettled = (fit: boolean) =>
+      expect
+        .poll(
+          () =>
+            page.evaluate(
+              ({ wantFit }) => {
+                const scenes = [
+                  ...document.querySelectorAll("[data-scene]"),
+                ];
+                const flush = scenes.every(
+                  (scene, index) =>
+                    index === 0 ||
+                    Math.abs(
+                      scene.getBoundingClientRect().top -
+                        scenes[index - 1]!.getBoundingClientRect().bottom,
+                    ) <= 1,
+                );
+                const box = document
+                  .getElementById("selected-evidence")!
+                  .getBoundingClientRect();
+                const overflow = box.height - window.innerHeight;
+                return (
+                  flush && (wantFit ? overflow < 1 : overflow > 100)
+                );
+              },
+              { wantFit: fit },
+            ),
+          { timeout: 5_000 },
+        )
+        .toBe(true);
+
+    // A taller viewport makes Work exactly one screen, so it holds: the same
+    // wheel changes the native offset but not the rendered box.
+    await page.setViewportSize({ width: 1440, height: 1600 });
+    await workSettled(true);
+    await landWork(0.5);
+    const held = await wheelWork(0);
+    expect(held.after.y - held.before.y).toBeCloseTo(40, 0);
+    expect(Math.abs(held.after.top - held.before.top)).toBeLessThan(1);
+
+    // Shrinking back below the content height makes Work overflow again, so it
+    // must resume reading immediately from its scene start.
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await workSettled(false);
+    await landWork(0);
+    const refit = await workBox();
+    const readsAgain = await wheelWork(
+      refit.overflow / (workStable * refit.scroll),
+    );
+    expect(readsAgain.before.top - readsAgain.after.top).toBeGreaterThan(1);
+
     expect(errors).toEqual([]);
   });
 
@@ -1738,9 +1879,42 @@ test.describe("full-page transitions", () => {
       .first();
     const target = await footerLink.getAttribute("href");
     // The footer sits at the end of the section, so reveal it the way a keyboard
-    // visitor would before using it.
+    // visitor would before using it. The nav clicks above left a pointer mark
+    // that suppresses a programmatic focus placement, so establish genuine
+    // keyboard modality first: a real key clears that mark, exactly as tabbing
+    // in from the nav does.
+    await page.keyboard.press("Tab");
     await footerLink.focus();
-    await page.waitForTimeout(400);
+    // Await the placement itself: the footer anchor is fully exposed below the
+    // header and the measured centre actually receives it, so the click is a
+    // genuine activation of the visible control.
+    const placed = () =>
+      footerLink.evaluate((element) => {
+        const box = element.getBoundingClientRect();
+        const header = document
+          .querySelector(".site-header")!
+          .getBoundingClientRect().bottom;
+        return {
+          visible:
+            box.bottom > 0 &&
+            box.top >= header &&
+            box.bottom <= window.innerHeight,
+          hit: Boolean(
+            document
+              .elementFromPoint(
+                box.left + box.width / 2,
+                box.top + box.height / 2,
+              )
+              ?.closest("a"),
+          ),
+        };
+      });
+    await expect
+      .poll(async () => {
+        const state = await placed();
+        return state.visible && state.hit;
+      }, { timeout: 5_000 })
+      .toBe(true);
     await footerLink.click();
     await page.waitForTimeout(300);
     expect(await page.evaluate(() => location.hash)).toBe(target);
@@ -1801,6 +1975,123 @@ test.describe("full-page transitions", () => {
     }));
     expect(Math.abs(settled.workTop)).toBeLessThan(2);
     expect(settled.gather).toBe(0);
+  });
+
+  test("reads a taller-than-viewport section immediately, with no hold at either end", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    await page.waitForFunction(() => window.__afterHoursMotionReady);
+    await page.waitForSelector(".sky-plane .sculpture-canvas");
+
+    // Work and Profile are taller than the viewport, so their whole stable
+    // interval reads them. Every expectation comes from public geometry: the
+    // scene's own rendered overflow and the native scroll the wheel delivers.
+    const read = (id: string) =>
+      page.evaluate((sceneId) => {
+        const box = document.getElementById(sceneId)!.getBoundingClientRect();
+        return {
+          top: box.top,
+          overflow: box.height - window.innerHeight,
+          y: window.scrollY,
+          scroll: document.documentElement.scrollHeight - window.innerHeight,
+        };
+      }, id);
+
+    // One safe empty point for the whole story: the margin never hovers a
+    // control, so a wheel cannot land on a Source link, and no per-wheel pointer
+    // round trip is spent.
+    await page.mouse.move(5, 200);
+
+    // Land on a read fraction and synchronize on the observable result: the
+    // scene's rendered top reaches the linear read position the settled design
+    // predicts. The wait runs in the page on animation frames, so it costs one
+    // round trip and never a fixed sleep.
+    const land = async (id: string, progress: number, fraction: number) =>
+      page.evaluate(
+        async ({ sceneId, p, frac }) => {
+          document.documentElement.style.scrollBehavior = "auto";
+          const scroll =
+            document.documentElement.scrollHeight - window.innerHeight;
+          window.scrollTo({ top: p * scroll, behavior: "instant" });
+          const host = document.getElementById(sceneId)!;
+          const overflow = host.getBoundingClientRect().height - window.innerHeight;
+          const want = -frac * overflow;
+          for (let i = 0; i < 240; i += 1) {
+            if (Math.abs(host.getBoundingClientRect().top - want) < 0.5) break;
+            await new Promise((resolve) => requestAnimationFrame(resolve));
+          }
+          const box = host.getBoundingClientRect();
+          return {
+            top: box.top,
+            overflow,
+            y: window.scrollY,
+            scroll,
+          };
+        },
+        { sceneId: id, p: progress, frac: fraction },
+      );
+
+    // A small genuine wheel. Await its real native delivery, then the settled
+    // pinned render, which for an overflowing scene is the independently
+    // predicted linear movement. A held scene moves nothing, so there is no
+    // observable position to poll for; it settles on one frame after delivery.
+    const wheelMove = async (id: string, delta: number, perPixel: number) => {
+      const before = await read(id);
+      await page.mouse.wheel(0, delta);
+      const settled = await page.evaluate(
+        async ({ sceneId, wantY, wantTop, moved }) => {
+          const host = document.getElementById(sceneId)!;
+          let delivered = false;
+          for (let i = 0; i < 240; i += 1) {
+            if (!delivered) delivered = Math.abs(window.scrollY - wantY) < 1;
+            const top = host.getBoundingClientRect().top;
+            if (delivered) {
+              if (!moved || Math.abs(top - wantTop) < 0.5) return true;
+            }
+            await new Promise((resolve) => requestAnimationFrame(resolve));
+          }
+          return false;
+        },
+        {
+          sceneId: id,
+          wantY: before.y + delta,
+          wantTop: before.top - delta * perPixel,
+          moved: perPixel > 0,
+        },
+      );
+      expect(settled, `${id} wheel settled`).toBe(true);
+      const after = await read(id);
+      return { before, after, moved: before.top - after.top };
+    };
+
+    for (const scene of [TIMELINE[2], TIMELINE[3]]) {
+      const stable = scene.outStart - scene.start;
+      // A small wheel immediately after landing must move the box: a held
+      // section would report no movement at its own start.
+      const landed = await land(scene.id, scene.start, 0);
+      expect(landed.overflow, scene.id).toBeGreaterThan(100);
+      expect(Math.abs(landed.top), scene.id).toBeLessThan(2);
+      const perPixel = landed.overflow / (stable * landed.scroll);
+      const early = await wheelMove(scene.id, 40, perPixel);
+      expect(early.moved, `${scene.id} early`).toBeGreaterThan(1);
+      expect(early.moved, `${scene.id} early`).toBeCloseTo(
+        (early.after.y - early.before.y) * perPixel,
+        0,
+      );
+
+      // A small wheel near the end of the stable interval must still move it:
+      // a mapping that clamped the physical offset would have pinned the box at
+      // its overflow and reported no movement here.
+      const nearEnd = await land(scene.id, scene.start + stable * 0.9, 0.9);
+      expect(nearEnd.top, `${scene.id} late`).toBeLessThan(-40);
+      const late = await wheelMove(scene.id, 40, perPixel);
+      expect(late.moved, `${scene.id} late`).toBeGreaterThan(1);
+      expect(late.moved, `${scene.id} late`).toBeCloseTo(
+        (late.after.y - late.before.y) * perPixel,
+        0,
+      );
+    }
   });
 
   test("leaves a real partial gesture in place with no idle auto-completion", async ({

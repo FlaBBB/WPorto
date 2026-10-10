@@ -71,10 +71,10 @@ export function setupSectionScroll(onAfterRender?: (activeIndex: number) => void
   function measure() {
     if (!journey) return;
     // A layout change is a correction, not idle motion. Capture the current
-    // scene, its content read offset and its hold/transition fraction from the
-    // OLD layout, then map that exact pose into the new one, so a resize or a
-    // disclosure expansion keeps the same chapter and read position instead of
-    // jumping (or moving a focused summary).
+    // scene, its content read offset and (for a held viewport-sized scene) its
+    // hold fraction from the OLD layout, then map that exact pose into the new
+    // one, so a resize or a disclosure expansion keeps the same chapter and read
+    // position instead of jumping (or moving a focused summary).
     let pose:
       | { index: number; readOffset: number; holdFraction: number; transition: number }
       | undefined;
@@ -85,16 +85,18 @@ export function setupSectionScroll(onAfterRender?: (activeIndex: number) => void
       const offset = presentationOffset(p, layout);
       const top = layout.tops[index] ?? 0;
       const overflow = Math.max(0, (layout.heights[index] ?? 0) - layout.viewport);
-      const stableScroll = (scene.outStart - scene.start) * layout.scroll;
-      const holdScroll = Math.max(0, stableScroll - overflow);
+      const stable = scene.outStart - scene.start;
       const inTransition =
         scene.outEnd > scene.outStart && p >= scene.outStart && p < scene.outEnd;
       pose = {
         index,
         readOffset: Math.max(0, offset - top),
+        // Only a viewport-sized scene is held; preserve the fraction through its
+        // stable interval so a relayout cannot collapse it to the scene start.
+        // An overflowing scene is identified by its read offset alone.
         holdFraction:
-          holdScroll > 0
-            ? clamp01(((p - scene.start) * layout.scroll) / holdScroll)
+          overflow <= 0 && stable > 0
+            ? clamp01((p - scene.start) / stable)
             : 0,
         transition: inTransition
           ? (p - scene.outStart) / (scene.outEnd - scene.outStart)
@@ -451,13 +453,14 @@ export function setupSectionScroll(onAfterRender?: (activeIndex: number) => void
    * Keep a node at a given viewport top after a disclosure relayout, without
    * leaving its scene. In the pinned presentation the scene's read offset is
    * derived from the same hold/read mapping the timeline uses, so a collapse
-   * that happens while the scene is held cannot drag native progress into the
-   * previous scene: a negative target read offset is clamped into the current
-   * hold position instead of jumping backward. The ordinary/reduced document
-   * has no pinned mapping, so it compensates with physical pixels.
+   * that happens inside a held viewport-sized scene keeps its stable-interval
+   * fraction instead of jumping backward, while an overflowing scene keeps the
+   * requested physical read offset (clamped to its scene start). The
+   * ordinary/reduced document has no pinned mapping, so it compensates with
+   * physical pixels.
    */
   function preserveRead(node: Element, viewportTop: number) {
-    // A disclosure handoff can move prose inside a held scene without changing
+    // A disclosure handoff can move prose inside a scene without changing
     // the scene's total height or the presentation offset (a collapse and an
     // expand of equal height), so neither the ResizeObserver nor the offset key
     // would change. Bump the layout version so the quiet-box cache recomputes
@@ -477,18 +480,15 @@ export function setupSectionScroll(onAfterRender?: (activeIndex: number) => void
     const scroll = layout.scroll;
     if (scroll <= 0) return;
     const p = clamp01(window.scrollY / scroll);
-    const stableScroll = (entry.outStart - entry.start) * scroll;
+    const stable = entry.outStart - entry.start;
     const overflow = Math.max(
       0,
       (layout.heights[index] ?? 0) - layout.viewport,
     );
-    const holdScroll = Math.max(0, stableScroll - overflow);
-    // The current hold fraction, so a target that stays inside the hold resolves
-    // to the reader's present position rather than the hold's start.
+    // A viewport-sized scene never moves, so keep the stable-interval fraction
+    // the reader is at; an overflowing scene is mapped by its read offset.
     const holdFraction =
-      holdScroll > 0
-        ? clamp01(((p - entry.start) * scroll) / holdScroll)
-        : 0;
+      overflow <= 0 && stable > 0 ? clamp01((p - entry.start) / stable) : 0;
     const localTop =
       node.getBoundingClientRect().top - scene.getBoundingClientRect().top;
     const readOffset = localTop - viewportTop;
