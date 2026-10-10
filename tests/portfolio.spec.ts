@@ -372,6 +372,84 @@ test("keeps text contrast readable on the plum and violet surfaces", async ({
       });
     });
   for (const ratio of contrast) expect(ratio).toBeGreaterThanOrEqual(4.5);
+
+  // The Contact surface fades in over the dark stage, so mid-blend the
+  // composited backdrop passes through a mid luminance where the fixed palette
+  // is unreadable (measured 2.51:1). The stage and header therefore switch
+  // their foreground to whichever of white/black keeps the greater contrast,
+  // on both sides of the crossover. Both sides are checked here against the
+  // composited colour derived from the published surface opacity, and the
+  // correction must actually be active mid-blend; removing it drops the worst
+  // ratio far below the floor, which is this check's negative control.
+  const held = await page.evaluate(async () => {
+    const root = document.documentElement;
+    root.style.scrollBehavior = "auto";
+    const scroll = root.scrollHeight - innerHeight;
+    const surface = document.querySelector(".contact-surface")!;
+    const base = [23, 19, 30];
+    const band = [167, 139, 250];
+    const luminance = (rgb: number[]) => {
+      const channel = (value: number) => {
+        const c = value / 255;
+        return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+      };
+      return 0.2126 * channel(rgb[0]) + 0.7152 * channel(rgb[1]) + 0.0722 * channel(rgb[2]);
+    };
+    const ratio = (a: number[], b: number[]) => {
+      const one = luminance(a);
+      const two = luminance(b);
+      return (Math.max(one, two) + 0.05) / (Math.min(one, two) + 0.05);
+    };
+    const parse = (color: string) =>
+      color.match(/[\d.]+/g)!.slice(0, 3).map(Number);
+    const frame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    const navInk = () =>
+      getComputedStyle(document.querySelector(".site-header nav a")!).color;
+    const samples = [];
+    // Both sides of the black/white crossover, strictly inside the blend window
+    // (the surface is fully faded in by the last sample).
+    for (const progress of [0.855, 0.862, 0.868, 0.873, 0.875]) {
+      window.scrollTo({ top: progress * scroll, behavior: "instant" });
+      await frame();
+      await frame();
+      const opacity = Number(getComputedStyle(surface).opacity);
+      const composite = band.map(
+        (value, index) => value * opacity + base[index] * (1 - opacity),
+      );
+      const elements = [
+        ...document.querySelectorAll(".site-header nav a, .site-header .flab-logo"),
+        ...document.querySelectorAll(
+          "#contact-path h2, #contact-path p, #contact-path a, #contact-path .eyebrow",
+        ),
+        ...document.querySelectorAll("#learning-archive .site-footer"),
+      ];
+      const ratios = elements
+        .filter((el) => {
+          const box = el.getBoundingClientRect();
+          return box.bottom > 0 && box.top < innerHeight;
+        })
+        .map((el) => ratio(parse(getComputedStyle(el).color), composite));
+      samples.push({
+        progress,
+        opacity,
+        navInk: navInk(),
+        count: ratios.length,
+        worst: ratios.length ? Math.min(...ratios) : 0,
+      });
+    }
+    return samples;
+  });
+  for (const sample of held) {
+    expect(sample.count, `elements at ${sample.progress}`).toBeGreaterThan(0);
+    expect(sample.worst, `worst contrast at ${sample.progress}`).toBeGreaterThanOrEqual(4.5);
+  }
+  // The crossover is genuinely crossed: the navbar resolves to both a light and
+  // a dark ink across the held window, and each is the extreme (white/black)
+  // rather than the fixed palette.
+  const inks = new Set(held.map((sample) => sample.navInk));
+  expect(inks.size).toBeGreaterThan(1);
+  expect([...inks].some((ink) => ink === "rgb(255, 255, 255)")).toBe(true);
+  expect([...inks].some((ink) => ink === "rgb(0, 0, 0)")).toBe(true);
 });
 
 /** Painted geometry of one contact row: its box, arrow ink and label ink. */
@@ -581,20 +659,64 @@ test.describe("section refinement", () => {
       .locator(".evidence-ledger > li")
       .nth(3)
       .locator(".ledger-source a");
+    // Drive genuine pointer input at measured coordinates. The ambient sky
+    // animates hundreds of drifting stars, which the traced WebKit renderer
+    // composites at only a few frames per second, so locator actionability
+    // (stability across frames) can spend most of the budget before the real
+    // input is delivered. One in-page measurement per target is far cheaper,
+    // exactly as the sibling return-hover story does.
+    //
+    // The pinned presentation applies the scene transform and any focus
+    // placement on a later frame, so a point measured before that renders is
+    // stale (measured: the control's box at y=-433 or y=4387, off screen, with
+    // elementFromPoint null). Await the control actually being painted on screen
+    // and holding still, then assert the measured centre genuinely receives it
+    // before any pointer input.
+    const onScreenPoint = async (locator: typeof source) => {
+      const read = () =>
+        locator.evaluate((element) => {
+          const box = element.getBoundingClientRect();
+          const x = box.x + box.width / 2;
+          const y = box.y + box.height / 2;
+          const hit = document.elementFromPoint(x, y);
+          return {
+            x,
+            y,
+            onScreen: box.top >= 0 && box.bottom <= window.innerHeight,
+            receives: !!hit && (hit === element || element.contains(hit)),
+          };
+        });
+      await expect
+        .poll(
+          async () => {
+            const point = await read();
+            return point.onScreen && point.receives;
+          },
+          { timeout: 5_000 },
+        )
+        .toBe(true);
+      return read();
+    };
+    const summary = rows.nth(3).locator("summary");
     // Focus settles its entrance through the public keyboard path, not a
     // forced click or style mutation. It must not open the record by itself.
     await source.focus();
     await expect(rows.nth(3)).not.toHaveAttribute("open", "");
-    await source.hover();
+    const sourcePoint = await onScreenPoint(source);
+    await page.mouse.move(sourcePoint.x, sourcePoint.y);
     await expect(rows.nth(3)).toHaveAttribute("open", "");
     await expect(rows.nth(0)).not.toHaveAttribute("open", "");
 
     // The first real mouse click, without leaving the row, is absorbed...
-    await rows.nth(3).locator("summary").click();
+    // Opening the row shifts it, so re-measure the current real centre rather
+    // than reusing a coordinate from before the disclosure tween.
+    const firstClick = await onScreenPoint(summary);
+    await page.mouse.click(firstClick.x, firstClick.y);
     await expect(rows.nth(3)).toHaveAttribute("open", "");
 
     // ...and a second real mouse click closes it normally.
-    await rows.nth(3).locator("summary").click();
+    const secondClick = await onScreenPoint(summary);
+    await page.mouse.click(secondClick.x, secondClick.y);
     await expect(rows.nth(3)).not.toHaveAttribute("open", "");
   });
 
@@ -737,7 +859,7 @@ test.describe("section refinement", () => {
     // the scroll share one round-trip so a loaded CI engine stays well inside
     // the test budget.
     const nudge = (offset: number) =>
-      page.evaluate((targetOffset) => {
+      page.evaluate(async (targetOffset) => {
         const element = document
           .querySelectorAll(".evidence-ledger details")[1]!
           .querySelector("summary")!;
@@ -754,10 +876,17 @@ test.describe("section refinement", () => {
             top: window.scrollY + (visible ? delta : scroll * 0.01),
             behavior: "instant",
           });
+          // The pinned stage publishes the new native position on a later frame.
+          // Reading the row before that reports the previous pose, so the search
+          // would correct from stale feedback and can overshoot the whole scene.
+          // Await the published render, exactly as a settled jump does.
+          await new Promise((resolve) => requestAnimationFrame(resolve));
+          await new Promise((resolve) => requestAnimationFrame(resolve));
         }
+        const settled = element.getBoundingClientRect();
         return {
-          top: box.top,
-          bottom: box.bottom,
+          top: settled.top,
+          bottom: settled.bottom,
           header,
           viewport: window.innerHeight,
         };
@@ -767,7 +896,6 @@ test.describe("section refinement", () => {
     for (let step = 0; step < 80; step += 1) {
       const atTarget = Math.abs(placed.top - (placed.header + 120)) <= 2;
       if (atTarget && placed.bottom <= placed.viewport) break;
-      await page.waitForTimeout(50);
       placed = await nudge(120);
     }
     // The row must be genuinely reachable; if it is not, the failure is a real
@@ -1069,6 +1197,8 @@ test.describe("section refinement", () => {
   test("gives each section a full viewport without clipping long content", async ({
     page,
   }) => {
+    const errors: string[] = [];
+    page.on("pageerror", (error) => errors.push(error.message));
     await page.setViewportSize({ width: 1440, height: 1000 });
     await page.goto("/");
     await goToScene(page, "learning-archive");
@@ -1095,12 +1225,13 @@ test.describe("section refinement", () => {
 
     // A taller resize must re-lay the held stack: at native top the Opening
     // keeps the whole screen and Intro begins exactly at its bottom, so no Intro
-    // copy can appear inside the held Opening screen.
+    // copy can appear inside the held Opening screen. The re-laid transforms
+    // arrive on a later frame, so await the settled layout rather than a fixed
+    // sleep (software WebKit can take several frames after a resize).
     await page.evaluate(() => {
       document.documentElement.style.scrollBehavior = "auto";
       window.scrollTo({ top: 0, behavior: "instant" });
     });
-    await page.waitForTimeout(300);
     const sceneGap = () =>
       page.evaluate(() => {
         const opening = document.querySelector("#identity")!;
@@ -1117,15 +1248,30 @@ test.describe("section refinement", () => {
           viewport: window.innerHeight,
         };
       });
-    const short = await sceneGap();
+    const settledGap = async (viewportHeight: number) => {
+      await expect
+        .poll(
+          async () => {
+            const layout = await sceneGap();
+            return (
+              Math.abs(layout.openingHeight - viewportHeight) < 2 &&
+              Math.abs(layout.gap) < 2
+            );
+          },
+          { timeout: 5_000 },
+        )
+        .toBe(true);
+      return sceneGap();
+    };
+    const short = await settledGap(1000);
     expect(Math.abs(short.gap)).toBeLessThan(2);
     await page.setViewportSize({ width: 1440, height: 1200 });
-    await page.waitForTimeout(500);
-    const tall = await sceneGap();
+    const tall = await settledGap(1200);
     expect(Math.abs(tall.gap)).toBeLessThan(2);
     expect(Math.abs(tall.openingHeight - tall.viewport)).toBeLessThan(2);
     // No Intro copy is on the held Opening screen.
     expect(tall.introCopyTop).toBeGreaterThanOrEqual(tall.viewport - 1);
+    expect(errors).toEqual([]);
   });
 
   test("gives Let's talk. dominant, heavy, unclipped type", async ({
@@ -1408,14 +1554,19 @@ test.describe("full-page transitions", () => {
   // their initial view while they are read and scrub to the next slide across a
   // short outgoing window. Native scrolling is free: nothing snaps or completes
   // a gesture.
+  //
+  // Two animation frames after the jump guarantee the controller's pinned render
+  // has applied the new position, so callers read the settled layout rather than
+  // a stale one. A fixed sleep cannot promise that on a slow renderer.
   const scrollToProgress = async (page: Page, value: number) => {
-    await page.evaluate((p) => {
+    await page.evaluate(async (p) => {
       document.documentElement.style.scrollBehavior = "auto";
       const scroll =
         document.documentElement.scrollHeight - window.innerHeight;
       window.scrollTo({ top: p * scroll, behavior: "instant" });
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      await new Promise((resolve) => requestAnimationFrame(resolve));
     }, value);
-    await page.waitForTimeout(300);
   };
 
   test("keeps genuine Tab progression inside the global timeline, with no inner stage scroll", async ({
@@ -1455,11 +1606,14 @@ test.describe("full-page transitions", () => {
     let reachedProfile = false;
     for (let index = 0; index < 40 && !reachedProfile; index += 1) {
       await page.keyboard.press("Tab");
+      // An already-visible control keeps its position; an offscreen reveal needs
+      // a frame or more for the pinned render to catch up. Await the observable
+      // placement rather than a fixed reread delay.
       let state = await readState();
-      // An already-visible control keeps its position, so only an offscreen
-      // reveal needs a frame for the pinned render to catch up.
       if (state.scene && !state.visible) {
-        await page.waitForTimeout(240);
+        await expect
+          .poll(async () => (await readState()).visible, { timeout: 5_000 })
+          .toBe(true);
         state = await readState();
       }
       expect(state.stageScrollTop, `tab ${index + 1}`).toBe(0);
@@ -1494,44 +1648,49 @@ test.describe("full-page transitions", () => {
     await source.focus();
     await expect(source).toBeFocused();
     // Wait until the deferred placement has actually run: the whole control,
-    // including its ring, is in the viewport and its top sits just below the
-    // header. Only then is a small wheel meaningful — a 20px nudge crosses the
-    // ring. Without this, a fast round-trip could send the wheel while the focus
-    // correction is still pending and cancel it, a false setup.
+    // including its ring, is exposed below the header AND it sits immediately
+    // under it. Only then is a small wheel meaningful — a 20px nudge crosses the
+    // ring. Without awaiting the placement itself, a fast round-trip could send
+    // the wheel while the focus correction is still pending and cancel it.
+    const readPlacement = () =>
+      source.evaluate((element) => {
+        const box = element.getBoundingClientRect();
+        const style = getComputedStyle(element);
+        const ring =
+          (parseFloat(style.outlineWidth) || 0) +
+          (parseFloat(style.outlineOffset) || 0);
+        const header = document
+          .querySelector(".site-header")!
+          .getBoundingClientRect().bottom;
+        const top = box.top - header;
+        return {
+          top,
+          ring,
+          inViewport: box.bottom + ring <= window.innerHeight,
+          // The complete ring is exposed below the header, and the control is
+          // placed immediately under it.
+          placed: top - ring >= 0 && top <= 24,
+        };
+      });
     await expect
-      .poll(() =>
-        source.evaluate((element) => {
-          const box = element.getBoundingClientRect();
-          const style = getComputedStyle(element);
-          const ring =
-            (parseFloat(style.outlineWidth) || 0) +
-            (parseFloat(style.outlineOffset) || 0);
-          const header = document
-            .querySelector(".site-header")!
-            .getBoundingClientRect().bottom;
-          return {
-            aboveHeader: box.top - ring - header,
-            inViewport: box.bottom + ring <= window.innerHeight,
-          };
-        }),
-      )
-      .toMatchObject({ inViewport: true });
-    const placement = await source.evaluate((element) => {
-      const box = element.getBoundingClientRect();
-      const header = document
-        .querySelector(".site-header")!
-        .getBoundingClientRect().bottom;
-      return box.top - header;
-    });
-    expect(placement).toBeGreaterThanOrEqual(0);
-    expect(placement).toBeLessThanOrEqual(24);
+      .poll(async () => {
+        const p = await readPlacement();
+        return p.inViewport && p.placed;
+      })
+      .toBe(true);
+    const placement = await readPlacement();
+    expect(placement.top - placement.ring).toBeGreaterThanOrEqual(0);
+    expect(placement.top).toBeLessThanOrEqual(24);
 
     const y0 = await page.evaluate(() => window.scrollY);
     await page.mouse.move(700, 400);
     // A small genuine wheel while the link stays focused: the full movement must
-    // survive. The old render-time correction would undo it immediately.
+    // survive. The old render-time correction would undo it immediately. Native
+    // wheel scroll lands on a later frame, so await its arrival before reading.
     await page.mouse.wheel(0, 20);
-    await page.waitForTimeout(400);
+    await expect
+      .poll(() => page.evaluate(() => window.scrollY), { timeout: 5_000 })
+      .toBeCloseTo(y0 + 20, 0);
     const y1 = await page.evaluate(() => window.scrollY);
     expect(y1).toBeCloseTo(y0 + 20, 0);
     await expect(source).toBeFocused();
@@ -1554,10 +1713,15 @@ test.describe("full-page transitions", () => {
         () => document.querySelector(".journey .stage")?.scrollTop ?? null,
       );
 
-    // A deep link is honoured on load, before any click.
+    // A deep link is honoured on load, before any click. `__afterHoursMotionReady`
+    // means setup completed, not that the initial placement has settled (the
+    // native fragment scroll can land a frame later), so await the settled
+    // landing rather than sampling immediately.
     await page.goto("/#selected-evidence");
     await page.waitForFunction(() => window.__afterHoursMotionReady);
-    expect(await progress()).toBeCloseTo(TIMELINE[2].start, 2);
+    await expect
+      .poll(progress, { timeout: 5_000 })
+      .toBeCloseTo(TIMELINE[2].start, 2);
     expect(await stageScrollTop()).toBe(0);
 
     // Repeating the same hash still lands on the same scene start.
@@ -1673,6 +1837,7 @@ test.describe("full-page transitions", () => {
     const beforeTransition = TIMELINE[1].outStart - 0.015;
     await scrollToProgress(page, beforeTransition);
     await page.mouse.move(700, 400);
+    const beforeWheel = await page.evaluate(() => window.scrollY);
     await page.mouse.wheel(
       0,
       Math.round(
@@ -1680,6 +1845,11 @@ test.describe("full-page transitions", () => {
           scrollDistance,
       ),
     );
+    // Await the wheel's actual delivery before settling; a fixed wait can read
+    // the pre-wheel position while native scroll is still in flight.
+    await expect
+      .poll(() => page.evaluate(() => window.scrollY), { timeout: 5_000 })
+      .toBeGreaterThan(beforeWheel);
     const entered = await settle();
     const enteredProgress = await progress();
     expect(entered).toBeGreaterThan(0);
@@ -1690,8 +1860,13 @@ test.describe("full-page transitions", () => {
     expect(await page.evaluate(() => window.scrollY)).toBeCloseTo(entered, 0);
 
     // The reverse direction behaves the same: a real upward wheel holds where
-    // it stopped, even across the transition boundary.
+    // it stopped, even across the transition boundary. Await the wheel's actual
+    // arrival before settling, so an absent delivery cannot look like a hold.
+    const beforeReverse = await page.evaluate(() => window.scrollY);
     await page.mouse.wheel(0, -260);
+    await expect
+      .poll(() => page.evaluate(() => window.scrollY), { timeout: 5_000 })
+      .toBeLessThan(beforeReverse);
     const backed = await settle();
     expect(backed).toBeLessThan(entered);
     await page.waitForTimeout(1600);
@@ -1714,48 +1889,112 @@ test.describe("full-page transitions", () => {
           .getAnimations({ subtree: true })
           .map((animation) => animation.playbackRate),
       );
-    // Record the real drift playback rate across every frame of a gesture, so a
-    // brief pulse is captured regardless of host frame rate.
-    const startRecorder = () =>
+    // Record the real drift playback rate on the scroll event itself, after the
+    // app's own listeners have committed it. A remote rAF read can miss a brief
+    // pulse (the rate decays ~140ms after input stops), so sampling the actual
+    // event keeps the assertion about the real animation state. The recorder
+    // stays installed for the whole test and is reset per sample.
+    await page.evaluate(() => {
+      const host = document.querySelector(".starfield")!;
+      const state = {
+        min: Infinity,
+        max: -Infinity,
+        events: 0,
+        lastY: -1,
+        lastAt: -Infinity,
+      };
+      (window as unknown as { __rate: typeof state }).__rate = state;
+      const onScroll = () => {
+        const values = host
+          .getAnimations({ subtree: true })
+          .map((animation) => animation.playbackRate);
+        if (values.length) {
+          state.min = Math.min(state.min, ...values);
+          state.max = Math.max(state.max, ...values);
+        }
+        state.events += 1;
+        state.lastY = window.scrollY;
+        state.lastAt = performance.now();
+      };
+      window.addEventListener("scroll", onScroll, { passive: true });
+    });
+    type RateState = {
+      min: number;
+      max: number;
+      events: number;
+      lastY: number;
+      lastAt: number;
+    };
+    const resetRecorder = () =>
       page.evaluate(() => {
-        const host = document.querySelector(".starfield")!;
-        const state = { min: Infinity, max: -Infinity };
-        (window as unknown as { __rate: typeof state }).__rate = state;
-        const tick = () => {
-          const values = host
-            .getAnimations({ subtree: true })
-            .map((animation) => animation.playbackRate);
-          if (values.length) {
-            state.min = Math.min(state.min, ...values);
-            state.max = Math.max(state.max, ...values);
-          }
-          (window as unknown as { __rateRaf?: number }).__rateRaf =
-            requestAnimationFrame(tick);
-        };
-        (window as unknown as { __rateRaf?: number }).__rateRaf =
-          requestAnimationFrame(tick);
+        const state = (window as unknown as { __rate: RateState }).__rate;
+        state.min = Infinity;
+        state.max = -Infinity;
+        state.events = 0;
+        state.lastY = -1;
       });
-    const stopRecorder = () =>
-      page.evaluate(() => {
-        cancelAnimationFrame(
-          (window as unknown as { __rateRaf?: number }).__rateRaf ?? 0,
-        );
-        return (window as unknown as { __rate: { min: number; max: number } })
-          .__rate;
-      });
+    const readRecorder = () =>
+      page.evaluate(() => (window as unknown as { __rate: RateState }).__rate);
+    // A native gesture is only finished once the engine stops delivering scroll
+    // events for it: WebKit delivers one wheel as several scroll events (measured
+    // here: a second, small event 232ms after the first), and every one of them
+    // restarts the controller's 140ms decay. Sampling before that quiet window
+    // reports a still-decaying rate for a gesture that has not finished
+    // arriving, which is not the idle state this test asserts.
+    const awaitGestureDelivered = () =>
+      expect
+        .poll(
+          () =>
+            page.evaluate(() => {
+              const state = (window as unknown as { __rate: RateState }).__rate;
+              return (
+                performance.now() - state.lastAt >= 400 &&
+                state.lastY === window.scrollY
+              );
+            }),
+          { timeout: 5_000 },
+        )
+        .toBe(true);
+
     const settleIdle = async () => {
+      // The elapsed idle window starts after the gesture has finished arriving,
+      // then runs for its full length, so two samples cannot be confused.
+      await awaitGestureDelivered();
       await page.waitForTimeout(600);
       const values = await rates();
       return { max: Math.max(...values), min: Math.min(...values) };
     };
 
-    // Perform a genuine wheel gesture and record the real drift rate throughout.
+    // Perform a genuine wheel gesture and record the real drift rate throughout
+    // its whole native delivery.
     const sample = async (delta: number) => {
       const before = await page.evaluate(() => window.scrollY);
-      await startRecorder();
+      await resetRecorder();
       await page.mouse.wheel(0, delta);
-      await page.waitForTimeout(200);
-      const recorded = await stopRecorder();
+      // Await the recorder's own matching native scroll event at the position
+      // the page actually holds: WebKit can publish the position before event
+      // delivery, so requiring the recorded lastY to equal the live scrollY
+      // proves the rate was captured on the real, matching event.
+      await expect
+        .poll(
+          () =>
+            page.evaluate(
+              (expectedBefore) => {
+                const state = (window as unknown as { __rate: RateState })
+                  .__rate;
+                return (
+                  state.events > 0 &&
+                  state.lastY !== expectedBefore &&
+                  state.lastY === window.scrollY
+                );
+              },
+              before,
+            ),
+          { timeout: 5_000 },
+        )
+        .toBe(true);
+      await awaitGestureDelivered();
+      const recorded = await readRecorder();
       return { before, after: await page.evaluate(() => window.scrollY), ...recorded };
     };
 
@@ -1791,9 +2030,30 @@ test.describe("full-page transitions", () => {
     await page.goto("/");
     await page.waitForFunction(() => window.__afterHoursMotionReady);
     await page.waitForSelector(".sky-plane .sculpture-canvas");
-    // A settled later screen, with the violet Contact surface visible.
+    // A settled later screen, with the violet Contact surface visible. Await the
+    // scene arrival and the Contact reveal completion (opacity 1, y 0) before
+    // freezing, so no foreground tween is still in flight.
     await scrollToProgress(page, 0.95);
-    await page.waitForTimeout(800);
+    await expect
+      .poll(
+        () =>
+          page.evaluate(() => {
+            const scene = document.querySelector("#contact-path")!;
+            const targets = [...scene.querySelectorAll<HTMLElement>("[data-reveal]")];
+            return (
+              Math.abs(scene.getBoundingClientRect().top) < 2 &&
+              targets.every((target) => {
+                const matrix = new DOMMatrix(getComputedStyle(target).transform);
+                return (
+                  Number(getComputedStyle(target).opacity) >= 0.999 &&
+                  Math.abs(matrix.m42) < 0.5
+                );
+              })
+            );
+          }),
+        { timeout: 5_000 },
+      )
+      .toBe(true);
 
     const canvas = page.locator(".sky-plane .sculpture-canvas");
     await expect(canvas).toBeVisible();
@@ -1817,12 +2077,44 @@ test.describe("full-page transitions", () => {
       });
       document.dispatchEvent(new Event("visibilitychange"));
     });
-    await page.waitForTimeout(200);
+    // Let the freeze take effect on a rendered frame.
+    await page.evaluate(
+      () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+    );
 
     // Visible-output proof: with the original canvas shown the rendered frame
     // differs from the same frozen frame with the canvas hidden, and restoring
-    // the canvas reproduces the exact original frame.
+    // the canvas reproduces the exact original frame. Compare decoded RGBA
+    // pixels, not PNG encoding bytes, so the result reflects what is drawn.
     const clip = { x: 0, y: 0, width: 1440, height: 1000 };
+    const comparePixels = (a: Buffer, b: Buffer) =>
+      page.evaluate(
+        async ({ first, second }) => {
+          const decode = async (base64: string) => {
+            const image = new Image();
+            image.src = `data:image/png;base64,${base64}`;
+            await image.decode();
+            const surface = document.createElement("canvas");
+            surface.width = image.naturalWidth;
+            surface.height = image.naturalHeight;
+            const ctx = surface.getContext("2d")!;
+            ctx.drawImage(image, 0, 0);
+            return ctx.getImageData(0, 0, surface.width, surface.height).data;
+          };
+          const [one, two] = await Promise.all([
+            decode(first),
+            decode(second),
+          ]);
+          if (one.length !== two.length) return { equal: false, changed: -1 };
+          let changed = 0;
+          for (let i = 0; i < one.length; i += 1) {
+            if (one[i] !== two[i]) changed += 1;
+          }
+          return { equal: changed === 0, changed };
+        },
+        { first: a.toString("base64"), second: b.toString("base64") },
+      );
+
     const shown = await page.screenshot({ clip });
     await canvas.evaluate((element) => {
       (element as HTMLCanvasElement).style.visibility = "hidden";
@@ -1835,8 +2127,11 @@ test.describe("full-page transitions", () => {
     await page.waitForTimeout(120);
     const restored = await page.screenshot({ clip });
 
-    expect(shown.equals(restored)).toBe(true);
-    expect(shown.equals(hidden)).toBe(false);
+    const restoredMatch = await comparePixels(shown, restored);
+    expect(restoredMatch.equal).toBe(true);
+    const hiddenDiff = await comparePixels(shown, hidden);
+    expect(hiddenDiff.equal).toBe(false);
+    expect(hiddenDiff.changed).toBeGreaterThan(0);
 
     await page.evaluate(() => {
       Object.defineProperty(document, "hidden", {

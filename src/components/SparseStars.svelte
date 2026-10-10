@@ -274,8 +274,21 @@
       schedulePaint();
     }
 
+    // React to the rate at the controller's authoritative publish boundary, so
+    // the stars never commit a stale rate just because their own scroll listener
+    // happened to run before the controller's. A real gesture (the shared
+    // velocity is non-zero) is committed immediately, including a slow wheel
+    // after a fast one, so the drift always follows the current pace. Only the
+    // timer-driven return to idle eases, via updateRate.
+    function onPublishedRate(next: number) {
+      if (skyState.velocity !== 0) commitRate(next);
+      startRate();
+    }
+    skyState.rateListeners.add(onPublishedRate);
+
+    // Scrolling moves content under the quiet mask, so repaint on scroll; the
+    // rate itself comes from the publish boundary above, not from listener order.
     function handleScroll() {
-      commitRate(skyState.rate);
       startRate();
       schedulePaint();
     }
@@ -337,6 +350,7 @@
 
     return () => {
       destroyed = true;
+      skyState.rateListeners.delete(onPublishedRate);
       resizeObserver.disconnect();
       contentObserver.disconnect();
       mutationObserver.disconnect();

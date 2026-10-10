@@ -497,6 +497,32 @@ const year = new Date().getFullYear();
       .site-header[data-contact="true"] a:focus-visible {
         outline-color: var(--contact-ink);
       }
+      /* While the Contact surface is mid-blend the composited backdrop passes
+         through a mid luminance where neither the dark-scene ink nor the plum
+         Contact ink clears 4.5:1, so the foreground switches to whichever of
+         white/black keeps the greater contrast against the actual colour. The
+         normal palette is restored at the stable endpoints (0.000 and 1.000). */
+      .site-header[data-contact-phase="contact"] {
+        --header-ink: var(--contact-ink);
+        --header-muted: var(--contact-ink);
+      }
+      .site-header[data-contact-phase="contact"] a:focus-visible {
+        outline-color: var(--contact-ink);
+      }
+      .site-header[data-contact-phase="blend"] {
+        --header-ink: #ffffff;
+        --header-muted: #ffffff;
+      }
+      .site-header[data-contact-phase="blend"] a:focus-visible {
+        outline-color: #ffffff;
+      }
+      .site-header[data-contact-phase="blend"][data-contact-ink="dark"] {
+        --header-ink: #000000;
+        --header-muted: #000000;
+      }
+      .site-header[data-contact-phase="blend"][data-contact-ink="dark"] a:focus-visible {
+        outline-color: #000000;
+      }
       html:not(.js) .site-header {
         position: absolute;
       }
@@ -582,6 +608,44 @@ const year = new Date().getFullYear();
          Contact scene itself is transparent and the stars show through it. */
       .journey[data-active="true"] #contact-path {
         background: transparent;
+      }
+      /* Mid-blend foreground: the stage's palette tokens switch to whichever of
+         white/black keeps the greater contrast against the actual composited
+         surface, covering the incoming Contact copy and the outgoing Archive
+         footer (which inherits --muted-ink). Scoped to the stage so the fixed
+         particle plane outside it keeps its own colours. */
+      .journey[data-active="true"] .stage[data-contact-phase="blend"] {
+        --ink: #ffffff;
+        --muted-ink: #ffffff;
+        --contact-ink: #ffffff;
+        --accent: #ffffff;
+        --accent-ink: #ffffff;
+        --rule: rgba(255, 255, 255, 0.35);
+      }
+      .journey[data-active="true"] .stage[data-contact-phase="blend"][data-contact-ink="dark"] {
+        --ink: #000000;
+        --muted-ink: #000000;
+        --contact-ink: #000000;
+        --accent: #000000;
+        --accent-ink: #000000;
+        --rule: rgba(0, 0, 0, 0.35);
+      }
+      /* The polarity can flip mid-blend; a colour transition would tween the
+         foreground through an unreadable gray, so only the colour channel is
+         dropped here. Background, border and transform keep their existing
+         timing so hover and nudge behaviour is unchanged. Each selector mirrors
+         the no-preference transition rule with the blend ancestor and carries
+         the same ID, so it also wins for #contact-path anchors, whose rule
+         otherwise outranks a class-only override. */
+      .site-header[data-contact-phase="blend"] nav a,
+      .site-header[data-contact-phase="blend"] .flab-logo,
+      .journey[data-active="true"] .stage[data-contact-phase="blend"] .intro-link,
+      .journey[data-active="true"] .stage[data-contact-phase="blend"] .project-link,
+      .journey[data-active="true"] .stage[data-contact-phase="blend"] .text-link,
+      .journey[data-active="true"] .stage[data-contact-phase="blend"] .ledger-source a,
+      .journey[data-active="true"] .stage[data-contact-phase="blend"] #contact-path a,
+      .journey[data-active="true"] .stage[data-contact-phase="blend"] .site-footer a {
+        transition-property: background-color, border-color, transform;
       }
       /* The violet Contact surface sits below the fixed particle sky, so the
          original stars stay visible over it. It is driven by the global
@@ -1162,6 +1226,9 @@ const year = new Date().getFullYear();
 
     <script>
       import gsap from "gsap";
+      // One-shot tweens follow wall time through dropped frames; the sky has its
+      // own clock.
+      gsap.ticker.lagSmoothing(0);
       import { setupEvidenceLedger } from "../lib/evidenceLedger";
       import { setupSectionScroll } from "../lib/sectionScroll";
 
@@ -1193,6 +1260,40 @@ const year = new Date().getFullYear();
       // Retain each grouped reveal so teardown explicitly cancels every
       // delivery, including groups that overlap within the reveal window.
       let revealTweens: gsap.core.Tween[] = [];
+      // Live reveal groups and the wall-clock instant each one should have
+      // finished naturally. The GSAP ticker samples its time once per tick and a
+      // slow renderer can delay the dispatch of that sample, so a group can
+      // still show partial foreground state after its real deadline has passed.
+      // This records the original deadline at creation and completes an overdue
+      // group after the ticker has dispatched the whole frame, before the
+      // browser paints it.
+      const revealDeadlines = new Map<gsap.core.Tween, number>();
+      function flushOverdueReveals() {
+        // A queued check must never revive styles that teardown just cleared.
+        if (!active) return;
+        const now = performance.now();
+        for (const [tween, deadline] of revealDeadlines) {
+          // A group removed from its timeline has been killed (focus settle or
+          // teardown) or has already finished; either way it needs no
+          // correction. A freshly created tween still has a parent even before
+          // its first tick, so it is never discarded here.
+          if (!tween.parent) {
+            revealDeadlines.delete(tween);
+            continue;
+          }
+          if (now >= deadline) {
+            tween.totalProgress(1);
+            revealDeadlines.delete(tween);
+          }
+        }
+        if (revealDeadlines.size === 0) gsap.ticker.remove(queueRevealFlush);
+      }
+      function queueRevealFlush() {
+        // Run after the shared ticker has dispatched every listener, regardless
+        // of listener order, but still inside the frame the browser is about to
+        // paint.
+        queueMicrotask(flushOverdueReveals);
+      }
       let focusInHandler: ((event: Event) => void) | undefined;
       let scrollHandler: (() => void) | undefined;
       let scrollFrame = 0;
@@ -1219,6 +1320,8 @@ const year = new Date().getFullYear();
         // Stop the grouped reveals before clearing their inline styles.
         for (const tween of revealTweens) tween.kill();
         revealTweens = [];
+        revealDeadlines.clear();
+        gsap.ticker.remove(queueRevealFlush);
         gsap.killTweensOf([...revealTargets, ...nudgeTargets]);
         gsap.set(nudgeTargets, { clearProps: "transform" });
         root.classList.remove("motion");
@@ -1244,15 +1347,19 @@ const year = new Date().getFullYear();
               for (const target of entering) revealObserver?.unobserve(target);
               if (!entering.length) return;
               gsap.killTweensOf(entering, "opacity,y");
-              revealTweens.push(
-                gsap.to(entering, {
-                  opacity: 1,
-                  y: 0,
-                  duration: 0.6,
-                  ease: "power2.out",
-                  stagger: 0.06,
-                }),
+              const tween = gsap.to(entering, {
+                opacity: 1,
+                y: 0,
+                duration: 0.6,
+                ease: "power2.out",
+                stagger: 0.06,
+              });
+              revealTweens.push(tween);
+              revealDeadlines.set(
+                tween,
+                performance.now() + tween.totalDuration() * 1000,
               );
+              if (revealDeadlines.size === 1) gsap.ticker.add(queueRevealFlush);
             },
             { rootMargin: "0px 0px -10% 0px" },
           );

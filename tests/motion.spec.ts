@@ -69,28 +69,52 @@ test("reveals every scroll target without leaving one stuck", async ({
       return box.bottom > 0 && box.top < window.innerHeight * 0.9;
     };
     const seen = new Set<Element>();
-    for (const scene of timeline) {
+    const heights = timeline.map((scene: { id: string }) => {
+      const host = document.querySelector(`[data-scene="${scene.id}"]`);
+      return host ? host.getBoundingClientRect().height : 0;
+    });
+    const viewport = window.innerHeight;
+    for (let index = 0; index < timeline.length; index += 1) {
+      const scene = timeline[index];
       const host = document.querySelector(`[data-scene="${scene.id}"]`);
       if (!host) continue;
       const targets = Array.from(
         host.querySelectorAll<HTMLElement>("[data-reveal]"),
       );
       if (!targets.length) continue;
-      for (let step = 0; step <= 32; step += 1) {
-        const p = scene.start + (scene.outStart - scene.start) * (step / 32);
+      // Bring each target into the reveal zone directly, instead of stepping
+      // through the whole hold. The read position is derived here from the
+      // public scene-local box and the timeline's own interval (start/outStart),
+      // so no app helper is used and no frames are spent traversing unchanged
+      // holds. Each target must still enter the zone and settle before the next.
+      const overflow = Math.max(0, (heights[index] ?? 0) - viewport);
+      const stableScroll = (scene.outStart - scene.start) * scroll;
+      const holdScroll = Math.max(0, stableScroll - overflow);
+      for (const target of targets) {
+        if (seen.has(target)) continue;
+        const localTop =
+          target.getBoundingClientRect().top -
+          host.getBoundingClientRect().top;
+        const readOffset = Math.min(
+          Math.max(0, localTop - viewport * 0.4),
+          overflow,
+        );
+        const p = scene.start + (holdScroll + readOffset) / scroll;
         window.scrollTo({ top: p * scroll, behavior: "instant" });
         await frame();
-        await frame();
-        for (const target of targets) {
-          if (seen.has(target) || !revealable(target)) continue;
-          for (let attempt = 0; attempt < 120 && !settled(target); attempt += 1) {
-            await frame();
-          }
-          if (!settled(target)) {
-            throw new Error(`Unsettled reveal: ${target.textContent}`);
-          }
-          seen.add(target);
+        for (let attempt = 0; attempt < 120 && !revealable(target); attempt += 1) {
+          await frame();
         }
+        if (!revealable(target)) {
+          throw new Error(`Target never entered view: ${target.textContent}`);
+        }
+        for (let attempt = 0; attempt < 120 && !settled(target); attempt += 1) {
+          await frame();
+        }
+        if (!settled(target)) {
+          throw new Error(`Unsettled reveal: ${target.textContent}`);
+        }
+        seen.add(target);
       }
     }
     const total = document.querySelectorAll("[data-reveal]").length;
@@ -173,18 +197,21 @@ test("shows a static complete page under reduced motion", async ({ page }) => {
       (id) => getComputedStyle(document.querySelector(id)!).backgroundColor,
       selector,
     );
-  // The navbar ink transitions over 180ms, so sample until it holds still
-  // rather than reading a mid-transition colour.
-  const settledNavInk = async () => {
-    let last = await navInk();
-    for (let attempt = 0; attempt < 20; attempt += 1) {
-      await page.waitForTimeout(150);
-      const current = await navInk();
-      if (current === last) return current;
-      last = current;
-    }
-    return last;
-  };
+  // The navbar ink transitions over 180ms. Wait for the actual measured ink to
+  // clear the contrast contract against the surface it sits on, rather than
+  // sampling until two reads agree (on a slow renderer the frames are longer
+  // than the sampling interval, so two equal reads can both be pre-transition).
+  const awaitVioletInk = () =>
+    expect
+      .poll(
+        async () => {
+          const ink = await navInk();
+          if (ink === darkInk) return 0;
+          return contrast(ink, await surface("#contact-path"));
+        },
+        { timeout: 5_000 },
+      )
+      .toBeGreaterThanOrEqual(4.5);
   const luminance = (color: string) => {
     const [r, g, b] = color
       .match(/[\d.]+/g)!
@@ -202,7 +229,7 @@ test("shows a static complete page under reduced motion", async ({ page }) => {
     (Math.max(luminance(a), luminance(b)) + 0.05) /
     (Math.min(luminance(a), luminance(b)) + 0.05);
 
-  const darkInk = await settledNavInk();
+  const darkInk = await navInk();
   expect(await headerContact()).toBe("false");
   // The navbar labels are small text, so they must clear 4.5:1 against the
   // surface they actually sit on (measured: 7.24 dark, 6.49 over violet).
@@ -212,15 +239,17 @@ test("shows a static complete page under reduced motion", async ({ page }) => {
 
   await page.locator("#contact-path").scrollIntoViewIfNeeded();
   await expect.poll(headerContact).toBe("true");
-  const violetInk = await settledNavInk();
+  // Over the violet band the measured ink must actually change and clear 4.5:1.
+  await awaitVioletInk();
+  const violetInk = await navInk();
   expect(violetInk).not.toBe(darkInk);
-  expect(
-    contrast(violetInk, await surface("#contact-path")),
-  ).toBeGreaterThanOrEqual(4.5);
+  expect(contrast(violetInk, await surface("#contact-path"))).toBeGreaterThanOrEqual(
+    4.5,
+  );
 
   await page.evaluate(() => window.scrollTo({ top: 0, behavior: "instant" }));
   await expect.poll(headerContact).toBe("false");
-  expect(await settledNavInk()).toBe(darkInk);
+  await expect.poll(navInk, { timeout: 5_000 }).toBe(darkInk);
 });
 
 test("handles a reduced-motion change after load in both directions", async ({

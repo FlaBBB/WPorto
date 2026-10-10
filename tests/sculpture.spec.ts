@@ -23,6 +23,13 @@ type Painted = {
   spread: number;
   /** Sum of the alpha channel, a cheap signature of the whole frame. */
   alphaSum: number;
+  /**
+   * Backing-store pixels per CSS pixel, i.e. the canvas scale (the device pixel
+   * ratio). Every geometric field above is measured in backing-store pixels, so
+   * a contract expressed in CSS pixels must be converted with this factor
+   * (measured: 2 on the WebKit project, 1 on Chromium and Firefox).
+   */
+  scale: number;
 };
 
 const painted = (page: Page, selector: string, step = 2): Promise<Painted> =>
@@ -78,6 +85,7 @@ const painted = (page: Page, selector: string, step = 2): Promise<Painted> =>
         density: count / (boxW * boxH),
         spread: Math.sqrt(Math.max(0, variance)),
         alphaSum,
+        scale: element.clientWidth > 0 ? width / element.clientWidth : 1,
       };
     },
     step,
@@ -128,11 +136,13 @@ const metrics = (page: Page): Promise<Metrics> =>
 const sceneRange = async (page: Page) => (await metrics(page)).scroll;
 
 const scrollTo = async (page: Page, y: number) => {
-  await page.evaluate((top) => {
+  await page.evaluate(async (top) => {
     document.documentElement.style.scrollBehavior = "auto";
     window.scrollTo(0, top);
+    // Two frames guarantee the controller has applied the pinned position.
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    await new Promise((resolve) => requestAnimationFrame(resolve));
   }, y);
-  await page.waitForTimeout(420);
 };
 
 /** Scroll to a point on the single global progress. */
@@ -141,13 +151,78 @@ const scrollToProgress = async (page: Page, p: number) => {
   await scrollTo(page, p * scroll);
 };
 
+/**
+ * Independent smoothstep reference for the Opening's 12%–15% outgoing window.
+ * Test-owned, so the assertion never derives its expectation from the
+ * implementation it is checking.
+ */
+const expectedGatherAt = (progress: number) => {
+  const start = 0.12;
+  const end = 0.15;
+  if (progress <= start) return 1;
+  if (progress >= end) return 0;
+  const local = (progress - start) / (end - start);
+  return 1 - local * local * (3 - 2 * local);
+};
+
+/**
+ * Await observable native arrival and the published rendered pose, instead of
+ * assuming a fixed sleep. The controller publishes `data-gather` from the real
+ * offset on a later frame, and a slow engine (software WebKit runs this page at
+ * ~2-3fps) can take several frames to publish, so this waits until the native
+ * progress has arrived AND the published gather matches the independent
+ * expectation for that progress.
+ */
+const awaitPose = async (
+  page: Page,
+  { progress, tolerance = 0.002 }: { progress?: number; tolerance?: number } = {},
+) => {
+  await expect
+    .poll(
+      async () => {
+        const state = await metrics(page);
+        if (
+          progress !== undefined &&
+          Math.abs(state.progress - progress) > tolerance
+        )
+          return "moving";
+        const expected = expectedGatherAt(state.progress);
+        return Math.abs(state.gather - expected) < 0.02 ? "settled" : "publishing";
+      },
+      { timeout: 5_000 },
+    )
+    .toBe("settled");
+  return metrics(page);
+};
+
 const hydrate = async (page: Page) => {
   await page.goto("/");
   await page.waitForSelector('.sculpture[data-motion="on"]', {
     timeout: 10_000,
   });
   await page.waitForSelector(".sculpture-canvas", { timeout: 10_000 });
-  await page.waitForTimeout(500);
+  // The canvas can exist before its first heavy paint lands, so await the
+  // gathered mark actually being drawn rather than a fixed delay.
+  await expect
+    .poll(
+      async () =>
+        page.locator(".sculpture-canvas").evaluate((canvas) => {
+          const element = canvas as HTMLCanvasElement;
+          const ctx = element.getContext("2d")!;
+          const data = ctx.getImageData(
+            0,
+            0,
+            element.width,
+            element.height,
+          ).data;
+          let count = 0;
+          for (let i = 3; i < data.length; i += 4 * 16) {
+            if (data[i] > 16) count += 1;
+          }
+          return count;
+        }),
+    )
+    .toBeGreaterThan(0);
 };
 
 /** The traced artboard's aspect ratio, which a jittered shape would not match. */
@@ -186,7 +261,7 @@ test.describe("After Hours scroll sculpture", () => {
 
     // Past the Opening's outgoing transition the cloud is fully dispersed.
     await scrollToProgress(page, 0.2);
-    expect((await metrics(page)).gather).toBe(0);
+    expect((await awaitPose(page, { progress: 0.2 })).gather).toBe(0);
 
     const scattered = await main(page);
     // A real cloud spans most of the field on both axes and stays sparse.
@@ -235,13 +310,13 @@ test.describe("After Hours scroll sculpture", () => {
     const gathered = await main(page);
 
     await scrollToProgress(page, 0.135);
-    const mid = await metrics(page);
+    const mid = await awaitPose(page, { progress: 0.135 });
     expect(mid.gather).toBeGreaterThan(0.3);
     expect(mid.gather).toBeLessThan(0.8);
     const midPainted = await main(page);
 
     await scrollToProgress(page, 0.2);
-    expect((await metrics(page)).gather).toBe(0);
+    expect((await awaitPose(page, { progress: 0.2 })).gather).toBe(0);
     const dispersed = await main(page);
 
     // The three drawn states are genuinely different poses, not the same frame
@@ -259,10 +334,34 @@ test.describe("After Hours scroll sculpture", () => {
 
     // Reversing back to the top reforms the mark exactly.
     await scrollTo(page, 0);
-    expect((await metrics(page)).gather).toBe(1);
+    expect((await awaitPose(page, { progress: 0 })).gather).toBe(1);
+    // The published pose can lead the actual canvas repaint on a slow renderer,
+    // so await the reformed mark being painted before comparing its footprint.
+    //
+    // The footprint contract is 6 CSS px. The painted helper measures the canvas
+    // backing store, whose scale is the device pixel ratio (measured: 2 on the
+    // WebKit project, 1 on Chromium and Firefox), so convert the difference
+    // before comparing: the same physical distance is twice as many pixels on a
+    // DPR-2 engine.
+    const reformedDelta = async () => {
+      const painted = await main(page);
+      return (
+        Math.max(
+          Math.abs(painted.width - gathered.width),
+          Math.abs(painted.height - gathered.height),
+        ) / painted.scale
+      );
+    };
+    await expect
+      .poll(reformedDelta, { timeout: 5_000 })
+      .toBeLessThanOrEqual(6);
     const reformed = await main(page);
-    expect(Math.abs(reformed.width - gathered.width)).toBeLessThanOrEqual(6);
-    expect(Math.abs(reformed.height - gathered.height)).toBeLessThanOrEqual(6);
+    expect(
+      Math.abs(reformed.width - gathered.width) / reformed.scale,
+    ).toBeLessThanOrEqual(6);
+    expect(
+      Math.abs(reformed.height - gathered.height) / reformed.scale,
+    ).toBeLessThanOrEqual(6);
   });
 
   test("ignores hover and click; no dead control remains", async ({ page }) => {
@@ -311,15 +410,12 @@ test.describe("After Hours scroll sculpture", () => {
       });
     // The mark's gather is a function of the single global progress; derive the
     // expected pose from the observed offset rather than assuming a fixed one.
-    const expectedGather = (progress: number) => {
-      const start = 0.12;
-      const end = 0.15;
-      if (progress <= start) return 1;
-      if (progress >= end) return 0;
-      const local = (progress - start) / (end - start);
-      return 1 - local * local * (3 - 2 * local);
-    };
+    const expectedGather = expectedGatherAt;
     const settled = async () => {
+      // Await the published pose, then keep the original elapsed-time idle
+      // observation: a second read taken immediately could match a dispersed
+      // pose while native keyboard scrolling is still running.
+      await awaitPose(page);
       await page.waitForTimeout(700);
       return state();
     };
@@ -340,6 +436,15 @@ test.describe("After Hours scroll sculpture", () => {
     // pose follows; stopping leaves that exact position.
     await page.locator("body").press("PageDown");
     await expect.poll(async () => (await state()).y).toBeGreaterThan(inside.y);
+    // The native gesture must have finished before its position is recorded.
+    await expect
+      .poll(async () => {
+        const a = await state();
+        await page.waitForTimeout(150);
+        const b = await state();
+        return a.y === b.y;
+      })
+      .toBe(true);
     const afterKey = await settled();
     expect(afterKey.progress).toBeGreaterThan(inside.progress);
     expect(Math.abs(afterKey.gather - expectedGather(afterKey.progress))).toBeLessThan(0.02);
@@ -429,8 +534,7 @@ test.describe("After Hours scroll sculpture", () => {
     await page.waitForFunction(() => window.scrollY === 0, undefined, {
       timeout: 5000,
     });
-    await page.waitForTimeout(300);
-    expect((await metrics(page)).gather).toBe(1);
+    expect((await awaitPose(page, { progress: 0 })).gather).toBe(1);
     const reformed = await main(page);
     expect(reformed.spanX).toBeLessThan(0.62);
   });
@@ -463,6 +567,12 @@ test.describe("After Hours sculpture geometry", () => {
 
     const total = await sceneRange(page);
     await scrollTo(page, total * 0.2);
+    // Await the actual dispersed publication on the canvas: the published
+    // data-gather can already read 0 while the heavy field still shows the old
+    // painted pose, so poll the painted geometry rather than a fixed sleep.
+    await expect
+      .poll(async () => (await main(page, 4)).spanX, { timeout: 5_000 })
+      .toBeGreaterThan(0.8);
     const scattered = await main(page, 4);
     expect(scattered.count).toBeGreaterThan(200);
     expect(scattered.spanX).toBeGreaterThan(0.8);
@@ -648,7 +758,7 @@ test.describe("After Hours sculpture fallbacks", () => {
     // A nonzero scroll position is what exposes desynchronization: the scene
     // must rebuild and reflect this offset, not reset to the top.
     await scrollToProgress(page, 0.135);
-    const beforePreference = await metrics(page);
+    const beforePreference = await awaitPose(page, { progress: 0.135 });
     expect(beforePreference.gather).toBeLessThan(0.95);
     expect(beforePreference.gather).toBeGreaterThan(0.05);
 

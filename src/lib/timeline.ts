@@ -168,4 +168,16 @@ export const skyState = {
   rate: 1,
   /** Bumped whenever the scene layout changes, to invalidate cached bounds. */
   layoutVersion: 0,
+  /**
+   * Consumers that must react to a rate change at the moment it is published.
+   * Relying on native scroll-listener order would let a consumer commit the old
+   * rate; this makes the controller's update the single authoritative boundary.
+   */
+  rateListeners: new Set<(rate: number) => void>(),
 };
+
+/** Publish the shared signed rate and notify subscribers synchronously. */
+export function publishRate(next: number) {
+  skyState.rate = next;
+  for (const listener of skyState.rateListeners) listener(next);
+}

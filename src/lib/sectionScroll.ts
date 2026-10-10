@@ -7,6 +7,7 @@ import {
   activeSceneIndex,
   sceneScrollPosition,
   skyState,
+  publishRate,
   clamp01,
   type Layout,
 } from "./timeline";
@@ -26,6 +27,7 @@ import {
  */
 export function setupSectionScroll(onAfterRender?: (activeIndex: number) => void) {
   const journey = document.querySelector<HTMLElement>("[data-journey]");
+  const stage = document.querySelector<HTMLElement>("[data-stage]");
   const contactSurface = document.querySelector<HTMLElement>(".contact-surface");
   const header = document.querySelector<HTMLElement>(".site-header");
   const scenes = TIMELINE.map((scene) =>
@@ -45,6 +47,7 @@ export function setupSectionScroll(onAfterRender?: (activeIndex: number) => void
   let previousY = window.scrollY;
   let previousT = performance.now();
   let frame = 0;
+  let layoutDirty = false;
   // One shared motion-time source. The signed scroll speed sets the rate; the
   // clock integrates the elapsed OLD rate at every rate change and at every
   // paint, so a scroll pulse that starts and ends between slow frames is never
@@ -147,6 +150,78 @@ export function setupSectionScroll(onAfterRender?: (activeIndex: number) => void
     return local * local * (3 - 2 * local);
   }
 
+  /**
+   * The Contact surface fades in over the dark stage, so mid-blend the
+   * composited backdrop passes through a mid luminance where neither the
+   * dark-scene ink nor the plum Contact ink clears the contrast floor. The
+   * foreground therefore switches to whichever of white/black keeps the greater
+   * contrast against the actual composited colour, and the normal palette is
+   * restored at the stable endpoints.
+   */
+  const parseRgb = (color: string) => {
+    const values = color.match(/[\d.]+/g);
+    if (!values || values.length < 3) return undefined;
+    return values.slice(0, 3).map(Number);
+  };
+  const relativeLuminance = (rgb: number[]) => {
+    const channel = (value: number) => {
+      const c = value / 255;
+      return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+    };
+    return 0.2126 * channel(rgb[0]) + 0.7152 * channel(rgb[1]) + 0.0722 * channel(rgb[2]);
+  };
+  const contrastRatio = (a: number[], b: number[]) => {
+    const one = relativeLuminance(a);
+    const two = relativeLuminance(b);
+    return (Math.max(one, two) + 0.05) / (Math.min(one, two) + 0.05);
+  };
+  // The band and the page background behind it are palette constants; read them
+  // once so the polarity follows the real colours rather than hardcoded values.
+  const band = contactSurface
+    ? parseRgb(getComputedStyle(contactSurface).backgroundColor)
+    : undefined;
+  const base = parseRgb(getComputedStyle(document.documentElement).backgroundColor) ??
+    parseRgb(getComputedStyle(document.body).backgroundColor);
+  const compositeAt = (opacity: number) => {
+    if (!band || !base) return undefined;
+    return band.map((value, index) => value * opacity + base[index] * (1 - opacity));
+  };
+
+  let contactPhase = "";
+  let contactInk = "";
+  function publishContactPhase(contact: number) {
+    // The published opacity is the rounded value actually written to the
+    // surface, so a scene-start scroll that lands a hair below the endpoint
+    // still reports the 1.000 that is rendered and restores the plum palette.
+    const rounded = Number(contact.toFixed(3));
+    const phase = rounded <= 0 ? "off" : rounded >= 1 ? "contact" : "blend";
+    const composite = phase === "blend" ? compositeAt(rounded) : undefined;
+    const ink = composite
+      ? contrastRatio([255, 255, 255], composite) >=
+        contrastRatio([0, 0, 0], composite)
+        ? "light"
+        : "dark"
+      : "";
+    if (phase === contactPhase && ink === contactInk) return;
+    contactPhase = phase;
+    contactInk = ink;
+    for (const element of [stage, header]) {
+      if (!element) continue;
+      element.dataset.contactPhase = phase;
+      if (ink) element.dataset.contactInk = ink;
+      else delete element.dataset.contactInk;
+    }
+  }
+  function clearContactPhase() {
+    for (const element of [stage, header]) {
+      if (!element) continue;
+      delete element.dataset.contactPhase;
+      delete element.dataset.contactInk;
+    }
+    contactPhase = "";
+    contactInk = "";
+  }
+
   function publish() {
     skyState.motionClock = motionClock;
     skyState.rate = rate;
@@ -166,12 +241,12 @@ export function setupSectionScroll(onAfterRender?: (activeIndex: number) => void
   function setRate(next: number) {
     if (document.hidden) {
       rate = next;
-      skyState.rate = rate;
+      publishRate(rate);
       return;
     }
     integrateTo(performance.now());
     rate = next;
-    skyState.rate = rate;
+    publishRate(rate);
   }
 
   function rateForVelocity(v: number) {
@@ -184,6 +259,10 @@ export function setupSectionScroll(onAfterRender?: (activeIndex: number) => void
   function render() {
     frame = 0;
     if (!layout || !active) return;
+    if (layoutDirty) {
+      layoutDirty = false;
+      measure();
+    }
     // The native position is the single source of truth. Recording it even when
     // the presentation offset does not change keeps the loop from re-requesting
     // a paint for a position already consumed.
@@ -206,6 +285,7 @@ export function setupSectionScroll(onAfterRender?: (activeIndex: number) => void
         contactSurface.dataset.visible = String(contact > 0);
       }
       if (header) header.dataset.contact = String(contact > 0.5);
+      publishContactPhase(contact);
       skyState.gather = preference.matches ? 1 : gatherAt(p);
       skyState.contact = contact;
       skyState.active = activeSceneIndex(p);
@@ -227,11 +307,20 @@ export function setupSectionScroll(onAfterRender?: (activeIndex: number) => void
   // `skyState.offset` and `lastOffset` together, so comparing those can never
   // detect a scroll. Comparing the actual `scrollY` is what keeps a position
   // that committed without a timely event from staying unpainted.
+  //
+  // The loop is already inside a frame callback, so it renders the changed
+  // position here rather than queueing another rAF: nesting a frame would add a
+  // full frame of latency (measurably ~420ms on software WebKit) before the
+  // transforms, and therefore the reveal observer's delivery, could catch up.
   function loop(now: number) {
     loopFrame = requestAnimationFrame(loop);
     integrateTo(now);
     publish();
-    if (active && layout && window.scrollY !== lastRenderedY) requestRender();
+    if (active && layout && (layoutDirty || window.scrollY !== lastRenderedY)) {
+      // Cancel any duplicate queued render so this frame's paint is the only one.
+      if (frame) cancelAnimationFrame(frame);
+      render();
+    }
   }
 
   function startLoop() {
@@ -289,6 +378,13 @@ export function setupSectionScroll(onAfterRender?: (activeIndex: number) => void
       top: sceneScrollPosition(index, layout),
       behavior: "instant",
     });
+    // Settle the presentation at this same placement boundary. An explicit
+    // navigation moves the native position; if the transforms were left from
+    // the previous position, the browser's own fragment pass reads that stale
+    // layout and scrolls by the difference (measured: a 167px Work offset
+    // turned a 3266px landing into 3099px). Painting here makes the native
+    // position and every scene's pinned top agree before that pass runs.
+    render();
   }
 
   function hash() {
@@ -485,6 +581,9 @@ export function setupSectionScroll(onAfterRender?: (activeIndex: number) => void
       document
         .querySelectorAll<HTMLElement>("[data-scene] .section-content, [data-scene] .site-footer")
         .forEach((element) => (element.style.clipPath = ""));
+      // The ordinary/reduced document uses the plain palette, so the transient
+      // blend tokens must not survive the switch.
+      clearContactPhase();
       const ordinary =
         document.documentElement.scrollHeight - window.innerHeight;
       if (ordinary > 0) {
@@ -537,7 +636,10 @@ export function setupSectionScroll(onAfterRender?: (activeIndex: number) => void
       syncOrdinaryHeader();
       return;
     }
-    measure();
+    // measure() writes the ancestor journey's height. Doing that during scene
+    // resize delivery invalidates shallower observations in the same batch;
+    // apply it in the existing render frame instead, then paint that layout.
+    layoutDirty = true;
     requestRender();
   });
   if (journey) resizeObserver.observe(journey);
@@ -603,6 +705,8 @@ export function setupSectionScroll(onAfterRender?: (activeIndex: number) => void
       window.removeEventListener("keydown", onDeliberateInput);
       window.removeEventListener("pointerdown", markPointerFocus);
       window.removeEventListener("touchstart", markPointerFocus);
+      // Teardown leaves no transient blend tokens behind.
+      clearContactPhase();
     },
     preserveRead,
   };
