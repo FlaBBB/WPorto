@@ -685,11 +685,8 @@ test.describe("section refinement", () => {
   }) => {
     await page.setViewportSize({ width: 1440, height: 1000 });
     await page.goto("/");
-    await page.evaluate(() => {
-      document.documentElement.style.scrollBehavior = "auto";
-      document.querySelector("#technical-profile")?.scrollIntoView();
-    });
-    await page.waitForTimeout(400);
+    await page.waitForFunction(() => window.__afterHoursMotionReady);
+    await openProfile(page);
 
     const rows = page.locator(".evidence-ledger details");
 
@@ -706,12 +703,12 @@ test.describe("section refinement", () => {
 
     // Fresh load: the default-open row, activated by keyboard during the pending
     // hover window, must stay closed — the delayed hover callback cannot reopen it.
+    // A reload retains the pointer; keep it outside the ledger so it cannot
+    // hover-open another row and start closing the default row during setup.
+    await page.mouse.move(2, 2);
     await page.goto("/");
-    await page.evaluate(() => {
-      document.documentElement.style.scrollBehavior = "auto";
-      document.querySelector("#technical-profile")?.scrollIntoView();
-    });
-    await page.waitForTimeout(400);
+    await page.waitForFunction(() => window.__afterHoursMotionReady);
+    await openProfile(page);
     const fresh = page.locator(".evidence-ledger details");
     const defaultOpen = fresh.nth(0).locator("summary");
     await expect(fresh.nth(0)).toHaveAttribute("open", "");
@@ -947,6 +944,8 @@ test.describe("section refinement", () => {
     // A live reduced-motion change stops it, and returning resumes it.
     await page.emulateMedia({ reducedMotion: "reduce" });
     await expect(stars.first()).toHaveCSS("animation-name", "none");
+    // CSS media rules can apply before the browser delivers JS media listeners.
+    await expect(page.locator("html")).not.toHaveClass(/\bmotion\b/);
     const reduced = await snapshot();
     await page.waitForTimeout(900);
     expect(await snapshot()).toBe(reduced);

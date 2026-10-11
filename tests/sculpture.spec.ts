@@ -15,6 +15,8 @@ type Painted = {
   spanX: number;
   spanY: number;
   density: number;
+  profileX: number[];
+  profileY: number[];
   /** Sum of the alpha channel, a cheap signature of the whole frame. */
   alphaSum: number;
 };
@@ -28,6 +30,8 @@ const painted = (page: Page, selector: string, step = 2): Promise<Painted> =>
       const data = ctx.getImageData(0, 0, width, height).data;
       let count = 0;
       let alphaSum = 0;
+      const profileX = new Array<number>(width).fill(0);
+      const profileY = new Array<number>(height).fill(0);
       let minX = width;
       let minY = height;
       let maxX = -1;
@@ -38,6 +42,8 @@ const painted = (page: Page, selector: string, step = 2): Promise<Painted> =>
           if (alpha > 16) {
             count += 1;
             alphaSum += alpha;
+            profileX[x] += alpha;
+            profileY[y] += alpha;
             if (x < minX) minX = x;
             if (x > maxX) maxX = x;
             if (y < minY) minY = y;
@@ -58,6 +64,8 @@ const painted = (page: Page, selector: string, step = 2): Promise<Painted> =>
         spanX: boxW / width,
         spanY: boxH / height,
         density: count / (boxW * boxH),
+        profileX,
+        profileY,
         alphaSum,
       };
     },
@@ -111,8 +119,8 @@ const sceneRange = async (page: Page) => {
   return scene - sticky;
 };
 
-/** The gather value the current scroll offset implies (same math as source). */
-const expectedGather = (page: Page) =>
+/** Sample native position and its published pose together while key scrolling runs. */
+const nativePose = (page: Page) =>
   page.evaluate(() => {
     const scene = document.querySelector(".sculpture-scene")!;
     const sticky = document.querySelector(".sculpture-sticky")!;
@@ -123,7 +131,11 @@ const expectedGather = (page: Page) =>
       Math.max(0, -scene.getBoundingClientRect().top / range),
     );
     const eased = progress * progress * (3 - 2 * progress);
-    return 1 - eased;
+    return {
+      y: window.scrollY,
+      expected: 1 - eased,
+      gather: Number(document.querySelector<HTMLElement>(".sculpture")!.dataset.gather),
+    };
   });
 
 const scrollTo = async (page: Page, y: number) => {
@@ -142,10 +154,16 @@ const scrollTo = async (page: Page, y: number) => {
 
 const hydrate = async (page: Page) => {
   await page.goto("/");
-  await page.waitForFunction(() =>
-    document.querySelector<HTMLElement>(".sculpture")?.dataset.motion === "on" &&
-    (document.querySelector<HTMLCanvasElement>(".sculpture-canvas")?.width ?? 0) > 1 &&
-    document.fonts.status === "loaded",
+  await page.waitForFunction(() => {
+    const canvas = document.querySelector<HTMLCanvasElement>(".sculpture-canvas");
+    const box = document.querySelector(".sculpture-field")?.getBoundingClientRect();
+    const ratio = Math.min(devicePixelRatio, 2);
+    return document.querySelector<HTMLElement>(".sculpture")?.dataset.motion === "on" &&
+      canvas && box &&
+      canvas.width === Math.round(box.width * ratio) &&
+      canvas.height === Math.round(box.height * ratio) &&
+      document.fonts.status === "loaded";
+  },
     undefined,
     { timeout: 10_000 },
   );
@@ -154,15 +172,42 @@ const hydrate = async (page: Page) => {
 /** The traced artboard's aspect ratio, which a jittered shape would not match. */
 const MARK_ASPECT = 402 / 272;
 
+const expectAlignedProfile = (before: number[], after: number[]) => {
+  // Blur individual strokes, then align the whole letterform rather than its
+  // extreme pixels or brightness centroid (both change as the glyphs rotate).
+  const smooth = (values: number[]) => values.map((_, i) =>
+    values.slice(Math.max(0, i - 6), i + 7).reduce((sum, value) => sum + value, 0),
+  );
+  const a = smooth(before);
+  const b = smooth(after);
+  let similarity = -Infinity;
+  let shift = 0;
+  for (let offset = -24; offset <= 24; offset += 1) {
+    let cross = 0;
+    let aa = 0;
+    let bb = 0;
+    for (let i = 24; i < a.length - 24; i += 1) {
+      cross += a[i] * b[i + offset];
+      aa += a[i] ** 2;
+      bb += b[i + offset] ** 2;
+    }
+    const correlation = cross / Math.sqrt(aa * bb);
+    if (correlation > similarity) {
+      similarity = correlation;
+      shift = offset;
+    }
+  }
+  expect(similarity).toBeGreaterThan(0.95);
+  expect(Math.abs(shift)).toBeLessThanOrEqual(4);
+};
+
 const expectStableMark = (before: Painted, after: Painted) => {
-  // Rotating glyph shapes can change an edge's alpha bounds without moving its
-  // anchor. Test the centered, compact mark rather than identical glyph strokes.
   expect(after.spanX).toBeGreaterThan(0.3);
   expect(after.spanX).toBeLessThan(0.62);
   expect(after.spanY).toBeGreaterThan(0.3);
   expect(after.spanY).toBeLessThan(0.7);
-  expect(Math.abs((after.minX + after.maxX - before.minX - before.maxX) / 2)).toBeLessThanOrEqual(4);
-  expect(Math.abs((after.minY + after.maxY - before.minY - before.maxY) / 2)).toBeLessThanOrEqual(4);
+  expectAlignedProfile(before.profileX, after.profileX);
+  expectAlignedProfile(before.profileY, after.profileY);
 };
 
 test.describe("After Hours scroll sculpture", () => {
@@ -320,20 +365,20 @@ test.describe("After Hours scroll sculpture", () => {
     // Space and PageDown must remain ordinary page scrolling: the browser moves
     // the document and the sculpture reflects the new position. The component
     // never intercepts these keys.
+    const followsNativePosition = async (previousY: number) => {
+      await expect.poll(async () => {
+        const pose = await nativePose(page);
+        // Require a real pose change, not the first nearly-gathered scroll pixel.
+        return pose.y > previousY && pose.expected < 0.95 &&
+          Math.abs(pose.gather - pose.expected) < 0.005;
+      }).toBe(true);
+    };
     await page.locator("body").press("Space");
-    await page.waitForTimeout(500);
+    await followsNativePosition(0);
     const afterSpace = await page.evaluate(() => window.scrollY);
-    expect(afterSpace).toBeGreaterThan(0);
-    // The drawn pose follows the live offset rather than staying gathered.
-    const spaceExpected = await expectedGather(page);
-    expect((await metrics(page)).gather).toBeCloseTo(spaceExpected, 2);
 
     await page.locator("body").press("PageDown");
-    await page.waitForTimeout(500);
-    const afterPageDown = await page.evaluate(() => window.scrollY);
-    expect(afterPageDown).toBeGreaterThan(afterSpace);
-    const pageDownExpected = await expectedGather(page);
-    expect((await metrics(page)).gather).toBeCloseTo(pageDownExpected, 2);
+    await followsNativePosition(afterSpace);
 
     // Scrolling to the end fully disperses the mark.
     await scrollTo(page, await sceneRange(page));
