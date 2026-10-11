@@ -2,7 +2,6 @@
 import EvidenceLedger from "../components/EvidenceLedger.svelte";
 import FlabSculpture from "../components/FlabSculpture.svelte";
 import SparseStars from "../components/SparseStars.svelte";
-import SectionFooter from "../components/SectionFooter.astro";
 import { FLAB_PATH, FLAB_FILL_RULE, FLAB_VIEWBOX } from "../lib/flabMark";
 
 const githubProfile = "https://github.com/FlaBBB";
@@ -165,7 +164,6 @@ const year = new Date().getFullYear();
     <script is:inline>
       (function () {
         var root = document.documentElement;
-        root.classList.add("js");
         var reduced = false;
         try {
           reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -174,23 +172,12 @@ const year = new Date().getFullYear();
         }
         if (!reduced) root.classList.add("motion");
         window.setTimeout(function () {
-          if (!window.__afterHoursMotionReady) root.classList.remove("motion", "js");
+          if (!window.__afterHoursMotionReady) root.classList.remove("motion");
         }, 2000);
       })();
     </script>
   </head>
   <body>
-    <SparseStars client:load />
-    <!--
-      Layering, bottom to top: the base plum background, the violet Contact
-      surface (visible only while Contact is the settled scene), the original
-      sampled particle sky, then the transparent scene screens. The sky stays
-      behind every later section because it is a body-level fixed layer, outside
-      the pinned stage's stacking context.
-    -->
-    <div class="contact-surface" aria-hidden="true"></div>
-    <div class="sky-plane" aria-hidden="true"></div>
-    <a class="skip-link" href="#main-content">Skip to content</a>
     <header class="site-header">
       <a class="flab-logo" href="#identity" aria-label="flab — back to Fikri Muhammad Abdillah’s identity">
         <svg viewBox={`0 0 ${FLAB_VIEWBOX.width} ${FLAB_VIEWBOX.height}`} aria-hidden="true">
@@ -207,17 +194,18 @@ const year = new Date().getFullYear();
     </header>
 
     <main id="main-content" tabindex="-1">
-      <!-- One tall flow element supplies the native scroll budget; the sticky
-           stage is pinned inside it and the controller scrubs the scene stack
-           from a single global progress. -->
-      <div class="journey" data-journey>
-        <div class="stage" data-stage>
-        <section id="identity" class="scene" data-scene="identity" aria-label="Identity">
-          <FlabSculpture client:media="(prefers-reduced-motion: no-preference)" />
-        </section>
+      <section id="identity" aria-label="Identity">
+        <FlabSculpture client:media="(prefers-reduced-motion: no-preference)" />
+      </section>
 
-        <section id="intro" class="scene" data-scene="intro" aria-labelledby="intro-heading">
-          <div class="section-content">
+      <!--
+        Each lower section (and the footer) carries its own lightweight local
+        sparse-star layer: DOM/CSS rather than another full-page canvas, clipped
+        to that section and painted above its background but under its content.
+      -->
+      <div class="page-body">
+        <section id="intro" aria-labelledby="intro-heading">
+          <SparseStars seed={1} client:load />
           <div class="intro-layout">
             <div class="intro-lead">
               <h1 id="intro-heading">Fikri Muhammad Abdillah<span class="intro-dot" aria-hidden="true">.</span></h1>
@@ -239,12 +227,10 @@ const year = new Date().getFullYear();
               </a>
             </div>
           </div>
-          </div>
-          <SectionFooter name={ownerName} year={year} />
         </section>
 
-        <section id="selected-evidence" class="scene" data-scene="selected-evidence" aria-labelledby="selected-evidence-heading">
-          <div class="section-content">
+        <section id="selected-evidence" aria-labelledby="selected-evidence-heading">
+          <SparseStars seed={2} client:load />
           <div class="work-layout">
             <div class="work-intro">
               <p class="eyebrow">01 / Work</p>
@@ -274,12 +260,10 @@ const year = new Date().getFullYear();
               ))}
             </ol>
           </div>
-          </div>
-          <SectionFooter name={ownerName} year={year} />
         </section>
 
-        <section id="technical-profile" class="scene" data-scene="technical-profile" aria-labelledby="technical-profile-heading">
-          <div class="section-content">
+        <section id="technical-profile" aria-labelledby="technical-profile-heading">
+          <SparseStars seed={3} client:load />
           <div class="section-heading">
             <p class="eyebrow">02 / Profile</p>
             <h2 id="technical-profile-heading" data-reveal>Evidence over claims.</h2>
@@ -289,12 +273,10 @@ const year = new Date().getFullYear();
             </p>
           </div>
           <EvidenceLedger records={profileRecords} />
-          </div>
-          <SectionFooter name={ownerName} year={year} />
         </section>
 
-        <section id="learning-archive" class="scene" data-scene="learning-archive" aria-labelledby="learning-archive-heading">
-          <div class="section-content archive-content">
+        <section id="learning-archive" aria-labelledby="learning-archive-heading">
+          <SparseStars seed={4} client:load />
           <div class="section-heading">
             <p class="eyebrow">03 / Archive</p>
             <h2 id="learning-archive-heading" data-reveal>Still learning. Keeping the notes.</h2>
@@ -320,12 +302,10 @@ const year = new Date().getFullYear();
               </div>
             </div>
           </div>
-          </div>
-          <SectionFooter name={ownerName} year={year} />
         </section>
 
-        <section id="contact-path" class="scene" data-scene="contact-path" aria-labelledby="contact-path-heading">
-          <div class="section-content">
+        <section id="contact-path" aria-labelledby="contact-path-heading">
+          <SparseStars seed={5} tone="plum" client:load />
           <div class="contact-layout">
             <div class="contact-intro-block">
               <p class="eyebrow">04 / Contact</p>
@@ -367,12 +347,29 @@ const year = new Date().getFullYear();
               </li>
             </ul>
           </div>
-          </div>
-          <SectionFooter name={ownerName} year={year} />
         </section>
-        </div>
       </div>
     </main>
+
+    <footer class="site-footer">
+      <SparseStars seed={6} client:load />
+      <div class="footer-inner">
+        <p class="footer-identity">
+          <span class="footer-name">{ownerName}</span>
+          <span class="footer-sep" aria-hidden="true">·</span>
+          <span class="footer-copy">© {year}</span>
+        </p>
+        <!--
+          The right group is the back-to-top link itself, so there is no third
+          visible "Back to top" group. Its accessible name keeps the visible
+          "Still learning." label (Label in Name) while naming the destination.
+        -->
+        <a class="footer-top" href="#identity" aria-label="Back to top — Still learning." title="Back to top">
+          <span class="footer-note">Still learning.</span>
+          <span class="footer-dash" aria-hidden="true"></span>
+        </a>
+      </div>
+    </footer>
 
     <style is:global>
       :root {
@@ -387,7 +384,12 @@ const year = new Date().getFullYear();
         /* Open contact band: light violet surface with plum ink (6.7:1). */
         --contact-band: #a78bfa;
         --contact-ink: #1b1430;
+        /* Footer: near-black plum with a thin violet rule. */
+        --footer-bg: #141019;
+        --footer-rule: color-mix(in srgb, var(--accent) 62%, transparent);
         --gutter: clamp(1.25rem, 5vw, 5rem);
+        /* Generous, substantial space for every body section. */
+        --section-space: clamp(4.5rem, 12vh, 8rem);
         --font-sans:
           ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue",
           Arial, sans-serif;
@@ -402,7 +404,7 @@ const year = new Date().getFullYear();
       html {
         background: var(--background);
         scroll-behavior: smooth;
-        scroll-padding-top: 0;
+        scroll-padding-top: 6rem;
       }
       body {
         margin: 0;
@@ -454,20 +456,6 @@ const year = new Date().getFullYear();
         clip-path: inset(50%);
         white-space: nowrap;
       }
-      .skip-link {
-        position: fixed;
-        top: 0.75rem;
-        left: var(--gutter);
-        z-index: 20;
-        padding: 0.75rem 1rem;
-        color: var(--background);
-        background: var(--accent);
-        border-radius: 999px;
-        transform: translateY(-200%);
-      }
-      .skip-link:focus {
-        transform: translateY(0);
-      }
       .eyebrow {
         color: var(--muted-ink);
         font: 500 0.75rem/1.5 var(--font-mono);
@@ -479,8 +467,6 @@ const year = new Date().getFullYear();
       /* Fixed rather than sticky: the opening is genuinely full viewport, so the
          header overlays it instead of pushing the sculpture down. */
       .site-header {
-        --header-ink: var(--ink);
-        --header-muted: var(--muted-ink);
         position: fixed;
         inset: 0 0 auto;
         z-index: 10;
@@ -489,52 +475,18 @@ const year = new Date().getFullYear();
         justify-content: space-between;
         gap: 2rem;
         padding: 1.1rem var(--gutter);
-      }
-      .site-header[data-contact="true"] {
-        --header-ink: var(--contact-ink);
-        --header-muted: var(--contact-ink);
-      }
-      .site-header[data-contact="true"] a:focus-visible {
-        outline-color: var(--contact-ink);
-      }
-      /* While the Contact surface is mid-blend the composited backdrop passes
-         through a mid luminance where neither the dark-scene ink nor the plum
-         Contact ink clears 4.5:1, so the foreground switches to whichever of
-         white/black keeps the greater contrast against the actual colour. The
-         normal palette is restored at the stable endpoints (0.000 and 1.000). */
-      .site-header[data-contact-phase="contact"] {
-        --header-ink: var(--contact-ink);
-        --header-muted: var(--contact-ink);
-      }
-      .site-header[data-contact-phase="contact"] a:focus-visible {
-        outline-color: var(--contact-ink);
-      }
-      .site-header[data-contact-phase="blend"] {
-        --header-ink: #ffffff;
-        --header-muted: #ffffff;
-      }
-      .site-header[data-contact-phase="blend"] a:focus-visible {
-        outline-color: #ffffff;
-      }
-      .site-header[data-contact-phase="blend"][data-contact-ink="dark"] {
-        --header-ink: #000000;
-        --header-muted: #000000;
-      }
-      .site-header[data-contact-phase="blend"][data-contact-ink="dark"] a:focus-visible {
-        outline-color: #000000;
-      }
-      html:not(.js) .site-header {
-        position: absolute;
+        background: color-mix(in srgb, var(--background) 88%, transparent);
+        backdrop-filter: blur(10px);
       }
       .flab-logo {
         display: inline-flex;
         align-items: center;
-        color: var(--header-ink);
+        color: var(--ink);
         flex-shrink: 0;
         transition: color 180ms ease;
       }
       .flab-logo:hover {
-        color: var(--header-ink);
+        color: var(--accent-ink);
       }
       .flab-logo svg {
         width: 3.75rem;
@@ -556,127 +508,31 @@ const year = new Date().getFullYear();
         align-items: center;
         min-height: 2.8125rem;
         white-space: nowrap;
-        color: var(--header-muted);
+        color: var(--muted-ink);
         font-size: 0.9375rem;
         text-decoration: none;
         transition: color 180ms ease;
       }
       nav a:hover {
-        color: var(--header-ink);
+        color: var(--ink);
       }
 
-      /* Default: an ordinary, fully readable document. Every scene is in flow
-         with its natural height and its own footer at the bottom, so no-JS, an
-         aborted module and reduced motion always expose the whole page. */
-      .journey {
+      section {
+        padding-block: var(--section-space);
+        padding-inline: var(--gutter);
+      }
+      .page-body {
         position: relative;
-        width: 100%;
       }
-      .scene {
+      /*
+        Each lower section and the footer isolate their own stacking context, so
+        the local sparse-star layer (z-index: -1) paints above that section's
+        background but under its content.
+      */
+      .page-body > section,
+      .site-footer {
         position: relative;
-        display: flex;
-        flex-direction: column;
-        min-height: 100vh;
-        min-height: 100svh;
-        background: var(--background);
-      }
-      .scene > .section-content {
-        flex: 1;
-      }
-      /* Opt-in pinned presentation, activated only after setup succeeds without
-         a reduced-motion preference. The sticky stage scrubs the scene stack
-         from one global progress; nothing snaps or traps input. */
-      .journey[data-active="true"] .stage {
-        position: sticky;
-        top: 0;
-        z-index: 2;
-        height: 100vh;
-        height: 100svh;
-        /* clip, not hidden: it clips presentation without creating an inner
-           scroll container that focus/fragment navigation could offset. */
-        overflow: clip;
-      }
-      .journey[data-active="true"] .scene {
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
-        background: transparent;
-        will-change: transform;
-      }
-      /* In the pinned presentation the violet is the fixed surface, so the
-         Contact scene itself is transparent and the stars show through it. */
-      .journey[data-active="true"] #contact-path {
-        background: transparent;
-      }
-      /* Mid-blend foreground: the stage's palette tokens switch to whichever of
-         white/black keeps the greater contrast against the actual composited
-         surface, covering the incoming Contact copy and the outgoing Archive
-         footer (which inherits --muted-ink). Scoped to the stage so the fixed
-         particle plane outside it keeps its own colours. */
-      .journey[data-active="true"] .stage[data-contact-phase="blend"] {
-        --ink: #ffffff;
-        --muted-ink: #ffffff;
-        --contact-ink: #ffffff;
-        --accent: #ffffff;
-        --accent-ink: #ffffff;
-        --rule: rgba(255, 255, 255, 0.35);
-      }
-      .journey[data-active="true"] .stage[data-contact-phase="blend"][data-contact-ink="dark"] {
-        --ink: #000000;
-        --muted-ink: #000000;
-        --contact-ink: #000000;
-        --accent: #000000;
-        --accent-ink: #000000;
-        --rule: rgba(0, 0, 0, 0.35);
-      }
-      /* The polarity can flip mid-blend; a colour transition would tween the
-         foreground through an unreadable gray, so only the colour channel is
-         dropped here. Background, border and transform keep their existing
-         timing so hover and nudge behaviour is unchanged. Each selector mirrors
-         the no-preference transition rule with the blend ancestor and carries
-         the same ID, so it also wins for #contact-path anchors, whose rule
-         otherwise outranks a class-only override. */
-      .site-header[data-contact-phase="blend"] nav a,
-      .site-header[data-contact-phase="blend"] .flab-logo,
-      .journey[data-active="true"] .stage[data-contact-phase="blend"] .intro-link,
-      .journey[data-active="true"] .stage[data-contact-phase="blend"] .project-link,
-      .journey[data-active="true"] .stage[data-contact-phase="blend"] .text-link,
-      .journey[data-active="true"] .stage[data-contact-phase="blend"] .ledger-source a,
-      .journey[data-active="true"] .stage[data-contact-phase="blend"] #contact-path a,
-      .journey[data-active="true"] .stage[data-contact-phase="blend"] .site-footer a {
-        transition-property: background-color, border-color, transform;
-      }
-      /* The violet Contact surface sits below the fixed particle sky, so the
-         original stars stay visible over it. It is driven by the global
-         timeline, not an independent timer. */
-      .contact-surface {
-        position: fixed;
-        inset: 0;
-        z-index: 0;
-        background: var(--contact-band);
-        opacity: 0;
-        pointer-events: none;
-      }
-      /* The persistent sky sits above every scene surface and below all
-         content, footer and nav. Fixed and outside the pinned stage, so the
-         stage's stacking context can never bury it. */
-      .sky-plane {
-        position: fixed;
-        inset: 0;
-        z-index: 1;
-        overflow: hidden;
-        pointer-events: none;
-      }
-      .section-content {
-        position: relative;
-        z-index: 2;
-        display: grid;
-        align-content: center;
-        width: 100%;
-        max-width: 108rem;
-        margin-inline: auto;
-        padding: max(6.5rem, 10svh) var(--gutter) clamp(3rem, 6svh, 6rem);
+        isolation: isolate;
       }
       .section-heading {
         display: grid;
@@ -695,12 +551,15 @@ const year = new Date().getFullYear();
         color: var(--muted-ink);
       }
 
-      /* Opening: one viewport, dispersing during the transition to Intro. */
+      /* Opening: a full-viewport, unboxed sticky scene owned by the sculpture. */
       #identity {
         padding: 0;
       }
 
       /* Intro: a fuller, human first-person statement, still not a second hero. */
+      #intro {
+        padding-block: var(--section-space);
+      }
       .intro-layout {
         display: grid;
         grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
@@ -870,7 +729,7 @@ const year = new Date().getFullYear();
         letter-spacing: -0.02em;
         line-height: 1.3;
       }
-      .evidence-ledger > li:hover .ledger-capability,
+      .ledger-disclosure:hover .ledger-capability,
       .evidence-ledger details[open] .ledger-capability {
         color: var(--accent-ink);
       }
@@ -919,22 +778,20 @@ const year = new Date().getFullYear();
       }
 
       /* Archive: a heavier statement beside its supporting notes, so the copy
-         never stretches into one very long line on wide screens. */
-      .archive-content {
-        max-width: 98rem;
-      }
-      .archive-content .section-heading {
-        max-width: none;
-        margin-bottom: clamp(2rem, 4svh, 3rem);
+         never stretches into one very long line on wide screens. The columns are
+         close enough that the statement and its aside read as one block, with no
+         empty channel between them. */
+      #learning-archive {
+        padding-block: calc(var(--section-space) * 1.15);
       }
       .archive-layout {
         display: grid;
-        grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
-        gap: 2rem clamp(2rem, 4vw, 4rem);
-        align-items: center;
+        grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
+        gap: 2.5rem 3rem;
+        align-items: start;
       }
       .archive-statement {
-        max-width: 32ch;
+        max-width: 42ch;
         font-size: clamp(1.5rem, 3vw, 2.375rem);
         font-weight: 600;
         line-height: 1.14;
@@ -971,10 +828,15 @@ const year = new Date().getFullYear();
       #contact-path {
         background: var(--contact-band);
         color: var(--contact-ink);
+        padding-block: calc(var(--section-space) * 1.2);
       }
       .contact-layout {
         display: grid;
-        gap: clamp(2.5rem, 7svh, 5rem);
+        grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+        gap: 3rem 4rem;
+        /* Center the paths group against the heading and copy, instead of
+           top-aligning it near the eyebrow. */
+        align-items: center;
       }
       #contact-path .eyebrow {
         color: var(--contact-ink);
@@ -995,8 +857,7 @@ const year = new Date().getFullYear();
       .contact-paths {
         display: grid;
         grid-template-columns: repeat(3, minmax(0, 1fr));
-        border-top: 1px solid color-mix(in srgb, var(--contact-ink) 26%, transparent);
-        padding: 1.5rem 0 0;
+        padding: 0;
         list-style: none;
       }
       .contact-paths li + li {
@@ -1056,18 +917,17 @@ const year = new Date().getFullYear();
         text-underline-offset: 0.2em;
       }
 
-      /* A quiet text-only signature on each section's own surface. */
+      /* Footer: near-black plum, a thin violet top rule and one compact muted
+         row — a quiet close, not another tall section. The surface stays
+         full-bleed; an inner layout holds the readable measure. */
       .site-footer {
-        position: relative;
-        z-index: 2;
-        flex-shrink: 0;
-        padding-block: 0.75rem;
+        min-height: 6.25rem;
+        padding-block: 1.25rem;
+        background: var(--footer-bg);
+        border-top: 1px solid var(--footer-rule);
         color: var(--muted-ink);
-        font: 400 0.75rem/1.6 var(--font-mono);
+        font: 600 0.875rem/1.6 var(--font-mono);
         letter-spacing: 0.02em;
-      }
-      #contact-path .site-footer {
-        color: var(--contact-ink);
       }
       .footer-inner {
         display: flex;
@@ -1085,21 +945,54 @@ const year = new Date().getFullYear();
         gap: 0.6rem;
       }
       .footer-sep {
-        color: inherit;
+        color: color-mix(in srgb, var(--muted-ink) 55%, transparent);
       }
-      /* Still learning remains a keyboard/touch-friendly back-to-top link. */
+      /* The right group is the back-to-top link; the violet dash closes it. */
       .footer-top {
         display: inline-flex;
         align-items: center;
+        gap: 0.75rem;
         min-height: 2.75rem;
-        color: inherit;
+        color: var(--muted-ink);
         text-decoration: none;
       }
       .footer-top:hover .footer-note {
         text-decoration: underline;
         text-underline-offset: 0.25em;
       }
+      .footer-dash {
+        width: 1.5rem;
+        height: 2px;
+        border-radius: 1px;
+        background: var(--accent);
+      }
 
+      @media (min-width: 1700px) {
+        /* The opening and the contact band are edge-to-edge, so the legacy
+           whole-page box is removed; only the textual content stays constrained
+           to a readable measure. */
+        #intro > .intro-layout,
+        #selected-evidence > .work-layout,
+        #technical-profile > .section-heading,
+        #technical-profile > .evidence-ledger,
+        #learning-archive > .section-heading,
+        #learning-archive > .archive-layout,
+        #contact-path > .contact-layout {
+          max-width: 108rem;
+          margin-inline: auto;
+        }
+      }
+      /*
+        Contact-only breakpoint: the 3-up contact paths need more room than the
+        work/profile sections, so the contact intro/paths parent stacks until
+        1100px. Below that the paths get full width (no label/arrow collision);
+        at 1101px the 2-column layout is at its narrowest and still clears.
+      */
+      @media (max-width: 1100px) {
+        .contact-layout {
+          grid-template-columns: 1fr;
+        }
+      }
       @media (max-width: 900px) {
         .work-layout,
         .intro-layout,
@@ -1138,8 +1031,8 @@ const year = new Date().getFullYear();
              Linux CI) need the extra room. */
           gap: 1rem;
         }
-        .section-content {
-          padding-block: 6rem 3rem;
+        section {
+          padding-block: 3.25rem;
         }
         .flab-logo svg {
           width: 3rem;
@@ -1164,7 +1057,6 @@ const year = new Date().getFullYear();
         }
         .contact-paths {
           grid-template-columns: 1fr;
-          padding-top: 0;
         }
         /* Mobile stacks the three paths as rows, with a horizontal rule instead
            of the desktop vertical separators. */
@@ -1187,7 +1079,8 @@ const year = new Date().getFullYear();
           height: 1.5rem;
         }
         .site-footer {
-          padding-block: 1rem;
+          min-height: 0;
+          padding-block: 1.5rem;
         }
         .footer-inner {
           gap: 0.5rem 1rem;
@@ -1226,11 +1119,9 @@ const year = new Date().getFullYear();
 
     <script>
       import gsap from "gsap";
-      // One-shot tweens follow wall time through dropped frames; the sky has its
-      // own clock.
+
+      // Foreground tweens follow elapsed time even when a rendering frame is slow.
       gsap.ticker.lagSmoothing(0);
-      import { setupEvidenceLedger } from "../lib/evidenceLedger";
-      import { setupSectionScroll } from "../lib/sectionScroll";
 
       declare global {
         interface Window {
@@ -1239,7 +1130,6 @@ const year = new Date().getFullYear();
       }
 
       const root = document.documentElement;
-      root.classList.add("js");
       const motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
       const revealTargets = gsap.utils.toArray<HTMLElement>("[data-reveal]");
       const nudgeLinks = gsap.utils.toArray<HTMLElement>(
@@ -1260,40 +1150,6 @@ const year = new Date().getFullYear();
       // Retain each grouped reveal so teardown explicitly cancels every
       // delivery, including groups that overlap within the reveal window.
       let revealTweens: gsap.core.Tween[] = [];
-      // Live reveal groups and the wall-clock instant each one should have
-      // finished naturally. The GSAP ticker samples its time once per tick and a
-      // slow renderer can delay the dispatch of that sample, so a group can
-      // still show partial foreground state after its real deadline has passed.
-      // This records the original deadline at creation and completes an overdue
-      // group after the ticker has dispatched the whole frame, before the
-      // browser paints it.
-      const revealDeadlines = new Map<gsap.core.Tween, number>();
-      function flushOverdueReveals() {
-        // A queued check must never revive styles that teardown just cleared.
-        if (!active) return;
-        const now = performance.now();
-        for (const [tween, deadline] of revealDeadlines) {
-          // A group removed from its timeline has been killed (focus settle or
-          // teardown) or has already finished; either way it needs no
-          // correction. A freshly created tween still has a parent even before
-          // its first tick, so it is never discarded here.
-          if (!tween.parent) {
-            revealDeadlines.delete(tween);
-            continue;
-          }
-          if (now >= deadline) {
-            tween.totalProgress(1);
-            revealDeadlines.delete(tween);
-          }
-        }
-        if (revealDeadlines.size === 0) gsap.ticker.remove(queueRevealFlush);
-      }
-      function queueRevealFlush() {
-        // Run after the shared ticker has dispatched every listener, regardless
-        // of listener order, but still inside the frame the browser is about to
-        // paint.
-        queueMicrotask(flushOverdueReveals);
-      }
       let focusInHandler: ((event: Event) => void) | undefined;
       let scrollHandler: (() => void) | undefined;
       let scrollFrame = 0;
@@ -1320,8 +1176,6 @@ const year = new Date().getFullYear();
         // Stop the grouped reveals before clearing their inline styles.
         for (const tween of revealTweens) tween.kill();
         revealTweens = [];
-        revealDeadlines.clear();
-        gsap.ticker.remove(queueRevealFlush);
         gsap.killTweensOf([...revealTargets, ...nudgeTargets]);
         gsap.set(nudgeTargets, { clearProps: "transform" });
         root.classList.remove("motion");
@@ -1347,19 +1201,15 @@ const year = new Date().getFullYear();
               for (const target of entering) revealObserver?.unobserve(target);
               if (!entering.length) return;
               gsap.killTweensOf(entering, "opacity,y");
-              const tween = gsap.to(entering, {
-                opacity: 1,
-                y: 0,
-                duration: 0.6,
-                ease: "power2.out",
-                stagger: 0.06,
-              });
-              revealTweens.push(tween);
-              revealDeadlines.set(
-                tween,
-                performance.now() + tween.totalDuration() * 1000,
+              revealTweens.push(
+                gsap.to(entering, {
+                  opacity: 1,
+                  y: 0,
+                  duration: 0.6,
+                  ease: "power2.out",
+                  stagger: 0.06,
+                }),
               );
-              if (revealDeadlines.size === 1) gsap.ticker.add(queueRevealFlush);
             },
             { rootMargin: "0px 0px -10% 0px" },
           );
@@ -1420,45 +1270,156 @@ const year = new Date().getFullYear();
         element.addEventListener("blur", () => nudge(0));
       }
 
-      const sceneEls = gsap.utils.toArray<HTMLElement>("[data-scene]");
-      const foregroundOf = (scene: HTMLElement) =>
-        scene.querySelectorAll<HTMLElement>(".section-content, .site-footer");
-      // Runs after the controller applies its transforms, so outgoing copy can
-      // never pass under the transparent fixed nav. Every scene is clipped to
-      // the header; only foreground/footer are clipped, never the sky. This is
-      // clipping only: exposing a focused control's ring is the one-shot job of
-      // the controller's focus placement, so ordinary reading scroll is never
-      // undone here.
-      const syncForeground = () => {
-        const headerBottom = document
-          .querySelector<HTMLElement>(".site-header")!
-          .getBoundingClientRect().bottom;
-        for (const scene of sceneEls) {
-          foregroundOf(scene).forEach((element) => {
-            const box = element.getBoundingClientRect();
-            const cut =
-              box.bottom <= 0
-                ? 0
-                : Math.max(0, Math.min(box.height, headerBottom - box.top));
-            const clip = cut > 0 ? `inset(${cut}px 0 0)` : "";
-            if (element.style.clipPath !== clip) element.style.clipPath = clip;
-          });
-        }
+      // Evidence Ledger: on a fine pointer, hovering anywhere in a record — the
+      // summary or its Source links — opens that record without a click, while
+      // native details/summary still owns keyboard and touch. Opening and closing
+      // are animated (and reverse cleanly), driven by a small local controller
+      // that never writes scroll. It enhances the summary's own activation with
+      // preventDefault so the panel animates; it does not capture wheel, touch,
+      // or key input. The Source paragraph sits outside `details`, so its links
+      // stay visible and clickable whether the panel is open or closed. A short
+      // hover-intent delay keeps the row stable while the pointer crosses it, and
+      // only a genuine mouse click that lands on a row this hover opened is
+      // absorbed, so it cannot immediately toggle the row closed again.
+      const finePointer = window.matchMedia("(hover: hover) and (pointer: fine)");
+      type LedgerRecord = {
+        details: HTMLDetailsElement;
+        row: HTMLElement;
+        summary: HTMLElement;
+        panel: HTMLElement;
+        open: boolean;
+        tween: gsap.core.Tween | undefined;
       };
+      const ledgerRecords: LedgerRecord[] = gsap.utils
+        .toArray<HTMLDetailsElement>(".evidence-ledger details")
+        .map((details) => ({
+          details,
+          row: details.parentElement as HTMLElement,
+          summary: details.querySelector("summary") as HTMLElement,
+          panel: details.querySelector(".ledger-panel") as HTMLElement,
+          open: details.open,
+          tween: undefined,
+        }));
+      const HOVER_INTENT = 110;
+      let hoverTimer = 0;
+      let hoverOpened: LedgerRecord | undefined;
+      let lastPointerType = "mouse";
+      let keyboard = false;
 
-      // The controller is created first so the ledger can use its hold-aware
-      // read placement when a disclosure relayout must preserve the chosen row.
-      const scroll = setupSectionScroll(syncForeground);
-      const destroyLedger = setupEvidenceLedger(scroll.preserveRead);
-      window.addEventListener("pagehide", (event) => {
-        if (event.persisted) return;
-        destroyLedger();
-        scroll.destroy();
-        stopMotion();
-      });
+      function clearIntent() {
+        window.clearTimeout(hoverTimer);
+      }
+
+      // Settle a panel to its logical state: `record.open` is the logical target,
+      // and it is written to the native `open` attribute here while the animated
+      // inline height/opacity is cleared, so the natural layout takes over.
+      function settlePanel(record: LedgerRecord) {
+        record.tween?.kill();
+        record.tween = undefined;
+        record.details.open = record.open;
+        gsap.set(record.panel, { clearProps: "height,opacity,overflow" });
+      }
+
+      function settleAllPanels() {
+        for (const record of ledgerRecords) settlePanel(record);
+      }
+
+      function expand(record: LedgerRecord, open: boolean) {
+        if (record.open === open) return;
+        record.open = open;
+        const from = record.details.open
+          ? record.panel.getBoundingClientRect().height
+          : 0;
+        record.tween?.kill();
+        if (motionQuery.matches) {
+          settlePanel(record);
+          return;
+        }
+        // Keep the details open while its panel shrinks to zero, so a closing row
+        // animates instead of snapping.
+        record.details.open = true;
+        gsap.set(record.panel, { height: from, overflow: "hidden" });
+        record.tween = gsap.to(record.panel, {
+          height: open ? record.panel.scrollHeight : 0,
+          opacity: open ? 1 : 0,
+          duration: 0.38,
+          ease: "power2.inOut",
+          overwrite: "auto",
+          onComplete: () => settlePanel(record),
+        });
+      }
+
+      // Exclusivity for every path — hover, click, keyboard and touch: close the
+      // other records, then set this one. Animated here rather than by the native
+      // group name (which JS removes), so the closing row also eases shut.
+      function exclusive(record: LedgerRecord, open: boolean) {
+        for (const other of ledgerRecords) {
+          if (other !== record) expand(other, false);
+        }
+        expand(record, open);
+      }
+
+      function openRow(record: LedgerRecord) {
+        const wasOpen = record.open;
+        exclusive(record, true);
+        // Only claim a row this hover actually opened; a row already open by
+        // default or keyboard stays a native toggle.
+        hoverOpened = wasOpen ? undefined : record;
+      }
+
+      for (const record of ledgerRecords) {
+        // No-JS keeps native mutual exclusion; JS owns the animated coordination.
+        record.details.removeAttribute("name");
+        // The whole row is the hover surface, so the pointer can rest on a
+        // Source link and still open the record.
+        record.row.addEventListener("pointerenter", (event) => {
+          if (!finePointer.matches) return;
+          if ((event as PointerEvent).pointerType !== "mouse") return;
+          keyboard = false;
+          clearIntent();
+          hoverTimer = window.setTimeout(() => openRow(record), HOVER_INTENT);
+        });
+        record.row.addEventListener("pointerleave", clearIntent);
+        record.row.addEventListener("pointerdown", (event) => {
+          // A real press ends the hover deliberation: cancel any pending intent
+          // so it cannot open a row the press is about to toggle.
+          lastPointerType = (event as PointerEvent).pointerType || "mouse";
+          clearIntent();
+        });
+        record.summary.addEventListener("keydown", () => {
+          // Keyboard activation is an explicit choice: cancel any pending hover
+          // intent and drop the hover claim, so a following click (detail 0) is
+          // never treated as hover absorption.
+          keyboard = true;
+          clearIntent();
+          hoverOpened = undefined;
+        });
+        record.summary.addEventListener("click", (event) => {
+          clearIntent();
+          // Explicit activation (keyboard Space/Enter, touch/pen tap, or a real
+          // mouse click that is not absorbing the hover it just caused) toggles
+          // the row through the same exclusive path, so no other row is left open.
+          const mouse =
+            !keyboard &&
+            (event as MouseEvent).detail > 0 &&
+            lastPointerType === "mouse";
+          // Enhance the summary's own activation so the panel animates; the click
+          // is still this row's own summary activation, not a captured gesture.
+          event.preventDefault();
+          if (mouse && record.open && hoverOpened === record) {
+            hoverOpened = undefined;
+            return;
+          }
+          hoverOpened = undefined;
+          exclusive(record, !record.open);
+        });
+      }
 
       function syncMotionPreference() {
         if (motionQuery.matches) {
+          // A reduced-motion change must land every disclosure at its logical
+          // state, not only the reveal/nudge tweens.
+          settleAllPanels();
           if (active) stopMotion();
           return;
         }

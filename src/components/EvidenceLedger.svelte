@@ -13,6 +13,12 @@
 
   let { records }: { records: ProfileRecord[] } = $props();
 </script>
+<!--
+  Each row is a native `details`. The panel is wrapped so the disclosure
+  controller can animate its height without touching the native open/close
+  semantics; the Source paragraph stays outside `details`, so its links are
+  always reachable and never hidden by a closed panel.
+-->
 <ol class="evidence-ledger" aria-label="Technical Profile evidence ledger">
   {#each records as record, index}
     <li data-reveal>
