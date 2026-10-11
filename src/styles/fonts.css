@@ -1,0 +1,59 @@
+/*
+  Self-hosted typography for the Portfolio Site.
+
+  Two chosen faces, not system defaults. Schibsted Grotesk carries prose and
+  headings; IBM Plex Mono carries the eyebrow labels, section indices, ledger
+  labels and the footer. Both are served from /fonts, so the page keeps its
+  zero-external-request property and the same typography on every operating
+  system.
+
+  The subsets are built from the upstream sources rather than taken from a
+  hosted "latin" cut, because the latin cuts omit U+2197 (↗) — the arrow that
+  closes every outbound link — which would leave 19 visible marks resolving to
+  a system font. Each file carries Basic Latin plus the non-ASCII characters the
+  pages actually render: ↗ ↓ ’ — · © and the standard typographic dashes and
+  quotes.
+
+  Schibsted Grotesk keeps its full wght axis (400-900) so the Contact band's
+  ExtraBold headline stays a real face rather than a synthesised one; IBM Plex
+  Mono is pinned per weight because the design uses three discrete cuts.
+
+  Both families are licensed under the SIL Open Font License 1.1; the license
+  texts ship alongside the files as /fonts/OFL-Schibsted-Grotesk.txt and
+  /fonts/OFL-IBM-Plex-Mono.txt.
+*/
+@font-face {
+  font-family: "Schibsted Grotesk";
+  font-style: normal;
+  font-weight: 400 900;
+  font-display: swap;
+  src: url("/fonts/schibsted-grotesk-var.woff2") format("woff2");
+}
+@font-face {
+  font-family: "IBM Plex Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/ibm-plex-mono-400.woff2") format("woff2");
+}
+@font-face {
+  font-family: "IBM Plex Mono";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("/fonts/ibm-plex-mono-500.woff2") format("woff2");
+}
+@font-face {
+  font-family: "IBM Plex Mono";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("/fonts/ibm-plex-mono-600.woff2") format("woff2");
+}
+
+:root {
+  --font-sans:
+    "Schibsted Grotesk", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
