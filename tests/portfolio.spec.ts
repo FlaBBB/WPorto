@@ -156,26 +156,32 @@ test("makes the section navigation keyboard reachable", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto("/");
 
-  // The Skip to content link was removed, so the wordmark is the first
-  // tab stop and forward order continues into the section navigation.
+  // The Skip to content link was removed, so the wordmark is the first tab stop
+  // and forward order continues into the opening's own section list.
   await page.keyboard.press("Tab");
   await expect(
     page.getByRole("link", { name: "flab — back to Fikri Muhammad Abdillah’s identity" }),
   ).toBeFocused();
   await expect(page.getByRole("link", { name: "Skip to content" })).toHaveCount(0);
 
+  const map = page.locator(".sculpture-map");
+  const labels = (scope: typeof map) =>
+    scope
+      .getByRole("link")
+      .evaluateAll((links) =>
+        links.map((link) => link.textContent?.replace("✦", "").trim()),
+      );
+
   await page.keyboard.press("Tab");
-  await expect(
-    page.getByRole("link", { name: "Work", exact: true }),
-  ).toBeFocused();
+  await expect(map.getByRole("link", { name: "Work", exact: true })).toBeFocused();
+  expect(await labels(map)).toEqual(["Work", "Profile", "Archive", "Contact"]);
 
-  const labels = await page
-    .getByRole("navigation")
-    .getByRole("link")
-    .evaluateAll((links) => links.map((link) => link.textContent?.trim()));
-  expect(labels).toEqual(["Work", "Profile", "Archive", "Contact"]);
+  // The footer carries the same four destinations, so the opening's map is never
+  // the only route to a section.
+  const footerNav = page.locator(".footer-nav");
+  expect(await labels(footerNav)).toEqual(["Work", "Profile", "Archive", "Contact"]);
 
-  await page.getByRole("link", { name: "Contact" }).focus();
+  await map.getByRole("link", { name: "Contact", exact: true }).focus();
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL(/#contact-path$/);
   const header = await page.locator(".site-header").boundingBox();
@@ -189,10 +195,10 @@ test("makes the section navigation keyboard reachable", async ({ page }) => {
   await page.goto("/");
   const order = [
     page.locator(".flab-logo"),
-    page.getByRole("link", { name: "Work", exact: true }),
-    page.getByRole("link", { name: "Profile", exact: true }),
-    page.getByRole("link", { name: "Archive", exact: true }),
-    page.getByRole("link", { name: "Contact", exact: true }),
+    map.getByRole("link", { name: "Work", exact: true }),
+    map.getByRole("link", { name: "Profile", exact: true }),
+    map.getByRole("link", { name: "Archive", exact: true }),
+    map.getByRole("link", { name: "Contact", exact: true }),
     page.getByRole("link", { name: "Selected work" }),
   ];
   for (const [index, locator] of order.entries()) {
@@ -235,18 +241,24 @@ for (const width of [320, 390, 768, 801, 1100, 1440]) {
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth),
     ).toBe(width);
-    await expect(page.getByRole("navigation")).toBeVisible();
-    for (const link of await page
-      .getByRole("navigation")
-      .getByRole("link")
-      .all()) {
-      const bounds = await link.boundingBox();
-      expect(bounds?.x).toBeGreaterThanOrEqual(0);
-      expect((bounds?.x ?? 0) + (bounds?.width ?? 0)).toBeLessThanOrEqual(width);
-      expect(bounds?.height).toBeGreaterThanOrEqual(44);
+    // Both navigation surfaces — the opening's section map and the footer's
+    // static fallback — must stay inside the viewport with real touch targets.
+    for (const nav of [
+      page.locator(".sculpture-map"),
+      page.locator(".footer-nav"),
+    ]) {
+      await expect(nav).toBeVisible();
+      for (const link of await nav.getByRole("link").all()) {
+        const bounds = await link.boundingBox();
+        expect(bounds?.x).toBeGreaterThanOrEqual(0);
+        expect((bounds?.x ?? 0) + (bounds?.width ?? 0)).toBeLessThanOrEqual(width);
+        expect(bounds?.height).toBeGreaterThanOrEqual(44);
+      }
     }
 
-    const contactNav = page.getByRole("link", { name: "Contact" });
+    const contactNav = page
+      .locator(".sculpture-map")
+      .getByRole("link", { name: "Contact" });
     await contactNav.focus();
     await page.keyboard.press("Enter");
     await expect(page).toHaveURL(/#contact-path$/);
@@ -273,21 +285,28 @@ for (const width of [320, 390, 768, 801, 1100, 1440]) {
   });
 }
 
-test("keeps the 320px header inside the viewport with a wide system font", async ({
+test("keeps the 320px labels inside the viewport with a wide system font", async ({
   page,
 }) => {
   // DejaVu Sans is wider than the default stack and reproduced a real overflow
-  // at 320px before the mobile header gap was narrowed to 1rem. Force it so the
-  // regression cannot silently return with a different default font.
+  // at 320px before the mobile header gap was narrowed to 1rem. The header no
+  // longer carries the labels, so the same regression is now checked on the two
+  // surfaces that do: the opening's section map and the footer's fallback list.
   await page.setViewportSize({ width: 320, height: 900 });
+  // Reduced motion keeps both label surfaces laid out in flow, which is the state
+  // where a wider face can actually push a label out of the viewport.
+  await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto("/");
+  // The labels that can overflow at 320px are the monospace ones, so the wider
+  // face is forced through the font variable they actually read.
   await page.addStyleTag({
-    content: 'html { font-family: "DejaVu Sans", sans-serif !important; }',
+    content:
+      'html { --font-mono: "DejaVu Sans", sans-serif !important; font-family: "DejaVu Sans", sans-serif !important; }',
   });
   await page.waitForTimeout(300);
 
   const applied = await page
-    .locator("nav a")
+    .locator(".sculpture-star-label")
     .first()
     .evaluate((el) => getComputedStyle(el).fontFamily);
   expect(applied).toContain("DejaVu Sans");
@@ -296,18 +315,22 @@ test("keeps the 320px header inside the viewport with a wide system font", async
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(
     320,
   );
-  const links = await page.getByRole("navigation").getByRole("link").all();
-  expect(
-    (await page.getByRole("navigation").getByRole("link").allTextContents()).map(
-      (label) => label.trim(),
-    ),
-  ).toEqual(["Work", "Profile", "Archive", "Contact"]);
-  for (const link of links) {
-    const box = await link.boundingBox();
-    expect(box?.x).toBeGreaterThanOrEqual(0);
-    expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(320);
-    // Targets stay at least 45px tall; the fix narrows the gap, not the targets.
-    expect(box?.height).toBeGreaterThanOrEqual(44);
+  for (const nav of [
+    page.locator(".sculpture-map"),
+    page.locator(".footer-nav"),
+  ]) {
+    expect(
+      (await nav.getByRole("link").allTextContents()).map((label) =>
+        label.replace("✦", "").trim(),
+      ),
+    ).toEqual(["Work", "Profile", "Archive", "Contact"]);
+    for (const link of await nav.getByRole("link").all()) {
+      const box = await link.boundingBox();
+      expect(box?.x).toBeGreaterThanOrEqual(0);
+      expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(320);
+      // Targets stay at least 44px tall; the fix narrows the gap, not the targets.
+      expect(box?.height).toBeGreaterThanOrEqual(44);
+    }
   }
 });
 

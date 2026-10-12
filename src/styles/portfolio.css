@@ -1,0 +1,779 @@
+:root {
+  --background: #17131e;
+  --surface: #1f1929;
+  --ink: #ece8f4;
+  --muted-ink: #a89fb8;
+  --rule: #2f2839;
+  --accent: #a78bfa;
+  --accent-strong: #7c5cf5;
+  --accent-ink: #d9cffb;
+  /* Open contact band: light violet surface with plum ink (6.7:1). */
+  --contact-band: #a78bfa;
+  --contact-ink: #1b1430;
+  /* Footer: near-black plum with a thin violet rule. */
+  --footer-bg: #141019;
+  --footer-rule: color-mix(in srgb, var(--accent) 62%, transparent);
+  --gutter: clamp(1.25rem, 5vw, 5rem);
+  /* Generous, substantial space for every body section. */
+  --section-space: clamp(4.5rem, 12vh, 8rem);
+  color-scheme: dark;
+  font-family: var(--font-sans);
+  font-synthesis: none;
+}
+* {
+  box-sizing: border-box;
+}
+html {
+  background: var(--background);
+  scroll-behavior: smooth;
+  scroll-padding-top: 6rem;
+}
+body {
+  margin: 0;
+  background: var(--background);
+  color: var(--ink);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+h1,
+h2,
+h3,
+p,
+ol,
+ul,
+dl,
+dd {
+  margin: 0;
+}
+a {
+  color: inherit;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.25em;
+}
+a,
+summary {
+  -webkit-tap-highlight-color: transparent;
+}
+a:focus-visible,
+summary:focus-visible,
+button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+}
+/* The contact band is violet, so the default accent outline would be
+   invisible on it; use the band's own ink for a contrasting ring. */
+#contact-path a:focus-visible {
+  outline-color: var(--contact-ink);
+}
+main:focus {
+  outline: none;
+}
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.eyebrow {
+  color: var(--muted-ink);
+  font: 500 0.75rem/1.5 var(--font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* Header */
+/*
+  Fixed rather than sticky: the opening is one full viewport, so the header
+  overlays the stage instead of pushing it down. It carries no background and
+  no blur, so the star field reads straight through it and no container edge
+  is ever drawn over the sky. The bar itself ignores pointer events, and the
+  wordmark takes them back, so the rest of the opening stays clickable.
+*/
+.site-header {
+  position: fixed;
+  inset: 0 0 auto;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  padding: 1.1rem var(--gutter);
+  pointer-events: none;
+}
+.site-header > * {
+  pointer-events: auto;
+}
+.flab-logo {
+  display: inline-flex;
+  align-items: center;
+  color: var(--ink);
+  flex-shrink: 0;
+  transition: color 180ms ease;
+}
+.flab-logo:hover {
+  color: var(--accent-ink);
+}
+.flab-logo svg {
+  width: 3.75rem;
+  height: auto;
+  display: block;
+}
+nav {
+  min-width: 0;
+}
+nav ul {
+  display: flex;
+  align-items: center;
+  gap: clamp(0.75rem, 2vw, 2rem);
+  padding: 0;
+  list-style: none;
+}
+nav a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.8125rem;
+  white-space: nowrap;
+  color: var(--muted-ink);
+  font-size: 0.9375rem;
+  text-decoration: none;
+  transition: color 180ms ease;
+}
+nav a:hover {
+  color: var(--ink);
+}
+
+section {
+  padding-block: var(--section-space);
+  padding-inline: var(--gutter);
+  /* The header is transparent and fixed, so a hash landing must clear it. */
+  scroll-margin-top: 6rem;
+}
+/* A heading is a focus target for the constellation, not a visible control. */
+h2[tabindex="-1"]:focus {
+  outline: none;
+}
+.page-body {
+  position: relative;
+}
+/*
+  Each lower section and the footer isolate their own stacking context, so
+  the local sparse-star layer (z-index: -1) paints above that section's
+  background but under its content.
+*/
+.page-body > section,
+.site-footer {
+  position: relative;
+  isolation: isolate;
+}
+.section-heading {
+  display: grid;
+  gap: 1rem;
+  max-width: 52rem;
+  margin-bottom: 3.5rem;
+}
+h2 {
+  font-size: clamp(2.25rem, 5vw, 4.25rem);
+  font-weight: 700;
+  line-height: 1.02;
+  letter-spacing: -0.045em;
+}
+.section-intro {
+  max-width: 48ch;
+  color: var(--muted-ink);
+}
+
+/* Opening: a full-viewport, unboxed sticky scene owned by the sculpture. */
+#identity {
+  padding: 0;
+}
+
+/* Intro: a fuller, human first-person statement, still not a second hero. */
+#intro {
+  padding-block: var(--section-space);
+}
+.intro-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+  gap: 2.5rem 4.5rem;
+  align-items: center;
+}
+.intro-lead {
+  display: grid;
+  gap: 1rem;
+}
+h1 {
+  font-size: clamp(2.5rem, 5.5vw, 4.5rem);
+  font-weight: 700;
+  line-height: 0.98;
+  letter-spacing: -0.05em;
+}
+.intro-dot {
+  color: var(--accent);
+}
+.intro-secondary {
+  font-size: clamp(1.25rem, 2.2vw, 1.75rem);
+  font-weight: 500;
+  letter-spacing: -0.02em;
+}
+.intro-body {
+  display: grid;
+  gap: 1.25rem;
+  justify-items: start;
+}
+.intro-note {
+  max-width: 46ch;
+  color: var(--ink);
+  font-size: clamp(1.0625rem, 1.5vw, 1.3125rem);
+  line-height: 1.6;
+}
+.intro-note-soft {
+  color: var(--muted-ink);
+  font-size: clamp(1rem, 1.3vw, 1.125rem);
+}
+.intro-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 2.8125rem;
+  margin-top: 0.25rem;
+  color: var(--accent-ink);
+  text-decoration: none;
+}
+.intro-link:hover {
+  text-decoration: underline;
+}
+
+/* Work index: narrow editorial intro beside stacked projects. */
+.work-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 0.72fr) minmax(0, 1.28fr);
+  gap: 2.5rem 4rem;
+  align-items: start;
+}
+.work-intro {
+  position: sticky;
+  top: 6.5rem;
+  display: grid;
+  gap: 0.85rem;
+}
+.work-intro .section-intro {
+  max-width: 30ch;
+}
+.work-index {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 0;
+}
+.work-index > li {
+  border-top: 1px solid var(--rule);
+}
+.work-index article {
+  display: grid;
+  grid-template-columns: 3.5rem 1fr;
+  gap: 1rem 1.5rem;
+  padding: 2.25rem 0;
+}
+.project-index {
+  color: var(--muted-ink);
+  font: 500 0.875rem/1.6 var(--font-mono);
+}
+.project-body {
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+}
+.project-body h3 {
+  font-size: clamp(1.75rem, 3.6vw, 2.75rem);
+  font-weight: 600;
+  line-height: 1.05;
+  letter-spacing: -0.035em;
+  overflow-wrap: anywhere;
+}
+.project-deck {
+  color: var(--ink);
+  font-size: 1.0625rem;
+}
+.project-structure {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.project-structure span {
+  padding: 0.35rem 0.7rem;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  color: var(--muted-ink);
+  font: 0.75rem/1.4 var(--font-mono);
+}
+.project-copy {
+  max-width: 62ch;
+  color: var(--muted-ink);
+}
+.scope-note {
+  max-width: 62ch;
+  padding-left: 1rem;
+  border-left: 2px solid var(--rule);
+  color: var(--muted-ink);
+  font-size: 0.875rem;
+}
+.project-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 2.8125rem;
+  color: var(--accent-ink);
+  justify-self: start;
+}
+.project-link:hover {
+  text-decoration: underline;
+}
+
+/* Evidence ledger */
+.evidence-ledger {
+  list-style: none;
+  padding: 0;
+}
+.evidence-ledger > li {
+  border-top: 1px solid var(--rule);
+  padding-bottom: 0.5rem;
+}
+.ledger-disclosure {
+  display: grid;
+  grid-template-columns: 2.5rem 1fr;
+  gap: 1rem;
+  align-items: center;
+  min-height: 4.5rem;
+  padding: 1.25rem 0 0.75rem;
+  cursor: pointer;
+  list-style: none;
+}
+.ledger-disclosure::-webkit-details-marker {
+  display: none;
+}
+.ledger-number {
+  color: var(--muted-ink);
+  font: 0.75rem/1.5 var(--font-mono);
+}
+.ledger-capability {
+  font-size: clamp(1.125rem, 1.8vw, 1.4rem);
+  letter-spacing: -0.02em;
+  line-height: 1.3;
+}
+.ledger-disclosure:hover .ledger-capability,
+.evidence-ledger details[open] .ledger-capability {
+  color: var(--accent-ink);
+}
+.ledger-details {
+  display: grid;
+  grid-template-columns: 1.15fr 1fr;
+  gap: 2rem 3rem;
+  padding: 0.5rem 3rem 1.5rem 3.5rem;
+}
+.ledger-field {
+  display: grid;
+  align-content: start;
+  gap: 0.5rem;
+}
+dt {
+  color: var(--muted-ink);
+  font: 500 0.6875rem/1.5 var(--font-mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+dd {
+  font-size: 0.9375rem;
+  overflow-wrap: anywhere;
+}
+.ledger-qualification dd {
+  color: var(--muted-ink);
+}
+.ledger-source {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1.25rem;
+  padding-left: 3.5rem;
+}
+.ledger-source-label {
+  color: var(--muted-ink);
+  font: 0.6875rem/1.5 var(--font-mono);
+  text-transform: uppercase;
+}
+.ledger-source a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.8125rem;
+  color: var(--accent-ink);
+  font-size: 0.875rem;
+}
+
+/* Archive: a heavier statement beside its supporting notes, so the copy
+   never stretches into one very long line on wide screens. The columns are
+   close enough that the statement and its aside read as one block, with no
+   empty channel between them. */
+#learning-archive {
+  padding-block: calc(var(--section-space) * 1.15);
+}
+.archive-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
+  gap: 2.5rem 3rem;
+  align-items: start;
+}
+.archive-statement {
+  max-width: 42ch;
+  font-size: clamp(1.5rem, 3vw, 2.375rem);
+  font-weight: 600;
+  line-height: 1.14;
+  letter-spacing: -0.03em;
+  text-wrap: pretty;
+}
+.archive-aside {
+  display: grid;
+  gap: 1.25rem;
+  justify-items: start;
+}
+.archive-detail {
+  max-width: 40ch;
+  color: var(--muted-ink);
+  font-size: 1rem;
+}
+.archive-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem 2rem;
+}
+.text-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 2.8125rem;
+  color: var(--accent-ink);
+}
+.text-link:hover {
+  text-decoration: underline;
+}
+
+/* Contact: an open violet band with plum ink and adjacent paths. */
+#contact-path {
+  background: var(--contact-band);
+  color: var(--contact-ink);
+  padding-block: calc(var(--section-space) * 1.2);
+}
+.contact-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  gap: 3rem 4rem;
+  /* Center the paths group against the heading and copy, instead of
+     top-aligning it near the eyebrow. */
+  align-items: center;
+}
+#contact-path .eyebrow {
+  color: var(--contact-ink);
+}
+#contact-path h2 {
+  margin-top: 0.75rem;
+  font-size: clamp(3rem, 8vw, 7rem);
+  font-weight: 800;
+  line-height: 0.94;
+  letter-spacing: -0.05em;
+}
+.contact-intro {
+  margin-top: 1.25rem;
+  max-width: 34ch;
+  font-size: clamp(1.0625rem, 1.4vw, 1.25rem);
+  color: var(--contact-ink);
+}
+.contact-paths {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  padding: 0;
+  list-style: none;
+}
+.contact-paths li + li {
+  border-left: 1px solid color-mix(in srgb, var(--contact-ink) 26%, transparent);
+  padding-left: 1.75rem;
+}
+.contact-paths a {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.35rem 1rem;
+  min-height: 6.5rem;
+  padding-top: 1.25rem;
+  /* Optical inset for the trailing arrow: without it the arrow sits on the
+     column's right edge, touching the next column's separator. 1.25rem
+     leaves >=16px even during the 4px hover nudge. */
+  padding-inline-end: 1.25rem;
+  text-decoration: none;
+}
+.contact-icon {
+  grid-column: 1 / -1;
+  display: inline-flex;
+  align-items: center;
+  /* Uniform optical slot: the stroked envelope is taller than the filled
+     brand marks, so without a shared slot its label row sits ~4px lower. */
+  height: 1.75rem;
+  color: var(--contact-ink);
+}
+.contact-icon svg {
+  width: 1.5rem;
+  height: 1.5rem;
+  display: block;
+}
+/* The stroked envelope covers less optical area than the 24px filled brand
+   marks, so it gets a small size correction to sit level with them. */
+.contact-icon-envelope svg {
+  width: 1.75rem;
+  height: 1.75rem;
+}
+.contact-label {
+  display: grid;
+  gap: 0.15rem;
+}
+.contact-paths strong {
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+.contact-label > span {
+  color: var(--contact-ink);
+  font-size: 0.875rem;
+}
+.contact-arrow {
+  font-size: 1.125rem;
+}
+.contact-paths a:hover strong {
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+/* Footer: near-black plum, a thin violet top rule and one compact muted
+   row — a quiet close, not another tall section. The surface stays
+   full-bleed; an inner layout holds the readable measure. */
+.site-footer {
+  min-height: 6.25rem;
+  padding-block: 1.25rem;
+  background: var(--footer-bg);
+  border-top: 1px solid var(--footer-rule);
+  color: var(--muted-ink);
+  font: 600 0.875rem/1.6 var(--font-mono);
+  letter-spacing: 0.02em;
+}
+.footer-inner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 2rem;
+  max-width: 108rem;
+  margin-inline: auto;
+  padding-inline: var(--gutter);
+}
+.footer-identity {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+.footer-sep {
+  color: color-mix(in srgb, var(--muted-ink) 55%, transparent);
+}
+/* The right group is the back-to-top link; the violet dash closes it. */
+.footer-top {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 2.75rem;
+  color: var(--muted-ink);
+  text-decoration: none;
+}
+.footer-top:hover .footer-note {
+  text-decoration: underline;
+  text-underline-offset: 0.25em;
+}
+.footer-dash {
+  width: 1.5rem;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--accent);
+}
+/*
+  The static fallback route to the four sections. It sits outside
+  `.footer-inner` so the footer keeps its two-group shape, and it matches the
+  inner layout's constrained measure.
+*/
+.footer-nav {
+  max-width: 108rem;
+  margin: 0.75rem auto 0;
+  padding-inline: var(--gutter);
+  border-top: 1px solid color-mix(in srgb, var(--rule) 70%, transparent);
+}
+.footer-nav ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1.75rem;
+  padding: 0;
+  list-style: none;
+}
+.footer-nav a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.75rem;
+  color: var(--muted-ink);
+  text-decoration: none;
+}
+.footer-nav a:hover {
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: 0.25em;
+}
+
+@media (min-width: 1700px) {
+  /* The opening and the contact band are edge-to-edge, so the legacy
+     whole-page box is removed; only the textual content stays constrained
+     to a readable measure. */
+  #intro > .intro-layout,
+  #selected-evidence > .work-layout,
+  #technical-profile > .section-heading,
+  #technical-profile > .evidence-ledger,
+  #learning-archive > .section-heading,
+  #learning-archive > .archive-layout,
+  #contact-path > .contact-layout {
+    max-width: 108rem;
+    margin-inline: auto;
+  }
+}
+/*
+  Contact-only breakpoint: the 3-up contact paths need more room than the
+  work/profile sections, so the contact intro/paths parent stacks until
+  1100px. Below that the paths get full width (no label/arrow collision);
+  at 1101px the 2-column layout is at its narrowest and still clears.
+*/
+@media (max-width: 1100px) {
+  .contact-layout {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 900px) {
+  .work-layout,
+  .intro-layout,
+  .archive-layout {
+    grid-template-columns: 1fr;
+  }
+  .intro-layout {
+    align-items: start;
+    gap: 1.5rem;
+  }
+  .archive-layout {
+    gap: 1.75rem;
+  }
+  .archive-statement {
+    max-width: 34ch;
+  }
+  .work-intro {
+    position: static;
+  }
+  .work-intro .section-intro {
+    max-width: 48ch;
+  }
+  .ledger-details {
+    grid-template-columns: 1fr;
+  }
+  .ledger-details {
+    gap: 1.5rem;
+    padding-right: 0;
+  }
+}
+@media (max-width: 640px) {
+  .site-header {
+    padding-inline: var(--gutter);
+    /* Narrower header gap: at 320px the logo plus four nowrap labels only
+       fit once this shrinks. Wider system fonts (e.g. DejaVu Sans on
+       Linux CI) need the extra room. */
+    gap: 1rem;
+  }
+  section {
+    padding-block: 3.25rem;
+  }
+  .flab-logo svg {
+    width: 3rem;
+  }
+  nav ul {
+    gap: 0.9rem;
+  }
+  nav a {
+    font-size: 0.875rem;
+  }
+  .ledger-disclosure {
+    grid-template-columns: 1.5rem 1fr;
+    gap: 0.75rem;
+  }
+  .ledger-details,
+  .ledger-source {
+    padding-left: 2.25rem;
+  }
+  .work-index article {
+    grid-template-columns: 2.25rem 1fr;
+    gap: 0.5rem 1rem;
+  }
+  .contact-paths {
+    grid-template-columns: 1fr;
+  }
+  /* Mobile stacks the three paths as rows, with a horizontal rule instead
+     of the desktop vertical separators. */
+  .contact-paths li + li {
+    border-left: 0;
+    border-top: 1px solid color-mix(in srgb, var(--contact-ink) 26%, transparent);
+    padding-left: 0;
+  }
+  .contact-paths a {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    min-height: 4.5rem;
+    padding-block: 0.75rem;
+  }
+  .contact-icon {
+    grid-column: auto;
+    height: auto;
+  }
+  .contact-icon-envelope svg {
+    width: 1.5rem;
+    height: 1.5rem;
+  }
+  .site-footer {
+    min-height: 0;
+    padding-block: 1.5rem;
+  }
+  .footer-inner {
+    gap: 0.5rem 1rem;
+  }
+  .footer-top {
+    min-height: 2.75rem;
+  }
+}
+
+.motion [data-reveal] {
+  opacity: 0;
+  transform: translateY(1.25rem);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .flab-logo,
+  .intro-link,
+  .project-link,
+  .text-link,
+  .ledger-source a,
+  #contact-path a,
+  .site-footer a {
+    transition:
+      color 180ms ease,
+      background-color 180ms ease,
+      border-color 180ms ease,
+      transform 180ms ease;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}

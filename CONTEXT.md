@@ -36,3 +36,15 @@ _Avoid_: Progressive enhancement first
 **Reduced-Motion Alternate**:
 The restrained experience that replaces or simplifies Experimental Showcase motion when a visitor requests reduced motion.
 _Avoid_: Full-motion fallback
+
+**Section Map**:
+The opening's navigation: the assembled mark is the control, and activating it scatters the mark into a constellation of destination stars, one per section. It is an overlay on a one-viewport opening rather than a scroll scene.
+_Avoid_: Star menu, navigation overlay, hero menu
+
+**Destination Star**:
+One section's entry in the Section Map. It is a real link to that section, not a canvas hit area, so it stays reachable by keyboard, screen readers, and a missing bundle.
+_Avoid_: Nav star, beacon button
+
+**Magnetic Pull**:
+The restrained lean of the assembled mark toward a nearby fine pointer. It moves only the mark, never a Destination Star, and only while no link is under the pointer.
+_Avoid_: Cursor gravity, cursor tether

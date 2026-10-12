@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { GLYPHS, rand, STAR_INK_HEX, STAR_PLUM_HEX } from "../lib/stars";
 
   /**
    * A much sparser continuation of the opening star field. One lightweight local
@@ -15,25 +16,12 @@
    * document is hidden.
    */
 
-  // Same glyph set as the opening sculpture.
-  const GLYPHS = ["+", "·", "•", "✳", "✦", "⋆", "✧", "﹡", "⋅", "✶", "*", "⁕"];
-  const INK = "#ece8f4";
-  // Plum ink, for the violet contact band.
-  const PLUM = "#1b1430";
-
   let { seed = 0, tone = "ink" } = $props<{
     seed?: number;
     tone?: "ink" | "plum";
   }>();
 
   let host: HTMLDivElement;
-
-  /** Deterministic pseudo-random in [0,1) from an index and salt. */
-  function rand(index: number, salt: number) {
-    let value = Math.imul(index + 1, 374761393) ^ Math.imul(salt + 1, 668265263);
-    value = Math.imul(value ^ (value >>> 13), 1274126177);
-    return ((value ^ (value >>> 16)) >>> 0) / 4294967296;
-  }
 
   onMount(() => {
     const motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -45,7 +33,7 @@
     // already bounds density, so long mobile sections keep stars all the way
     // down instead of leaving the lower part empty.
     const band = height;
-    const ink = tone === "plum" ? PLUM : INK;
+    const ink = tone === "plum" ? STAR_PLUM_HEX : STAR_INK_HEX;
     const base = seed * 17 + 1;
 
     const glyphs = new Array<number>(count);
