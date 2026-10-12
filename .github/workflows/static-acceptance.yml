@@ -11,7 +11,7 @@ permissions:
 jobs:
   test-static:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - name: Check out source
         uses: actions/checkout@v6
@@ -27,6 +27,15 @@ jobs:
 
       - name: Check Astro and Svelte types
         run: npm run check
+
+      # The engines are ~600MB, and downloading them on every run pushed the job
+      # past its cap while the suite was still running. The key follows the lock
+      # file, so a Playwright bump re-downloads and every other run reuses them.
+      - name: Cache browser engines
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
 
       - name: Install browser engines
         run: npx playwright install --with-deps chromium firefox webkit
