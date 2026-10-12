@@ -757,6 +757,14 @@ dd {
   opacity: 0;
   transform: translateY(1.25rem);
 }
+/*
+  Colour and surface only. `transform` is deliberately absent: gsap writes
+  transforms on these same elements for the reveal and the link nudge, and a
+  CSS transition on the same property fights those per-frame writes — it
+  makes the reveal glide, and it leaves the reduced-motion settle dependent
+  on whether the engine applied the media change before the listener cleared
+  the inline transform.
+*/
 @media (prefers-reduced-motion: no-preference) {
   .flab-logo,
   .intro-link,
@@ -768,8 +776,7 @@ dd {
     transition:
       color 180ms ease,
       background-color 180ms ease,
-      border-color 180ms ease,
-      transform 180ms ease;
+      border-color 180ms ease;
   }
 }
 @media (prefers-reduced-motion: reduce) {

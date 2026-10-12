@@ -168,7 +168,10 @@ test("clears hover and focus nudges when reduced motion is requested", async ({
   await page.emulateMedia({ reducedMotion: "reduce" });
   await expect(page.locator("html")).not.toHaveClass(/\bmotion\b/);
   await expect(arrow).toHaveCSS("transform", "none");
-  expect(await unsettled(page)).toEqual([]);
+  // Polled rather than read once: the requirement is that nothing is left
+  // mid-reveal, and how many frames an engine needs to reflect the cleared
+  // inline styles is not what is under test.
+  await expect.poll(async () => unsettled(page)).toEqual([]);
 });
 
 test.describe("page motion without JavaScript", () => {
