@@ -120,6 +120,10 @@ const metrics = (page: Page): Promise<Metrics> =>
 /**
  * The drawn pose settles on its own clock, so a test waits for the published
  * gather rather than assuming a frame count.
+ *
+ * The polling interval is fixed rather than frame-driven, and the budget is
+ * generous: a loaded CI host can starve the animation loop, and what is being
+ * asserted is the pose, not how quickly the host reached it.
  */
 const settlePose = async (page: Page, target: number) =>
   page.waitForFunction(
@@ -130,7 +134,7 @@ const settlePose = async (page: Page, target: number) =>
         ) - value,
       ) < 0.002,
     target,
-    { timeout: 6000 },
+    { timeout: 15_000, polling: 100 },
   );
 
 /** Activate the mark the way a visitor does, and wait for the scatter to settle. */
@@ -370,10 +374,13 @@ test.describe("After Hours section map", () => {
     await settlePose(page, 1);
     await expect(control).toHaveAttribute("aria-expanded", "false");
 
-    // A click on empty sky reforms it too, and leaves the control live.
+    // A click on empty sky reforms it too, and leaves the control live. The map
+    // phase is asserted first so a click that never landed is reported as such
+    // rather than as a pose that never settled.
     await control.click();
     await settlePose(page, 0);
     await page.mouse.click(40, 720);
+    await expect(page.locator(".sculpture")).toHaveAttribute("data-map", "closed");
     await settlePose(page, 1);
     expect((await metrics(page)).map).toBe("closed");
     await expect(control).toHaveAttribute("aria-expanded", "false");
