@@ -38,6 +38,23 @@ export const FLATTEN_MAX = 1.18;
 /** The narrow width below which the stage uses its mobile budget and fit. */
 const MOBILE_WIDTH = 760;
 
+/**
+ * Destination offsets from the stage centre, as fractions of the constellation
+ * spread, each with its own depth.
+ *
+ * The depth is what makes the four stars read as part of the sky rather than as a
+ * flat overlay: it gives them a perspective scale, a depth-graded brightness, and
+ * a swing as the cloud turns. `x` increases with the destination order, so the
+ * four stay in reading order from left to right even at the cloud's largest
+ * rotation.
+ */
+const BEACON_OFFSETS = [
+  { x: -0.52, y: -0.28, z: -150 },
+  { x: -0.18, y: 0.22, z: 90 },
+  { x: 0.18, y: -0.22, z: -60 },
+  { x: 0.52, y: 0.28, z: 170 },
+];
+
 /** A star in the field: one scattered position, one target on the mark. */
 export type Particle = {
   sx: number;
@@ -52,6 +69,12 @@ export type Particle = {
   glyphPhase: number;
   size: number;
   tone: number;
+  /**
+   * Set on the destination stars, holding the section they lead to. They are
+   * ordinary field particles in every other respect — same glyphs, same twinkle,
+   * same projection — so they look and move like the sky they belong to.
+   */
+  destination?: number;
 };
 
 /** A star in the ambient population: a fixed origin with its own drift clock. */
@@ -169,7 +192,11 @@ function buildAmbient(width: number, height: number): Ambient[] {
  * could not be sampled at all, which the caller treats as a canvas that cannot
  * draw rather than leaving a blank stage behind.
  */
-export function buildField(width: number, height: number): Field | undefined {
+export function buildField(
+  width: number,
+  height: number,
+  beaconCount = 0,
+): Field | undefined {
   const targets = sampleTargets();
   if (!targets.length || !width || !height) return undefined;
 
@@ -242,6 +269,35 @@ export function buildField(width: number, height: number): Field | undefined {
       glyphPhase: rand(index, 8) * 12,
       size: 0.7 + rand(index, 9) * 0.75,
       tone: rand(index, 10),
+    });
+  }
+
+  // The destination stars are appended to the field rather than drawn separately,
+  // so they are rendered by the same loop and cannot drift apart from the sky.
+  const beaconSpreadX = Math.min(width * 0.4, 560);
+  const beaconSpreadY = Math.min(height * 0.26, 220);
+  for (let destination = 0; destination < beaconCount; destination += 1) {
+    const offset = BEACON_OFFSETS[destination % BEACON_OFFSETS.length];
+    // Their assembled target is a real point of the mark, so they fly out of the
+    // letterform as it breaks apart and back into it as it reforms.
+    const target = targets[Math.floor(((destination + 0.5) / beaconCount) * targets.length)];
+    particles.push({
+      sx: offset.x * beaconSpreadX,
+      sy: offset.y * beaconSpreadY,
+      sz: offset.z,
+      tx: markLeft + target.x * fit - centreX,
+      ty: markTop + target.y * fit - centreY,
+      tz: offset.z * 0.4,
+      // No stagger: the destinations travel with the cloud, not behind it.
+      delay: 0,
+      glyph: Math.floor(rand(destination, 41) * GLYPHS.length),
+      glyphRate: 0.3 + rand(destination, 42) * 0.85,
+      glyphPhase: rand(destination, 43) * 12,
+      // Above the field's average so a destination is findable without standing
+      // apart from the sky it is part of.
+      size: 1.3 + rand(destination, 44) * 0.25,
+      tone: rand(destination, 45) * 0.5,
+      destination,
     });
   }
 

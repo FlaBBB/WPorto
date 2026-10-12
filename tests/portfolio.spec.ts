@@ -169,7 +169,7 @@ test("makes the section navigation keyboard reachable", async ({ page }) => {
     scope
       .getByRole("link")
       .evaluateAll((links) =>
-        links.map((link) => link.textContent?.replace("✦", "").trim()),
+        links.map((link) => link.textContent?.trim()),
       );
 
   await page.keyboard.press("Tab");
@@ -321,7 +321,7 @@ test("keeps the 320px labels inside the viewport with a wide system font", async
   ]) {
     expect(
       (await nav.getByRole("link").allTextContents()).map((label) =>
-        label.replace("✦", "").trim(),
+        label.trim(),
       ),
     ).toEqual(["Work", "Profile", "Archive", "Contact"]);
     for (const link of await nav.getByRole("link").all()) {

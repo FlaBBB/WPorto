@@ -489,7 +489,7 @@ test.describe("After Hours section map", () => {
     await expect(control).toHaveAttribute("aria-expanded", "false");
   });
 
-  test("keeps every destination star still, reachable and in reading order", async ({
+  test("keeps every destination reachable, in reading order, and its label on screen", async ({
     page,
   }) => {
     await hydrate(page);
@@ -502,7 +502,7 @@ test.describe("After Hours section map", () => {
     await expect(stars).toHaveCount(4);
     expect(
       await stars.evaluateAll((els) => els.map((el) => el.textContent?.trim())),
-    ).toEqual(["✦ Work", "✦ Profile", "✦ Archive", "✦ Contact"]);
+    ).toEqual(["Work", "Profile", "Archive", "Contact"]);
 
     // Every star is a real target of at least 44x44, and the anchors run left to
     // right so the tab order matches the visual order.
@@ -520,65 +520,45 @@ test.describe("After Hours section map", () => {
       expect(boxes[index].x).toBeGreaterThan(boxes[index - 1].x);
     }
 
-    // Hovering brightens and enlarges the inner glyph, and must not move the
-    // anchor — the thing the visitor is aiming at.
-    //
-    // The figure itself turns by design, so an absolute screen position cannot
-    // express this. What is invariant under that turn is the anchor's geometry
-    // relative to the figure: the constellation rotates about the stage centre,
-    // so each star's distance from that centre holds, and only a hover that moved
-    // the anchor would change it. Both the star and the centre are read live, so
-    // a shifted document cannot masquerade as a moved anchor.
+    // Hovering brightens the destination. Nothing here asserts a fixed screen
+    // position any more: the stars are particles of the mark, so they move with
+    // it by design, and the label follows the star rather than the reverse.
     const first = stars.first();
-    const glyph = first.locator(".sculpture-star-glyph");
-    const radius = () =>
-      page.evaluate(() => {
-        const field = document
-          .querySelector(".sculpture-field")!
-          .getBoundingClientRect();
-        const box = document
-          .querySelector(".sculpture-star")!
-          .getBoundingClientRect();
-        return Math.hypot(
-          box.x + box.width / 2 - (field.x + field.width / 2),
-          box.y + box.height / 2 - (field.y + field.height / 2),
-        );
-      });
-
-    // The figure is still easing outward right after the map opens, so wait for
-    // its radius to stop changing before treating the radius as the invariant.
-    await expect
-      .poll(
-        async () => {
-          const before = await radius();
-          await page.waitForTimeout(150);
-          return Math.abs((await radius()) - before);
-        },
-        { timeout: 15_000, intervals: [100] },
-      )
-      .toBeLessThan(0.5);
-
-    const radiusBefore = await radius();
-    // Move a real pointer onto the star's live centre rather than using
-    // `hover()`: Playwright waits for a hovered element to hold still, and a
-    // rotating star never does.
+    const restingColour = await first.evaluate(
+      (el) => getComputedStyle(el).color,
+    );
     const target = (await first.boundingBox())!;
     await page.mouse.move(
       target.x + target.width / 2,
       target.y + target.height / 2,
       { steps: 6 },
     );
-    // The enlargement is read from the computed transform, which is exact, rather
-    // than from a bounding box that the turn also moves.
-    const glyphScale = () =>
-      glyph.evaluate((el) => {
-        const matrix = new DOMMatrix(getComputedStyle(el).transform);
-        return matrix.a;
-      });
-    await expect.poll(glyphScale, { timeout: 10_000 }).toBeGreaterThan(1.03);
-    expect(Math.abs((await radius()) - radiusBefore)).toBeLessThan(1);
-    // The breath pauses on hover, so the star is exactly where it was committed.
-    await expect(glyph).toHaveCSS("animation-play-state", "paused");
+    await expect
+      .poll(() => first.evaluate((el) => getComputedStyle(el).color), {
+        timeout: 10_000,
+      })
+      .not.toBe(restingColour);
+
+    // What motion does risk is a label riding its star off the stage or under the
+    // header, so that is what is held while the figure turns. The sampling is
+    // deliberately short: the star's own extent is bounded by the projection
+    // bound, which is tested separately, and that the labels keep moving with the
+    // cloud is a test of its own. What is left to hold here is that the render's
+    // placement puts them inside the stage rather than, say, at the stage corner
+    // it measures from.
+    const header = (await page.locator(".site-header").boundingBox())!;
+    const viewport = page.viewportSize()!;
+    for (let sample = 0; sample < 4; sample += 1) {
+      for (const box of await stars.evaluateAll((els) =>
+        els.map((el) => el.getBoundingClientRect().toJSON()),
+      )) {
+        expect(box.left).toBeGreaterThanOrEqual(0);
+        expect(box.right).toBeLessThanOrEqual(viewport.width);
+        expect(box.top).toBeGreaterThanOrEqual(header.y + header.height);
+        expect(box.bottom).toBeLessThanOrEqual(viewport.height);
+      }
+      await page.waitForTimeout(400);
+    }
   });
 
   test("takes no pointer events while the stars are still flying", async ({
@@ -639,7 +619,7 @@ test.describe("After Hours section map", () => {
           "",
       );
     }
-    expect(stops).toEqual(["✦ Work", "✦ Profile", "✦ Archive", "✦ Contact"]);
+    expect(stops).toEqual(["Work", "Profile", "Archive", "Contact"]);
 
     await page.keyboard.press("Enter");
     await page.waitForURL(/#contact-path$/);

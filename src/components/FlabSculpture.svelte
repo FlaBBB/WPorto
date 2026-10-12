@@ -20,12 +20,7 @@
     GLYPHS,
     starColor,
   } from "../lib/stars";
-  import {
-    beaconPosition,
-    CONSTELLATION_SPREAD,
-    type MapPhase,
-    type SectionDestination,
-  } from "../lib/sectionMap";
+  import { type MapPhase, type SectionDestination } from "../lib/sectionMap";
 
   /**
    * The opening sculpture. Its assembled target is sampled from the same filled
@@ -52,6 +47,7 @@
     destinations?: SectionDestination[];
   }>();
 
+  let rootEl: HTMLDivElement;
   let scene: HTMLDivElement;
   let sticky: HTMLDivElement;
   let field: HTMLDivElement;
@@ -97,11 +93,17 @@
   // Target the drawn pose eases toward; the tween itself lives in `tick`, so the
   // pose keeps moving even when no new event arrives.
   let gatherTarget = 1;
-  // The field's body rotation, published so the constellation turns with the cloud
-  // it came from instead of on a clock of its own.
+  // The field's body rotation. It is published so the render and the destination
+  // labels agree on where the cloud is pointing.
   let bodyRotationY = $state(0);
-  // How far the figure has eased out; it pulls back in as the mark reforms.
-  let constellationSpread = $state(0);
+  // Where each destination star was last drawn, as an offset from the stage
+  // centre. The labels are DOM, so they are moved to follow the stars the canvas
+  // draws rather than being positioned by their own geometry.
+  let beaconScreen: { x: number; y: number }[] = [];
+  // The destination the pointer or keyboard is on, so the canvas can answer with
+  // the same enlargement the other stars get from their own hover styling.
+  let beaconHovered = -1;
+  let beaconNodes: HTMLElement[] = [];
   // Magnetic pull on the mark, in field coordinates relative to the centre.
   let tetherOn = false;
   let tetherReadyAt = 0;
@@ -172,37 +174,10 @@
     context.textAlign = "center";
     context.textBaseline = "middle";
 
-    // The constellation edges fade in with the scatter, so the four destinations
-    // read as one figure rather than four unrelated stars. The canvas only draws
-    // the figure; the labels and hit areas stay in the document.
+    // The destinations are the sky's own stars, so they are drawn by this same
+    // loop with no figure drawn between them: they read as four bright members of
+    // the cloud, not as a diagram laid over it.
     const openness = 1 - gather;
-    if (openness > 0.05 && destinations.length > 1) {
-      context.strokeStyle = `rgba(167, 139, 250, ${(openness * 0.3).toFixed(3)})`;
-      context.lineWidth = 1;
-      context.beginPath();
-      // Consecutive destinations only, in reading order: a path reads as a
-      // constellation, whereas closing the loop adds an edge that crosses the
-      // others and makes the figure harder to read.
-      for (let index = 0; index < destinations.length - 1; index += 1) {
-        const from = beaconPosition(
-          index,
-          width,
-          height,
-          bodyRotationY,
-          constellationSpread,
-        );
-        const to = beaconPosition(
-          index + 1,
-          width,
-          height,
-          bodyRotationY,
-          constellationSpread,
-        );
-        if (index === 0) context.moveTo(cx + from.x, cy + from.y);
-        context.lineTo(cx + to.x, cy + to.y);
-      }
-      context.stroke();
-    }
 
     for (const particle of particles) {
       const local = clamp01((gather - particle.delay) / (1 - GATHER_STAGGER));
@@ -219,6 +194,14 @@
 
       const point = project(x, y, z, rotY, rotX, focalLength, cx, cy);
       if (!point) continue;
+
+      // Recorded before any culling, so a label always sits on the star it names.
+      if (particle.destination !== undefined) {
+        beaconScreen[particle.destination] = {
+          x: point.x - cx,
+          y: point.y - cy,
+        };
+      }
       if (
         point.x < -48 ||
         point.x > width + 48 ||
@@ -231,10 +214,12 @@
       // Nearer particles are larger, brighter and use denser glyphs.
       const depth = clamp01((point.depth + spreadZ) / (2 * spreadZ));
       const near = 1 - depth;
+      const beacon = particle.destination !== undefined;
       const size =
         (scatteredSize + (assembledSize - scatteredSize) * gather) *
         particle.size *
-        point.scale;
+        point.scale *
+        (particle.destination === beaconHovered ? 1.12 : 1);
       if (size < 1.1) continue;
 
       const glyphIndex =
@@ -256,6 +241,25 @@
       const edgeY = Math.min(point.y, height - point.y) / (height * 0.16);
       const edge = clamp01(Math.min(edgeX, edgeY));
       alpha *= edge;
+      // A destination only exists while the map is open, so it fades with the map
+      // instead of sitting inside the assembled mark as a stray star. It also
+      // twinkles, on its own phase, the way the sky's brighter stars do: that is
+      // what makes it read as a star rather than as a marker.
+      if (beacon) {
+        const twinkle = 0.78 + 0.22 * Math.sin(clock * 0.5 + particle.glyphPhase);
+        // Lifted into the bright end of the field's own range. Their depth sits
+        // near the middle of the cloud, which the depth-graded alpha reads as
+        // ordinary, and a destination that looks dimmer than the stars around it
+        // reads as a disabled control rather than as a bright one.
+        alpha = Math.min(
+          1,
+          alpha *
+            1.9 *
+            openness *
+            twinkle *
+            (particle.destination === beaconHovered ? 1.3 : 1),
+        );
+      }
       if (alpha < 0.01) continue;
 
       context.fillStyle = starColor(particle.tone, alpha, FIELD_VIOLET_TONE);
@@ -312,17 +316,9 @@
           ? gatherTarget
           : gather + Math.sign(gatherTarget - gather) * step;
     }
-    // One rotation drives both the cloud and the constellation, so the stars
+    // One rotation drives the whole field, destinations included, so the stars
     // cannot drift away from the mark they belong to.
-    const openness = 1 - gather;
-    bodyRotationY = Math.sin(clock * 0.12) * MAX_ROT_Y * openness;
-    const spreadTarget = 1 - (1 - CONSTELLATION_SPREAD) * gather;
-    if (Math.abs(spreadTarget - constellationSpread) > 0.001) {
-      const ease = 1 - Math.pow(0.001, delta);
-      constellationSpread += (spreadTarget - constellationSpread) * ease;
-    } else {
-      constellationSpread = spreadTarget;
-    }
+    bodyRotationY = Math.sin(clock * 0.12) * MAX_ROT_Y * (1 - gather);
 
     // The pull eases with a frame-rate independent lerp rather than a spring, so a
     // dropped frame cannot overshoot or ring. 0.2 per 60fps frame matches the
@@ -342,6 +338,7 @@
 
     renderAmbient(clock);
     renderMain();
+    syncBeaconLabels();
 
     if (motionEnabled && visible && !document.hidden) {
       frame = requestAnimationFrame(tick);
@@ -376,7 +373,7 @@
     ambientDpr = Math.min(ratio, AMBIENT_DPR);
     sizeCanvas(canvas, dpr);
     sizeCanvas(ambientCanvas, ambientDpr);
-    built = buildField(width, height);
+    built = buildField(width, height, destinations.length);
     renderAmbient(clock);
     renderMain();
   }
@@ -541,6 +538,26 @@
     start();
   }
 
+  /**
+   * Move each destination label onto the star the canvas just drew, and fade the
+   * group with the map.
+   *
+   * The stars are particles of the mark, so their screen positions are the
+   * canvas's to know and the labels' to follow. Reading them from the render
+   * rather than recomputing them here is what keeps a label exactly on its star
+   * through the turn, the perspective and the assemble.
+   */
+  function syncBeaconLabels() {
+    if (!rootEl) return;
+    rootEl.style.setProperty("--map-opacity", (1 - gather).toFixed(3));
+    for (let index = 0; index < beaconNodes.length; index += 1) {
+      const node = beaconNodes[index];
+      const point = beaconScreen[index];
+      if (!node || !point) continue;
+      node.style.transform = `translate3d(${point.x.toFixed(1)}px, ${point.y.toFixed(1)}px, 0)`;
+    }
+  }
+
   function removeCanvases() {
     canvas?.remove();
     ambientCanvas?.remove();
@@ -607,7 +624,7 @@
     settleTimer = 0;
     gatherTarget = 1;
     bodyRotationY = 0;
-    constellationSpread = 0;
+    beaconHovered = -1;
     tetherOn = false;
     tetherTarget = { x: 0, y: 0 };
     tetherOffset = { x: 0, y: 0 };
@@ -695,6 +712,7 @@
 
 <div
   class="sculpture"
+  bind:this={rootEl}
   data-motion={motionEnabled ? "on" : "off"}
   data-collapsed={collapsed ? "true" : "false"}
   data-map={mapPhase}
@@ -742,32 +760,27 @@
           </button>
         {/if}
         <!--
-          The section map. These are real links rather than canvas hit areas, so
-          keyboard, screen readers, reduced motion and a missing bundle all reach
-          the same sections. With motion they take their constellation positions
-          once the mark breaks apart; without it they read as a plain list under
+          The section map. Each destination is a star of the field, drawn by the
+          canvas with the rest of the sky, and its label is a real link placed on
+          that star each frame. Keyboard, screen readers, reduced motion and a
+          missing bundle therefore all reach the same sections: with motion the
+          labels sit on their stars, and without it they read as a plain list under
           the static mark.
         -->
         {#if destinations.length}
           <nav class="sculpture-map" aria-label="Portfolio sections">
             <ul>
               {#each destinations as destination, index (destination.id)}
-                {@const position = beaconPosition(
-                  index,
-                  width,
-                  height,
-                  bodyRotationY,
-                  constellationSpread,
-                )}
-                <li
-                  style={`left: ${position.x.toFixed(1)}px; top: ${position.y.toFixed(1)}px;`}
-                >
+                <li bind:this={beaconNodes[index]}>
                   <a
                     class="sculpture-star"
                     href={`#${destination.id}`}
                     onclick={handleStarClick}
+                    onpointerenter={() => (beaconHovered = index)}
+                    onpointerleave={() => (beaconHovered = -1)}
+                    onfocus={() => (beaconHovered = index)}
+                    onblur={() => (beaconHovered = -1)}
                   >
-                    <span class="sculpture-star-glyph" aria-hidden="true">✦</span>
                     <span class="sculpture-star-label">{destination.label}</span>
                   </a>
                 </li>
@@ -874,21 +887,24 @@
   }
 
   /*
-    The section map. Its links are always in the document; only their placement
-    changes. With motion they sit at their constellation offsets around the stage
-    centre, so the figure the canvas draws lines between is the figure the visitor
-    can actually reach.
+    The section map. Each destination is a star of the field, drawn by the canvas
+    with the rest of the sky, and its label is a real link moved onto that star
+    every frame. Reading the position from the render is what keeps a label and
+    the star it names from ever disagreeing.
 
-    Visual and interaction are deliberately separated: the anchor is a still hit
-    area of at least 44x44px with room around the glyph, and every animated
-    property lives on an inner element. A target that moves while you aim at it
-    makes the visitor guess, so nothing here translates.
+    The label is the target: at least 44px tall, with a pseudo-element extending
+    the hit area back over the star the canvas drew, so the star itself is
+    clickable too.
   */
   .sculpture-map {
     position: absolute;
     inset: 0;
     z-index: 4;
-    opacity: 0;
+    /*
+      Written from the render, so the labels fade with the very scatter that
+      reveals their stars. It defaults to visible for the no-canvas fallback.
+    */
+    opacity: var(--map-opacity, 1);
     /* The layer spans the stage, so it must not swallow the click that closes the
        map on empty sky; only the links take pointer events. */
     pointer-events: none;
@@ -903,26 +919,35 @@
   }
   .sculpture-map li {
     position: absolute;
-    transform: translate(-50%, -50%);
+    left: 0;
+    top: 0;
+    /* Placed by the render, so the label sits exactly on its star. */
+    will-change: transform;
   }
   .sculpture-star {
+    position: absolute;
+    left: 0;
+    top: 0;
+    transform: translateY(-50%);
     display: inline-flex;
     align-items: center;
-    gap: 0.5rem;
-    min-width: 2.75rem;
     min-height: 2.75rem;
-    /* 8-12px of padding around the glyph, so the target is not the glyph. */
-    padding: 0.5rem 0.75rem;
+    /* The star is drawn just left of the label; the padding is that gap. */
+    padding: 0.5rem 0.75rem 0.5rem 1.1rem;
     color: var(--muted-ink);
     text-decoration: none;
     white-space: nowrap;
     cursor: pointer;
     pointer-events: auto;
   }
-  .sculpture-star-glyph {
-    font-size: 1.15rem;
-    line-height: 1;
-    color: var(--accent);
+  /* Extends the target back over the star the canvas drew. */
+  .sculpture-star::before {
+    content: "";
+    position: absolute;
+    left: -1.7rem;
+    top: 0;
+    bottom: 0;
+    width: 2.8rem;
   }
   .sculpture-star-label {
     font: 500 0.72rem/1 var(--font-mono);
@@ -930,46 +955,21 @@
     text-transform: uppercase;
   }
   @media (prefers-reduced-motion: no-preference) {
-    .sculpture-map {
-      transition: opacity 420ms ease;
-    }
     /*
-      Only the inner glyphs are transitioned, never the anchors and never the
-      control. The control's own box jumps from the size of the whole mark to a
-      small circle, and a transition on its surface or its transform paints that
-      whole rectangle over the sky while it resizes.
+      Colour and surface only. The label's position is written every frame by the
+      render, and a transition on transform would fight those writes.
     */
     .sculpture-star,
-    .sculpture-star-glyph,
     .sculpture-control-glyph {
       transition:
         color 180ms ease,
-        transform 220ms ease,
         background-color 180ms ease,
         border-color 180ms ease;
-    }
-    /*
-      A slow breath marks the four destinations as stars rather than menu items.
-      It is opacity only, at 4.8s, so the target never shifts; hovering or focusing
-      pauses it so the star is exactly where it was when the visitor committed.
-    */
-    .sculpture[data-map="open"] .sculpture-star-glyph {
-      animation: star-breathe 4.8s ease-in-out infinite alternate;
-    }
-    .sculpture-star:hover .sculpture-star-glyph,
-    .sculpture-star:focus-visible .sculpture-star-glyph {
-      animation-play-state: paused;
     }
   }
   .sculpture-star:hover,
   .sculpture-star:focus-visible {
     color: var(--ink);
-  }
-  /* Brighten and a 1.06 enlargement, on the inner glyph, never on the hit area. */
-  .sculpture-star:hover .sculpture-star-glyph,
-  .sculpture-star:focus-visible .sculpture-star-glyph {
-    color: var(--accent-ink);
-    transform: scale(1.06);
   }
   /*
     Hidden while the map is closed, so the four links cannot be tabbed to while
@@ -980,10 +980,6 @@
   :global(html.motion) .sculpture:not([data-collapsed="true"])[data-map="closed"] .sculpture-map,
   .sculpture[data-motion="on"]:not([data-collapsed="true"])[data-map="closed"] .sculpture-map {
     visibility: hidden;
-  }
-  .sculpture[data-map="open"] .sculpture-map,
-  .sculpture[data-map="opening"] .sculpture-map {
-    opacity: 1;
   }
   .sculpture[data-map="opening"] .sculpture-map,
   .sculpture[data-map="opening"] .sculpture-star {
@@ -1010,6 +1006,17 @@
   .sculpture[data-motion="off"] .sculpture-map li {
     position: static;
     transform: none;
+  }
+  /* In the fallback the label is the whole entry, so it returns to normal flow. */
+  .sculpture[data-collapsed="true"] .sculpture-star,
+  .sculpture[data-motion="off"] .sculpture-star {
+    position: static;
+    transform: none;
+    padding-inline: 0.25rem;
+  }
+  .sculpture[data-collapsed="true"] .sculpture-star::before,
+  .sculpture[data-motion="off"] .sculpture-star::before {
+    content: none;
   }
 
   /*
