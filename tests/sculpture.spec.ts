@@ -163,6 +163,40 @@ const closeMap = async (page: Page) => {
   await settlePose(page, 1);
 };
 
+/** The published pose: 1 fully assembled, 0 fully scattered. */
+const poseOf = (page: Page) =>
+  page.evaluate(() =>
+    Number(document.querySelector<HTMLElement>(".sculpture")!.dataset.gather),
+  );
+
+/**
+ * Record the scatter transition and return the sample nearest its middle.
+ *
+ * Sampling a transition that lasts well under a second is inherently racy: a
+ * single wait can miss the band between polls, and a wide band admits poses that
+ * are still nearly gathered. So the pairs are recorded as densely as the host
+ * allows and the middle one is chosen afterwards, with a bounded retry for the
+ * case where a loaded host only managed a couple of samples.
+ */
+const sampleScatter = async (page: Page) => {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await page.locator(".sculpture-control").click();
+    const samples: { pose: number; painted: Painted }[] = [];
+    for (let step = 0; step < 200; step += 1) {
+      const [pose, painted] = await Promise.all([poseOf(page), main(page)]);
+      samples.push({ pose, painted });
+      if (pose === 0) break;
+    }
+    const middle = samples.reduce((best, sample) =>
+      Math.abs(sample.pose - 0.5) < Math.abs(best.pose - 0.5) ? sample : best,
+    );
+    if (Math.abs(middle.pose - 0.5) < 0.25) return middle.painted;
+    // The transition was missed rather than measured: reform and try again.
+    await closeMap(page);
+  }
+  throw new Error("the scatter was never sampled near its middle");
+};
+
 /** The live magnetic pull, in whole px, as the component publishes it. */
 const pull = (page: Page) =>
   page
@@ -406,21 +440,7 @@ test.describe("After Hours section map", () => {
     await hydrate(page);
     const gathered = await main(page);
 
-    // Sample the transition itself, from the published pose rather than a
-    // frame count, so a slow or fast host does not decide what is captured.
-    await page.locator(".sculpture-control").click();
-    await page.waitForFunction(
-      () =>
-        Number(
-          document.querySelector<HTMLElement>(".sculpture")!.dataset.gather,
-        ) > 0.3 &&
-        Number(
-          document.querySelector<HTMLElement>(".sculpture")!.dataset.gather,
-        ) < 0.8,
-      undefined,
-      { timeout: 6000 },
-    );
-    const midPainted = await main(page);
+    const midPainted = await sampleScatter(page);
 
     await settlePose(page, 0);
     const scattered = await main(page);
