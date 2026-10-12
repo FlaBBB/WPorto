@@ -144,6 +144,19 @@ const openMap = async (page: Page) => {
   await page.waitForSelector('.sculpture[data-map="open"]', { timeout: 6000 });
 };
 
+/**
+ * Click a destination star where it actually is.
+ *
+ * The stars turn with the cloud, so a click has to be aimed at a live position
+ * rather than at a cached one, and Playwright's own actionability check would
+ * wait forever for a continuously moving element to hold still. Aiming a real
+ * pointer at the star's current centre is also what a visitor does.
+ */
+const clickStar = async (page: Page, index: number) => {
+  const box = (await page.locator(".sculpture-star").nth(index).boundingBox())!;
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+};
+
 /** Reform the mark from the keyboard, which is the documented way back. */
 const closeMap = async (page: Page) => {
   await page.keyboard.press("Escape");
@@ -253,19 +266,89 @@ test.describe("After Hours section map", () => {
     const aspect = gathered.width / gathered.height;
     expect(Math.abs(aspect - MARK_ASPECT) / MARK_ASPECT).toBeLessThan(0.3);
 
-    // The page scrolls natively past the opening, and scrolling it never drives
-    // the mark: the pose is the same before and after.
-    await page.evaluate(() => {
-      document.documentElement.style.scrollBehavior = "auto";
-      window.scrollTo(0, window.innerHeight * 0.6);
-    });
-    await page.waitForTimeout(400);
-    expect((await metrics(page)).gather).toBe(1);
-
-    await page.evaluate(() => window.scrollTo(0, 0));
-    await page.waitForTimeout(400);
+    // The opening does not scroll. The visitor reaches a section through the map,
+    // not by scrolling past the map into it, so wheel and keyboard scrolling must
+    // leave the document exactly where it is — and the mark with it.
+    await page.mouse.move(start.vw / 2, start.vh / 2);
+    await page.mouse.wheel(0, 1400);
+    await page.waitForTimeout(500);
+    await page.keyboard.press("PageDown");
+    await page.waitForTimeout(500);
+    expect(await page.evaluate(() => window.scrollY)).toBe(0);
     expect((await metrics(page)).gather).toBe(1);
     expectStableMark(gathered, await main(page));
+  });
+
+  test("still moves the document when a destination is chosen", async ({ page }) => {
+    // The counter-contract to the scroll lock: the root is not scrollable by the
+    // visitor, but the box stays scrollable programmatically, which is what the
+    // hash destinations and the reveal module depend on.
+    await hydrate(page);
+    await openMap(page);
+
+    await clickStar(page, 3);
+    await page.waitForURL(/#contact-path$/);
+
+    // The landing is smooth, so wait for it rather than measuring the first frame
+    // the document has moved at all.
+    const heading = page.locator("#contact-path-heading");
+    await expect
+      .poll(async () => (await heading.boundingBox())!.y, { timeout: 15_000 })
+      .toBeLessThan(page.viewportSize()!.height);
+    await expect
+      .poll(() => page.evaluate(() => window.scrollY), { timeout: 15_000 })
+      .toBeGreaterThan(0);
+
+    const box = (await heading.boundingBox())!;
+    const header = (await page.locator(".site-header").boundingBox())!;
+    expect(box.y).toBeGreaterThanOrEqual(header.y + header.height - 1);
+  });
+
+  test("turns the constellation with the cloud it came from", async ({ page }) => {
+    await hydrate(page);
+    await openMap(page);
+    // Let the figure finish easing out, so what is measured is the turn.
+    await page.waitForTimeout(800);
+
+    const star = page.locator(".sculpture-star").first();
+    const start = (await star.boundingBox())!;
+    // The stars are particles of the mark, so they must keep moving with the
+    // field's rotation rather than sitting on fixed screen points.
+    await expect
+      .poll(
+        async () => {
+          const now = (await star.boundingBox())!;
+          return Math.hypot(now.x - start.x, now.y - start.y);
+        },
+        { timeout: 12_000, intervals: [200] },
+      )
+      .toBeGreaterThan(6);
+  });
+
+  test("never paints its own box across the sky while it resizes", async ({
+    page,
+  }) => {
+    // Closed, the control is the size of the whole mark; open, it is a small
+    // circle. Animating its surface or its transform across that resize paints a
+    // large rectangle over the star field for the length of the transition, so
+    // the control must not transition those properties at all.
+    await hydrate(page);
+    const control = page.locator(".sculpture-control");
+    const transitioned = await control.evaluate(
+      (el) => getComputedStyle(el).transitionProperty,
+    );
+    expect(transitioned).not.toContain("background-color");
+    expect(transitioned).not.toContain("transform");
+
+    await openMap(page);
+    await control.click();
+    // Sampled with no wait: with no surface transition the control is already
+    // transparent on the frame it closes.
+    const background = await control.evaluate(
+      (el) => getComputedStyle(el).backgroundColor,
+    );
+    expect(background).toBe("rgba(0, 0, 0, 0)");
+    await settlePose(page, 1);
   });
 
   test("scatters on activation and reforms, leaving no letter silhouette", async ({
@@ -417,19 +500,63 @@ test.describe("After Hours section map", () => {
       expect(boxes[index].x).toBeGreaterThan(boxes[index - 1].x);
     }
 
-    // Hovering brightens and enlarges the inner glyph. The anchor — the thing the
-    // visitor is aiming at — must not move.
+    // Hovering brightens and enlarges the inner glyph, and must not move the
+    // anchor — the thing the visitor is aiming at.
+    //
+    // The figure itself turns by design, so an absolute screen position cannot
+    // express this. What is invariant under that turn is the anchor's geometry
+    // relative to the figure: the constellation rotates about the stage centre,
+    // so each star's distance from that centre holds, and only a hover that moved
+    // the anchor would change it. Both the star and the centre are read live, so
+    // a shifted document cannot masquerade as a moved anchor.
     const first = stars.first();
     const glyph = first.locator(".sculpture-star-glyph");
-    const anchorBefore = (await first.boundingBox())!;
-    const glyphBefore = (await glyph.boundingBox())!;
-    await first.hover();
+    const radius = () =>
+      page.evaluate(() => {
+        const field = document
+          .querySelector(".sculpture-field")!
+          .getBoundingClientRect();
+        const box = document
+          .querySelector(".sculpture-star")!
+          .getBoundingClientRect();
+        return Math.hypot(
+          box.x + box.width / 2 - (field.x + field.width / 2),
+          box.y + box.height / 2 - (field.y + field.height / 2),
+        );
+      });
+
+    // The figure is still easing outward right after the map opens, so wait for
+    // its radius to stop changing before treating the radius as the invariant.
     await expect
-      .poll(async () => (await glyph.boundingBox())!.width)
-      .toBeGreaterThan(glyphBefore.width + 0.5);
-    const anchorAfter = (await first.boundingBox())!;
-    expect(Math.abs(anchorAfter.x - anchorBefore.x)).toBeLessThan(1);
-    expect(Math.abs(anchorAfter.y - anchorBefore.y)).toBeLessThan(1);
+      .poll(
+        async () => {
+          const before = await radius();
+          await page.waitForTimeout(150);
+          return Math.abs((await radius()) - before);
+        },
+        { timeout: 15_000, intervals: [100] },
+      )
+      .toBeLessThan(0.5);
+
+    const radiusBefore = await radius();
+    // Move a real pointer onto the star's live centre rather than using
+    // `hover()`: Playwright waits for a hovered element to hold still, and a
+    // rotating star never does.
+    const target = (await first.boundingBox())!;
+    await page.mouse.move(
+      target.x + target.width / 2,
+      target.y + target.height / 2,
+      { steps: 6 },
+    );
+    // The enlargement is read from the computed transform, which is exact, rather
+    // than from a bounding box that the turn also moves.
+    const glyphScale = () =>
+      glyph.evaluate((el) => {
+        const matrix = new DOMMatrix(getComputedStyle(el).transform);
+        return matrix.a;
+      });
+    await expect.poll(glyphScale, { timeout: 10_000 }).toBeGreaterThan(1.03);
+    expect(Math.abs((await radius()) - radiusBefore)).toBeLessThan(1);
     // The breath pauses on hover, so the star is exactly where it was committed.
     await expect(glyph).toHaveCSS("animation-play-state", "paused");
   });

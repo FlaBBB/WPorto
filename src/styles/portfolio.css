@@ -27,6 +27,18 @@ html {
   background: var(--background);
   scroll-behavior: smooth;
   scroll-padding-top: 6rem;
+  /*
+    The opening is the site's map, not a scrolling document: each section is
+    reached through the Section Map (or the footer's static list), and every
+    section is a destination in its own right. Locking the root stops the visitor
+    from scrolling past the map into content that is meant to be navigated to.
+
+    `overflow: hidden` blocks user scrolling only. The box stays scrollable
+    programmatically, which is what the hash destinations and the reveal module
+    rely on, so a jump to a section still moves the page.
+  */
+  overflow: hidden;
+  overscroll-behavior: none;
 }
 body {
   margin: 0;

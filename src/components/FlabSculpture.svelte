@@ -22,6 +22,7 @@
   } from "../lib/stars";
   import {
     beaconPosition,
+    CONSTELLATION_SPREAD,
     type MapPhase,
     type SectionDestination,
   } from "../lib/sectionMap";
@@ -91,15 +92,16 @@
   let visible = true;
   let clock = 0;
   // The per-frame clock is needed to advance the assemble/scatter transition and
-  // to decay the activation impulse independently of the frame rate.
+  // the constellation's turn independently of the frame rate.
   let lastTick = 0;
   // Target the drawn pose eases toward; the tween itself lives in `tick`, so the
   // pose keeps moving even when no new event arrives.
   let gatherTarget = 1;
-  // Activation impulse, in field coordinates relative to the centre.
-  let impulseX = 0;
-  let impulseY = 0;
-  let impulse = 0;
+  // The field's body rotation, published so the constellation turns with the cloud
+  // it came from instead of on a clock of its own.
+  let bodyRotationY = $state(0);
+  // How far the figure has eased out; it pulls back in as the mark reforms.
+  let constellationSpread = $state(0);
   // Magnetic pull on the mark, in field coordinates relative to the centre.
   let tetherOn = false;
   let tetherReadyAt = 0;
@@ -120,7 +122,6 @@
   /** Seconds for a full transition in each direction. */
   const SCATTER_SECONDS = 0.72;
   const ASSEMBLE_SECONDS = 0.75;
-  const IMPULSE_SECONDS = 0.9;
   /**
    * The destination stars are links, so a target that is still flying must not be
    * clickable: the map takes pointer events only once the scatter has settled.
@@ -165,7 +166,7 @@
     // volume. It relaxes to zero at full assembly, keeping the mark stable. The
     // amplitudes match MAX_ROT_* that the projection bound is derived from.
     const opening = 1 - gather;
-    const rotY = Math.sin(clock * 0.12) * MAX_ROT_Y * opening;
+    const rotY = bodyRotationY;
     const rotX = Math.cos(clock * 0.09) * MAX_ROT_X * opening;
 
     context.textAlign = "center";
@@ -183,8 +184,20 @@
       // constellation, whereas closing the loop adds an edge that crosses the
       // others and makes the figure harder to read.
       for (let index = 0; index < destinations.length - 1; index += 1) {
-        const from = beaconPosition(index, width, height);
-        const to = beaconPosition(index + 1, width, height);
+        const from = beaconPosition(
+          index,
+          width,
+          height,
+          bodyRotationY,
+          constellationSpread,
+        );
+        const to = beaconPosition(
+          index + 1,
+          width,
+          height,
+          bodyRotationY,
+          constellationSpread,
+        );
         if (index === 0) context.moveTo(cx + from.x, cy + from.y);
         context.lineTo(cx + to.x, cy + to.y);
       }
@@ -198,18 +211,6 @@
       let x = particle.sx + (particle.tx - particle.sx) * eased;
       let y = particle.sy + (particle.ty - particle.sy) * eased;
       const z = particle.sz + (particle.tz - particle.sz) * eased;
-
-      // The activation impulse pushes nearby particles outward from the point the
-      // visitor pressed, so the break reads as a shock rather than a dissolve.
-      if (impulse > 0) {
-        const dx = x - impulseX;
-        const dy = y - impulseY;
-        const distance = Math.hypot(dx, dy) || 1;
-        const push =
-          impulse * 130 * Math.exp(-distance / (Math.min(width, height) * 0.45));
-        x += (dx / distance) * push;
-        y += (dy / distance) * push;
-      }
 
       // The magnetic pull moves the whole mark, so it is applied as one offset to
       // every particle. Only the mark leans; the ambient sky behind it stays put.
@@ -299,8 +300,8 @@
     // rotation are refresh-rate independent and never accumulate frame drift.
     clock = now / 1000;
 
-    // The assemble/scatter transition and the impulse decay advance from real
-    // elapsed time, so a slow frame stretches them instead of skipping them.
+    // The assemble/scatter transition advances from real elapsed time, so a slow
+    // frame stretches it instead of skipping it.
     const delta = lastTick ? Math.min(0.1, (now - lastTick) / 1000) : 0;
     lastTick = now;
     if (gather !== gatherTarget) {
@@ -311,7 +312,17 @@
           ? gatherTarget
           : gather + Math.sign(gatherTarget - gather) * step;
     }
-    if (impulse > 0) impulse = Math.max(0, impulse - delta / IMPULSE_SECONDS);
+    // One rotation drives both the cloud and the constellation, so the stars
+    // cannot drift away from the mark they belong to.
+    const openness = 1 - gather;
+    bodyRotationY = Math.sin(clock * 0.12) * MAX_ROT_Y * openness;
+    const spreadTarget = 1 - (1 - CONSTELLATION_SPREAD) * gather;
+    if (Math.abs(spreadTarget - constellationSpread) > 0.001) {
+      const ease = 1 - Math.pow(0.001, delta);
+      constellationSpread += (spreadTarget - constellationSpread) * ease;
+    } else {
+      constellationSpread = spreadTarget;
+    }
 
     // The pull eases with a frame-rate independent lerp rather than a spring, so a
     // dropped frame cannot overshoot or ring. 0.2 per 60fps frame matches the
@@ -376,18 +387,13 @@
    * spread from a phone through a wide desktop and the labels stay clear of both
    * the header and the viewport edge.
    */
-  /** Break the mark apart, radiating the impulse from the activation point. */
-  function openMap(event?: MouseEvent) {
+  /**
+   * Break the mark apart. There is no shock wave: the cloud simply eases open,
+   * and the constellation turns up as it arrives.
+   */
+  function openMap() {
     if (!motionEnabled || mapOpen) return;
     releaseTether(0);
-    // A keyboard activation synthesizes a click at (0, 0); only a real pointer
-    // click carries a position, so only that one seeds the impulse.
-    if (event && event.detail > 0 && field) {
-      const rect = field.getBoundingClientRect();
-      impulseX = event.clientX - rect.left - width / 2;
-      impulseY = event.clientY - rect.top - height / 2;
-      impulse = 1;
-    }
     mapOpen = true;
     mapSettled = false;
     gatherTarget = 0;
@@ -410,9 +416,9 @@
   }
 
   /** The mark is the control: activating it opens, activating it again closes. */
-  function toggleMap(event: MouseEvent) {
+  function toggleMap() {
     if (mapOpen) closeMap();
-    else openMap(event);
+    else openMap();
   }
 
   /**
@@ -600,7 +606,8 @@
     if (settleTimer) clearTimeout(settleTimer);
     settleTimer = 0;
     gatherTarget = 1;
-    impulse = 0;
+    bodyRotationY = 0;
+    constellationSpread = 0;
     tetherOn = false;
     tetherTarget = { x: 0, y: 0 };
     tetherOffset = { x: 0, y: 0 };
@@ -731,9 +738,6 @@
           >
             <span class="sculpture-control-hint" aria-hidden="true">
               <span class="sculpture-control-glyph">✦</span>
-              <span class="sculpture-control-text">
-                {mapOpen ? "Close" : "Section map"}
-              </span>
             </span>
           </button>
         {/if}
@@ -748,7 +752,13 @@
           <nav class="sculpture-map" aria-label="Portfolio sections">
             <ul>
               {#each destinations as destination, index (destination.id)}
-                {@const position = beaconPosition(index, width, height)}
+                {@const position = beaconPosition(
+                  index,
+                  width,
+                  height,
+                  bodyRotationY,
+                  constellationSpread,
+                )}
                 <li
                   style={`left: ${position.x.toFixed(1)}px; top: ${position.y.toFixed(1)}px;`}
                 >
@@ -923,9 +933,14 @@
     .sculpture-map {
       transition: opacity 420ms ease;
     }
+    /*
+      Only the inner glyphs are transitioned, never the anchors and never the
+      control. The control's own box jumps from the size of the whole mark to a
+      small circle, and a transition on its surface or its transform paints that
+      whole rectangle over the sky while it resizes.
+    */
     .sculpture-star,
     .sculpture-star-glyph,
-    .sculpture-control,
     .sculpture-control-glyph {
       transition:
         color 180ms ease,
@@ -1028,12 +1043,18 @@
     align-items: center;
     gap: 0.45rem;
   }
+  /*
+    Open, the control is a small round target at the foot of the stage. Its box is
+    deliberately not transitioned: it changes from the size of the whole mark to
+    this circle, and animating the surface across that resize paints a large
+    rectangle over the sky for the length of the transition.
+  */
   .sculpture[data-map="open"] .sculpture-control {
     top: auto;
     bottom: clamp(1.5rem, 6vh, 3rem);
-    width: auto;
-    height: auto;
-    padding: 0.55rem 0.95rem;
+    width: 2.5rem;
+    height: 2.5rem;
+    padding: 0;
     border: 1px solid var(--rule);
     border-radius: 999px;
     background: color-mix(in srgb, var(--surface) 82%, transparent);
@@ -1044,15 +1065,13 @@
     position: static;
     transform: none;
   }
+  .sculpture[data-map="open"] .sculpture-control-glyph {
+    font-size: 0.95rem;
+  }
   .sculpture-control-glyph {
     font-size: 0.8rem;
     line-height: 1;
     color: var(--accent);
-  }
-  .sculpture-control-text {
-    font: 500 0.68rem/1 var(--font-mono);
-    letter-spacing: 0.16em;
-    text-transform: uppercase;
   }
   @media (prefers-reduced-motion: no-preference) {
     .sculpture[data-map="closed"] .sculpture-control-glyph {
