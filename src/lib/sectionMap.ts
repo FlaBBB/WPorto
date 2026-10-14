@@ -1,20 +1,19 @@
 /**
- * The opening's section map: which sections exist.
+ * The opening's section map: which sections exist, and where each one lives.
  *
- * The destination list is the single source of truth for both routes into a
- * section — the destination stars and the footer's static fallback list — so the
- * two can never offer different sections. Where each star sits is the field's
- * business, not this module's: the stars are particles of the mark, so the field
- * that builds the mark places them.
+ * The destination list is the single source of truth for every route into a
+ * section — the destination stars and the footer's static list — so the two can
+ * never offer different sections. Each section is its own page, so a destination
+ * is a route rather than an anchor. Where each star sits is the field's business,
+ * not this module's: the stars are particles of the mark, so the field that
+ * builds the mark places them.
  */
 
 export type SectionDestination = {
-  /** The section element's id, which is also the star's link target. */
-  id: string;
+  /** The route that serves this section. */
+  href: string;
   /** The visible star label, and the accessible link name. */
   label: string;
-  /** The heading focus moves to once the section is reached. */
-  headingId: string;
 };
 
 /**
@@ -23,10 +22,10 @@ export type SectionDestination = {
  * and the visual order stay the same.
  */
 export const SECTION_DESTINATIONS: SectionDestination[] = [
-  { id: "selected-evidence", label: "Work", headingId: "selected-evidence-heading" },
-  { id: "technical-profile", label: "Profile", headingId: "technical-profile-heading" },
-  { id: "learning-archive", label: "Archive", headingId: "learning-archive-heading" },
-  { id: "contact-path", label: "Contact", headingId: "contact-path-heading" },
+  { href: "/work", label: "Work" },
+  { href: "/profile", label: "Profile" },
+  { href: "/archive", label: "Archive" },
+  { href: "/contact", label: "Contact" },
 ];
 
 /** The map is closed, mid-transition, or settled and interactive. */

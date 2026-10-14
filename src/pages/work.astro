@@ -1,0 +1,52 @@
+---
+/**
+ * Work: the three public repositories, each with the source material open to
+ * inspection.
+ */
+import SectionHeading from "../components/SectionHeading.svelte";
+import SparseStars from "../components/SparseStars.svelte";
+import Portfolio from "../layouts/Portfolio.astro";
+import { projects } from "../lib/portfolio";
+---
+
+<Portfolio
+  title="Work — Fikri Muhammad Abdillah"
+  metaDescription="Three public repositories by Fikri Muhammad Abdillah, with the source material open to inspection."
+  path="/work"
+>
+  <div class="page-body page-section">
+    <section id="selected-evidence" aria-labelledby="selected-evidence-heading">
+      <SparseStars seed={2} client:load />
+      <div class="work-layout">
+        <div class="work-intro">
+          <SectionHeading
+            index="01"
+            label="Work"
+            headingId="selected-evidence-heading"
+            title="Look inside the work."
+            intro="Three public repositories. Different systems, with the source material open to inspection."
+          />
+        </div>
+        <ol class="work-index">
+          {projects.map((project) => (
+            <li data-reveal>
+              <article aria-labelledby={`${project.id}-heading`}>
+                <p class="project-index" aria-hidden="true">{project.index}</p>
+                <div class="project-body">
+                  <h2 id={`${project.id}-heading`}>{project.name}</h2>
+                  <p class="project-deck">{project.deck}</p>
+                  <div class="project-structure" aria-label={project.structureLabel}>
+                    {project.structure.map((item) => <span>{item}</span>)}
+                  </div>
+                  <p class="project-copy">{project.copy}</p>
+                  <p class="scope-note">{project.scopeNote}</p>
+                  <a class="project-link" href={project.href}>Source: {project.name} <span aria-hidden="true">↗</span></a>
+                </div>
+              </article>
+            </li>
+          ))}
+        </ol>
+      </div>
+    </section>
+  </div>
+</Portfolio>

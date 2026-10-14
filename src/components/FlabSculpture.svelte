@@ -430,29 +430,12 @@
   }
 
   /**
-   * Choosing a destination hands over to the section. The hash is what moves the
-   * page — the star is an ordinary link — and the focus hand-off happens on
-   * `hashchange` rather than here, so the browser's own hash handling, scrolling
-   * included, is already done and cannot take focus back. `preventScroll` keeps
-   * the browser's own hash position, which `scroll-margin-top` has already
-   * cleared of the header.
+   * Choosing a destination is an ordinary navigation to that section's page, so
+   * the star is a plain link and nothing here intercepts the click. The map is
+   * left as it was: the document is being replaced.
    */
   function handleStarClick() {
     closeMap();
-  }
-
-  /**
-   * Move focus to the section heading the page just navigated to. Running on
-   * `hashchange` rather than in a click handler makes the hand-off deterministic
-   * across engines, and it covers every route to a section: the constellation,
-   * the footer's static list, and a deep link.
-   */
-  function handleHashChange() {
-    const id = window.location.hash.slice(1);
-    if (!id) return;
-    const destination = destinations.find((entry) => entry.id === id);
-    if (!destination) return;
-    document.getElementById(destination.headingId)?.focus({ preventScroll: true });
   }
 
   function handleKeydown(event: KeyboardEvent) {
@@ -684,7 +667,6 @@
     // let go of the magnetic pull once the hero starts leaving.
     document.addEventListener("keydown", handleKeydown);
     document.addEventListener("visibilitychange", handleVisibility);
-    window.addEventListener("hashchange", handleHashChange);
     field.addEventListener("pointermove", handlePointerMove);
     field.addEventListener("pointerleave", releaseOnChange);
     window.addEventListener("scroll", releaseOnChange, { passive: true });
@@ -696,7 +678,6 @@
       motionQuery.removeEventListener("change", syncPreference);
       document.removeEventListener("keydown", handleKeydown);
       document.removeEventListener("visibilitychange", handleVisibility);
-      window.removeEventListener("hashchange", handleHashChange);
       field.removeEventListener("pointermove", handlePointerMove);
       field.removeEventListener("pointerleave", releaseOnChange);
       window.removeEventListener("scroll", releaseOnChange);
@@ -763,18 +744,18 @@
           The section map. Each destination is a star of the field, drawn by the
           canvas with the rest of the sky, and its label is a real link placed on
           that star each frame. Keyboard, screen readers, reduced motion and a
-          missing bundle therefore all reach the same sections: with motion the
+          missing bundle therefore all reach the same pages: with motion the
           labels sit on their stars, and without it they read as a plain list under
           the static mark.
         -->
         {#if destinations.length}
           <nav class="sculpture-map" aria-label="Portfolio sections">
             <ul>
-              {#each destinations as destination, index (destination.id)}
+              {#each destinations as destination, index (destination.href)}
                 <li bind:this={beaconNodes[index]}>
                   <a
                     class="sculpture-star"
-                    href={`#${destination.id}`}
+                    href={destination.href}
                     onclick={handleStarClick}
                     onpointerenter={() => (beaconHovered = index)}
                     onpointerleave={() => (beaconHovered = -1)}

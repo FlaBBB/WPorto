@@ -1,0 +1,33 @@
+---
+/**
+ * Profile: the curated technical record, as native disclosures so the evidence
+ * and its limits are readable without JavaScript.
+ */
+import EvidenceLedger from "../components/EvidenceLedger.svelte";
+import SectionHeading from "../components/SectionHeading.svelte";
+import SparseStars from "../components/SparseStars.svelte";
+import Portfolio from "../layouts/Portfolio.astro";
+import { profileRecords } from "../lib/portfolio";
+---
+
+<Portfolio
+  title="Profile — Fikri Muhammad Abdillah"
+  metaDescription="A curated record of publicly visible projects and learning material, with the evidence and its limits."
+  path="/profile"
+>
+  <div class="page-body page-section">
+    <section id="technical-profile" aria-labelledby="technical-profile-heading">
+      <SparseStars seed={3} client:load />
+      <div class="section-heading">
+        <SectionHeading
+          index="02"
+          label="Profile"
+          headingId="technical-profile-heading"
+          title="Evidence over claims."
+          intro="A curated record of publicly visible projects and learning material. Open a record for the evidence and its limits."
+        />
+      </div>
+      <EvidenceLedger records={profileRecords} />
+    </section>
+  </div>
+</Portfolio>

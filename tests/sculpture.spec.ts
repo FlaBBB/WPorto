@@ -276,9 +276,7 @@ const expectStableMark = (before: Painted, after: Painted) => {
 test.describe("After Hours section map", () => {
   test.use({ viewport: { width: 1280, height: 800 } });
 
-  test("gathers the exact mark in a full-viewport opening that scroll never moves", async ({
-    page,
-  }) => {
+  test("gathers the exact mark in a full-viewport opening", async ({ page }) => {
     await hydrate(page);
     const start = await metrics(page);
 
@@ -300,42 +298,37 @@ test.describe("After Hours section map", () => {
     const aspect = gathered.width / gathered.height;
     expect(Math.abs(aspect - MARK_ASPECT) / MARK_ASPECT).toBeLessThan(0.3);
 
-    // The opening does not scroll. The visitor reaches a section through the map,
-    // not by scrolling past the map into it, so wheel and keyboard scrolling must
-    // leave the document exactly where it is — and the mark with it.
+    // The opening is one viewport; below it the document continues into the
+    // introduction, so the page scrolls normally. The old lock that stopped a
+    // visitor scrolling past the map is gone.
     await page.mouse.move(start.vw / 2, start.vh / 2);
     await page.mouse.wheel(0, 1400);
     await page.waitForTimeout(500);
-    await page.keyboard.press("PageDown");
-    await page.waitForTimeout(500);
-    expect(await page.evaluate(() => window.scrollY)).toBe(0);
+    expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+    // Scrolling away must not disturb the assembled mark.
     expect((await metrics(page)).gather).toBe(1);
     expectStableMark(gathered, await main(page));
   });
 
-  test("still moves the document when a destination is chosen", async ({ page }) => {
-    // The counter-contract to the scroll lock: the root is not scrollable by the
-    // visitor, but the box stays scrollable programmatically, which is what the
-    // hash destinations and the reveal module depend on.
+  test("loads a destination's own page when a star is chosen", async ({
+    page,
+  }) => {
+    // Each destination is a route, so choosing one leaves the opening for that
+    // section's page rather than jumping down the same document.
     await hydrate(page);
     await openMap(page);
 
     await clickStar(page, 3);
-    await page.waitForURL(/#contact-path$/);
+    await page.waitForURL(/\/contact$/);
 
-    // The landing is smooth, so wait for it rather than measuring the first frame
-    // the document has moved at all.
+    // The section page opens at its own top, with the heading clear of the
+    // transparent fixed header.
     const heading = page.locator("#contact-path-heading");
-    await expect
-      .poll(async () => (await heading.boundingBox())!.y, { timeout: 15_000 })
-      .toBeLessThan(page.viewportSize()!.height);
-    await expect
-      .poll(() => page.evaluate(() => window.scrollY), { timeout: 15_000 })
-      .toBeGreaterThan(0);
-
+    await expect(heading).toBeVisible();
     const box = (await heading.boundingBox())!;
     const header = (await page.locator(".site-header").boundingBox())!;
     expect(box.y).toBeGreaterThanOrEqual(header.y + header.height - 1);
+    expect(await page.evaluate(() => window.scrollY)).toBe(0);
   });
 
   test("turns the constellation with the cloud it came from", async ({ page }) => {
@@ -599,7 +592,7 @@ test.describe("After Hours section map", () => {
     expect(open?.pointerEvents).toBe("auto");
   });
 
-  test("hands keyboard focus to the section heading it navigates to", async ({
+  test("hands the keyboard to the destination page it navigates to", async ({
     page,
   }) => {
     await hydrate(page);
@@ -622,13 +615,13 @@ test.describe("After Hours section map", () => {
     expect(stops).toEqual(["Work", "Profile", "Archive", "Contact"]);
 
     await page.keyboard.press("Enter");
-    await page.waitForURL(/#contact-path$/);
-    await expect(page.locator("#contact-path-heading")).toBeFocused();
-    const heading = (await page.locator("#contact-path-heading").boundingBox())!;
+    await page.waitForURL(/\/contact$/);
+    const heading = page.locator("#contact-path-heading");
+    await expect(heading).toBeVisible();
+    const box = (await heading.boundingBox())!;
     const header = (await page.locator(".site-header").boundingBox())!;
     // The transparent fixed header must not cover the landing.
-    expect(heading.y).toBeGreaterThanOrEqual(header.y + header.height - 1);
-    await expect(control).toHaveAttribute("aria-expanded", "false");
+    expect(box.y).toBeGreaterThanOrEqual(header.y + header.height - 1);
   });
 
   test("does not intercept wheel input", async ({ page }) => {
@@ -889,7 +882,7 @@ test.describe("After Hours sculpture fallbacks", () => {
     expect(view.stickyTop).toBeGreaterThanOrEqual(0);
 
     await stars.nth(3).click();
-    await expect(page).toHaveURL(/#contact-path$/);
+    await expect(page).toHaveURL(/\/contact$/);
   });
 
   test("shows the static mark, its section links, and content without JavaScript", async ({
@@ -903,19 +896,15 @@ test.describe("After Hours sculpture fallbacks", () => {
     await page.goto("/");
     await expect(page.locator(".flab-mark svg")).toBeVisible();
     await expect(page.locator(".sculpture-canvas")).toHaveCount(0);
-    await expect(page.locator(".work-index > li")).toHaveCount(3);
+    await expect(page.locator(".intro-link")).toHaveCount(1);
 
-    // The destinations are in the served HTML, not built by the bundle.
+    // The destinations are in the served HTML, not built by the bundle, and each
+    // one is a route to that section's own page.
     expect(
       await page
         .locator(".sculpture-star")
         .evaluateAll((els) => els.map((el) => el.getAttribute("href"))),
-    ).toEqual([
-      "#selected-evidence",
-      "#technical-profile",
-      "#learning-archive",
-      "#contact-path",
-    ]);
+    ).toEqual(["/work", "/profile", "/archive", "/contact"]);
 
     const view = await page.evaluate(() => ({
       scene: document.querySelector(".sculpture-scene")!.getBoundingClientRect()
@@ -923,6 +912,10 @@ test.describe("After Hours sculpture fallbacks", () => {
       vh: window.innerHeight,
     }));
     expect(view.scene).toBeLessThan(view.vh);
+
+    // The sections themselves still serve their content without the bundle.
+    await page.goto("/work");
+    await expect(page.locator(".work-index > li")).toHaveCount(3);
     await context.close();
   });
 
@@ -943,7 +936,7 @@ test.describe("After Hours sculpture fallbacks", () => {
     await expect(page.locator(".flab-mark svg")).toBeVisible();
     await expect(page.locator(".sculpture-canvas")).toHaveCount(0);
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
-    await expect(page.locator("#contact-path a")).toHaveCount(3);
+    await expect(page.locator(".intro-link")).toHaveCount(1);
     await expect(page.locator(".sculpture-control")).toHaveCount(0);
 
     const view = await page.evaluate(() => ({

@@ -8,6 +8,12 @@ const repositoryUrls = {
   Cybers_security: "https://github.com/FlaBBB/Cybers_security",
 };
 
+/**
+ * Every route the site serves. Each section is its own page, so a per-page
+ * invariant is checked on each rather than on one long document.
+ */
+const ROUTES = ["/", "/work", "/profile", "/archive", "/contact"];
+
 const profileRows = (page: Page) =>
   page
     .getByRole("list", { name: "Technical Profile evidence ledger" })
@@ -46,14 +52,24 @@ test.describe("static content without JavaScript", () => {
   test("serves the complete reconciled profile and project records", async ({
     page,
   }) => {
+    // The opening keeps the name, the Malang note and the static mark.
     const response = await page.goto("/");
     expect(response?.ok()).toBeTruthy();
     await expect(page).toHaveTitle("flab — Fikri Muhammad Abdillah");
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(
       "Fikri Muhammad Abdillah.",
     );
+    await expect(page.locator(".intro-note").first()).toContainText(
+      "Malang, Indonesia",
+    );
 
-    // The six reconciled capability records, with their limits.
+    // No-JS shows the real mark, not an empty stage or a dead control.
+    await expect(page.locator(".flab-mark svg")).toBeVisible();
+    await expect(page.locator(".sculpture-canvas")).toHaveCount(0);
+    await expect(page.locator(".sculpture-control")).toHaveCount(0);
+
+    // The six reconciled capability records, with their limits, on Profile.
+    await page.goto("/profile");
     const rows = profileRows(page);
     await expect(rows).toHaveCount(6);
     await expect(rows.locator("summary .ledger-capability")).toHaveText(
@@ -77,32 +93,42 @@ test.describe("static content without JavaScript", () => {
       await expect(row.locator(".ledger-source")).toBeVisible();
     }
 
-    // The three real project records.
-    await expect(page.locator(".work-index > li")).toHaveCount(3);
-    await expect(
-      page.locator(".work-index h3"),
-    ).toHaveText(["WordyChain", "JMC", "harness-agentic-sdlc"]);
-    for (const [project, href] of Object.entries(repositoryUrls)) {
+    // Two of the reconciled repositories are cited only by the ledger.
+    for (const project of [
+      "OOT-AI-Agent-Practice",
+      "Cybers_security",
+    ] as const) {
       await expect(
         page.getByRole("link", { name: new RegExp(project) }).first(),
-      ).toHaveAttribute("href", href);
+      ).toHaveAttribute("href", repositoryUrls[project]);
     }
 
-    // The Malang identity note and the archive's CTFtime record.
-    await expect(page.locator(".intro-note").first()).toContainText(
-      "Malang, Indonesia",
-    );
+    // The three real project records, on Work.
+    await page.goto("/work");
+    await expect(page.locator(".work-index > li")).toHaveCount(3);
+    await expect(page.locator(".work-index h2")).toHaveText([
+      "WordyChain",
+      "JMC",
+      "harness-agentic-sdlc",
+    ]);
+    for (const project of [
+      "WordyChain",
+      "JMC",
+      "harness-agentic-sdlc",
+    ] as const) {
+      await expect(
+        page.getByRole("link", { name: new RegExp(project) }).first(),
+      ).toHaveAttribute("href", repositoryUrls[project]);
+    }
+
+    // The archive's CTFtime record and its own source link.
+    await page.goto("/archive");
     await expect(
       page.getByRole("link", { name: /CTFtime/ }).first(),
     ).toHaveAttribute("href", "https://ctftime.org/user/156246");
     await expect(
       page.getByRole("link", { name: /Cybers_security/ }).first(),
     ).toHaveAttribute("href", "https://github.com/FlaBBB/Cybers_security");
-
-    // No-JS shows the real mark, not an empty stage or a dead control.
-    await expect(page.locator(".flab-mark svg")).toBeVisible();
-    await expect(page.locator(".sculpture-canvas")).toHaveCount(0);
-    await expect(page.locator(".sculpture-control")).toHaveCount(0);
   });
 });
 
@@ -140,6 +166,8 @@ test("publishes canonical metadata, the mark favicon, and direct Contact Paths",
   expect(icon.ok()).toBeTruthy();
   expect(icon.headers()["content-type"]).toContain("image/svg+xml");
 
+  // The Contact Paths are their own route now.
+  await page.goto("/contact");
   const contact = page.locator("#contact-path");
   await expect(
     contact.getByRole("link", { name: "GitHub Inspect public work" }),
@@ -160,7 +188,7 @@ test("makes the section navigation keyboard reachable", async ({ page }) => {
   // and forward order continues into the opening's own section list.
   await page.keyboard.press("Tab");
   await expect(
-    page.getByRole("link", { name: "flab — back to Fikri Muhammad Abdillah’s identity" }),
+    page.getByRole("link", { name: "flab — back to the opening" }),
   ).toBeFocused();
   await expect(page.getByRole("link", { name: "Skip to content" })).toHaveCount(0);
 
@@ -183,7 +211,7 @@ test("makes the section navigation keyboard reachable", async ({ page }) => {
 
   await map.getByRole("link", { name: "Contact", exact: true }).focus();
   await page.keyboard.press("Enter");
-  await expect(page).toHaveURL(/#contact-path$/);
+  await expect(page).toHaveURL(/\/contact$/);
   const header = await page.locator(".site-header").boundingBox();
   const heading = await page.locator("#contact-path-heading").boundingBox();
   expect(heading?.y).toBeGreaterThanOrEqual(
@@ -210,7 +238,7 @@ test("makes the section navigation keyboard reachable", async ({ page }) => {
 test("uses native keyboard disclosure without hiding sources", async ({
   page,
 }) => {
-  await page.goto("/");
+  await page.goto("/profile");
   const rows = profileRows(page);
   await expect(rows.locator("details[open]")).toHaveCount(1);
   await expect(rows.first().locator("details")).toHaveAttribute("open", "");
@@ -261,12 +289,14 @@ for (const width of [320, 390, 768, 801, 1100, 1440]) {
       .getByRole("link", { name: "Contact" });
     await contactNav.focus();
     await page.keyboard.press("Enter");
-    await expect(page).toHaveURL(/#contact-path$/);
+    await expect(page).toHaveURL(/\/contact$/);
     for (const link of await page.locator("#contact-path a").all()) {
       await expect(link).toBeVisible();
       expect((await link.boundingBox())?.height).toBeGreaterThanOrEqual(44);
     }
 
+    // The ledger keeps its touch targets on Profile.
+    await page.goto("/profile");
     const thirdRow = profileRows(page).nth(2);
     await thirdRow.locator("summary").click();
     await expect(thirdRow.locator(".ledger-details")).toBeVisible();
@@ -274,14 +304,27 @@ for (const width of [320, 390, 768, 801, 1100, 1440]) {
       (await thirdRow.locator("summary").boundingBox())?.height,
     ).toBeGreaterThanOrEqual(44);
 
-    const overflow = await page
-      .locator(".work-index h3, .work-index p, #contact-path h2")
+    // The project names, the project copy and the contact heading never
+    // overflow their own column, each read on the page that owns it.
+    await page.goto("/work");
+    const workOverflow = await page
+      .locator(".work-index h2, .work-index p")
       .evaluateAll((elements) =>
         elements
           .filter((el) => el.scrollWidth > el.clientWidth + 1)
           .map((el) => el.textContent),
       );
-    expect(overflow).toEqual([]);
+    expect(workOverflow).toEqual([]);
+
+    await page.goto("/contact");
+    const headingOverflow = await page
+      .locator("#contact-path .section-title")
+      .evaluateAll((elements) =>
+        elements
+          .filter((el) => el.scrollWidth > el.clientWidth + 1)
+          .map((el) => el.textContent),
+      );
+    expect(headingOverflow).toEqual([]);
   });
 }
 
@@ -334,42 +377,53 @@ test("keeps the 320px labels inside the viewport with a wide system font", async
   }
 });
 
+/** Painted contrast ratio of each match against the surface behind it. */
+const contrastRatios = (page: Page, selector: string) =>
+  page.locator(selector).evaluateAll((elements) => {
+    const luminance = (color: string) => {
+      const [red, green, blue] = color
+        .match(/[\d.]+/g)!
+        .slice(0, 3)
+        .map(Number)
+        .map((channel) => {
+          const value = channel / 255;
+          return value <= 0.04045
+            ? value / 12.92
+            : ((value + 0.055) / 1.055) ** 2.4;
+        });
+      return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+    };
+    return elements.map((el) => {
+      let background: Element | null = el;
+      while (
+        background &&
+        getComputedStyle(background).backgroundColor === "rgba(0, 0, 0, 0)"
+      ) {
+        background = background.parentElement;
+      }
+      const ink = luminance(getComputedStyle(el).color);
+      const surface = luminance(getComputedStyle(background!).backgroundColor);
+      return (Math.max(ink, surface) + 0.05) / (Math.min(ink, surface) + 0.05);
+    });
+  });
+
 test("keeps text contrast readable on the plum and violet surfaces", async ({
   page,
 }) => {
-  await page.goto("/");
-  const contrast = await page
-    .locator(
-      ".intro-note, .intro-link, .section-intro, .ledger-qualification dd, #contact-path a, nav a",
-    )
-    .evaluateAll((elements) => {
-      const luminance = (color: string) => {
-        const [red, green, blue] = color
-          .match(/[\d.]+/g)!
-          .slice(0, 3)
-          .map(Number)
-          .map((channel) => {
-            const value = channel / 255;
-            return value <= 0.04045
-              ? value / 12.92
-              : ((value + 0.055) / 1.055) ** 2.4;
-          });
-        return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
-      };
-      return elements.map((el) => {
-        let background: Element | null = el;
-        while (
-          background &&
-          getComputedStyle(background).backgroundColor === "rgba(0, 0, 0, 0)"
-        ) {
-          background = background.parentElement;
-        }
-        const ink = luminance(getComputedStyle(el).color);
-        const surface = luminance(getComputedStyle(background!).backgroundColor);
-        return (Math.max(ink, surface) + 0.05) / (Math.min(ink, surface) + 0.05);
-      });
-    });
-  for (const ratio of contrast) expect(ratio).toBeGreaterThanOrEqual(4.5);
+  // The surfaces now live on different pages, so each is checked where it is
+  // painted; every ratio still has to clear 4.5:1.
+  const surfaces: [string, string][] = [
+    ["/", ".intro-note, .intro-link, nav a"],
+    ["/work", ".section-intro"],
+    ["/profile", ".section-intro, .ledger-qualification dd"],
+    ["/contact", "#contact-path a"],
+  ];
+  for (const [route, selector] of surfaces) {
+    await page.goto(route);
+    const contrast = await contrastRatios(page, selector);
+    expect(contrast.length, `${route} ${selector}`).toBeGreaterThan(0);
+    for (const ratio of contrast) expect(ratio).toBeGreaterThanOrEqual(4.5);
+  }
 });
 
 /** Painted geometry of one contact row: its box, arrow ink and label ink. */
@@ -410,7 +464,7 @@ for (const width of [1440, 1101, 1100, 700, 390, 320]) {
     page,
   }) => {
     await page.setViewportSize({ width, height: 1000 });
-    await page.goto("/");
+    await page.goto("/contact");
     // Bring the contact band into view with native smooth scrolling disabled so
     // its reveal targets actually enter the viewport and settle before measuring.
     await page.evaluate(() => {
@@ -464,7 +518,7 @@ test("keeps a visible focus ring on the violet contact band", async ({
 }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.emulateMedia({ reducedMotion: "reduce" });
-  await page.goto("/");
+  await page.goto("/contact");
 
   const links = page.locator("#contact-path a");
   await expect(links).toHaveCount(3);
@@ -543,8 +597,11 @@ test("loads the page and its local assets without browser errors", async ({
     if (response.status() >= 400)
       failedResponses.push(`${response.status()} ${response.url()}`);
   });
+  // Every route has to load its own bundle and local assets cleanly.
+  for (const route of ROUTES) await page.goto(route);
   await page.goto("/");
   await expect(page.locator(".sculpture-canvas")).toBeVisible();
+  await page.goto("/profile");
   await page.locator("#technical-profile summary").nth(3).click();
   await expect(page.locator("#evidence-detail-3")).toBeVisible();
   expect(errors).toEqual([]);
@@ -556,7 +613,7 @@ test.describe("section refinement", () => {
     page,
   }) => {
     await page.setViewportSize({ width: 1440, height: 1000 });
-    await page.goto("/");
+    await page.goto("/profile");
     await page.evaluate(() => {
       document.documentElement.style.scrollBehavior = "auto";
       document.querySelector("#technical-profile")?.scrollIntoView();
@@ -633,7 +690,7 @@ test.describe("section refinement", () => {
   }) => {
     await page.setViewportSize({ width: 1440, height: 1000 });
     await page.clock.install();
-    await page.goto("/");
+    await page.goto("/profile");
     await page.waitForFunction(() => window.__afterHoursMotionReady);
     await openProfile(page);
 
@@ -707,7 +764,7 @@ test.describe("section refinement", () => {
     page,
   }) => {
     await page.setViewportSize({ width: 1440, height: 1000 });
-    await page.goto("/");
+    await page.goto("/profile");
     await page.waitForFunction(() => window.__afterHoursMotionReady);
     await openProfile(page);
 
@@ -729,7 +786,7 @@ test.describe("section refinement", () => {
     // A reload retains the pointer; keep it outside the ledger so it cannot
     // hover-open another row and start closing the default row during setup.
     await page.mouse.move(2, 2);
-    await page.goto("/");
+    await page.goto("/profile");
     await page.waitForFunction(() => window.__afterHoursMotionReady);
     await openProfile(page);
     const fresh = page.locator(".evidence-ledger details");
@@ -760,7 +817,7 @@ test.describe("section refinement", () => {
       viewport: { width: 393, height: 727 },
     });
     const page = await context.newPage();
-    await page.goto("/");
+    await page.goto("/profile");
     await page.evaluate(() => {
       document.documentElement.style.scrollBehavior = "auto";
       document.querySelector("#technical-profile")?.scrollIntoView();
@@ -791,78 +848,76 @@ test.describe("section refinement", () => {
     page,
   }) => {
     await page.setViewportSize({ width: 1440, height: 1000 });
-    await page.goto("/");
-    await page.waitForSelector(".starfield .star", { timeout: 10_000 });
 
-    // One local layer per lower section and the footer.
-    const sections = [
-      "#intro",
-      "#selected-evidence",
-      "#technical-profile",
-      "#learning-archive",
-      "#contact-path",
-      ".site-footer",
+    // One local layer per lower section and the footer. Each section is its own
+    // page now, so the same public DOM contract is read on the page that owns
+    // the section.
+    const pages = [
+      { route: "/", sections: ["#intro", ".site-footer"] },
+      { route: "/work", sections: ["#selected-evidence", ".site-footer"] },
+      { route: "/profile", sections: ["#technical-profile", ".site-footer"] },
+      { route: "/archive", sections: ["#learning-archive", ".site-footer"] },
+      { route: "/contact", sections: ["#contact-path", ".site-footer"] },
     ];
-    // Read the same public DOM contract in one round trip; repeated protocol
-    // reads can consume the entire test budget on a software-rendered browser.
-    const layers = await page.evaluate((selectors) => selectors.map((selector) => {
-      const fields = document.querySelectorAll(`${selector} .starfield`);
-      const field = fields[0];
-      return {
-        selector,
-        count: fields.length,
-        ariaHidden: field?.getAttribute("aria-hidden"),
-        pointerEvents: field ? getComputedStyle(field).pointerEvents : null,
-        stars: field?.querySelectorAll(".star").length ?? 0,
-      };
-    }), sections);
-    for (const { selector, count, ariaHidden, pointerEvents, stars } of layers) {
-      expect(count, selector).toBe(1);
-      expect(ariaHidden, selector).toBe("true");
-      expect(pointerEvents, selector).toBe("none");
-      // A moderate budget per section: more presence than the first sparse pass,
-      // still far below the opening's full field.
-      expect(stars, selector).toBeGreaterThanOrEqual(4);
-      expect(stars, selector).toBeLessThanOrEqual(10);
-    }
-    // No canvas is used for the lower-page decoration.
-    expect(await page.locator(".page-body canvas").count()).toBe(0);
-    expect(await page.locator(".site-footer canvas").count()).toBe(0);
+    for (const { route, sections } of pages) {
+      await page.goto(route);
+      await page.waitForSelector(".starfield .star", { timeout: 10_000 });
 
-    // The contact surface uses plum stars.
-    const contactColor = await page
-      .locator("#contact-path .starfield .star")
-      .first()
-      .evaluate((el) => getComputedStyle(el).color);
-    expect(contactColor).toBe("rgb(27, 20, 48)");
+      // Read the same public DOM contract in one round trip; repeated protocol
+      // reads can consume the entire test budget on a software-rendered browser.
+      const layers = await page.evaluate((selectors) => selectors.map((selector) => {
+        const fields = document.querySelectorAll(`${selector} .starfield`);
+        const field = fields[0];
+        return {
+          selector,
+          count: fields.length,
+          ariaHidden: field?.getAttribute("aria-hidden"),
+          pointerEvents: field ? getComputedStyle(field).pointerEvents : null,
+          stars: field?.querySelectorAll(".star").length ?? 0,
+        };
+      }), sections);
+      for (const { selector, count, ariaHidden, pointerEvents, stars } of layers) {
+        expect(count, `${route} ${selector}`).toBe(1);
+        expect(ariaHidden, `${route} ${selector}`).toBe("true");
+        expect(pointerEvents, `${route} ${selector}`).toBe("none");
+        // A moderate budget per section: more presence than the first sparse pass,
+        // still far below the opening's full field.
+        expect(stars, `${route} ${selector}`).toBeGreaterThanOrEqual(4);
+        expect(stars, `${route} ${selector}`).toBeLessThanOrEqual(10);
+      }
+      // No canvas is used for the lower-page decoration.
+      expect(await page.locator(".page-body canvas").count()).toBe(0);
+      expect(await page.locator(".site-footer canvas").count()).toBe(0);
 
-    // Every star is inside its own section's painted box, and really visible.
-    const bounds = await page.evaluate(() =>
-      [...document.querySelectorAll(".page-body > section, .site-footer")].map(
-        (section) => {
-          const box = section.getBoundingClientRect();
-          return [...section.querySelectorAll(".starfield .star")].map((star) => {
-            const rect = star.getBoundingClientRect();
-            return {
-              withinX: rect.left >= box.left - 2 && rect.right <= box.right + 2,
-              withinY: rect.top >= box.top - 2 && rect.bottom <= box.bottom + 2,
-              size: rect.width * rect.height,
-              opacity: Number(getComputedStyle(star).opacity),
-            };
-          });
-        },
-      ),
-    );
-    for (const sectionStars of bounds) {
-      for (const star of sectionStars) {
-        expect(star.withinX).toBe(true);
-        expect(star.withinY).toBe(true);
-        expect(star.size).toBeGreaterThan(0);
-        expect(star.opacity).toBeGreaterThan(0);
+      // Every star is inside its own section's painted box, and really visible.
+      const bounds = await page.evaluate(() =>
+        [...document.querySelectorAll(".page-body > section, .site-footer")].map(
+          (section) => {
+            const box = section.getBoundingClientRect();
+            return [...section.querySelectorAll(".starfield .star")].map((star) => {
+              const rect = star.getBoundingClientRect();
+              return {
+                withinX: rect.left >= box.left - 2 && rect.right <= box.right + 2,
+                withinY: rect.top >= box.top - 2 && rect.bottom <= box.bottom + 2,
+                size: rect.width * rect.height,
+                opacity: Number(getComputedStyle(star).opacity),
+              };
+            });
+          },
+        ),
+      );
+      for (const sectionStars of bounds) {
+        for (const star of sectionStars) {
+          expect(star.withinX).toBe(true);
+          expect(star.withinY).toBe(true);
+          expect(star.size).toBeGreaterThan(0);
+          expect(star.opacity).toBeGreaterThan(0);
+        }
       }
     }
 
-    // Glyphs change on their own clock, like the opening field.
+    // The glyph clock is the same component on every page, so its liveness is
+    // asserted once rather than five times over.
     const stars = page.locator(".starfield .star");
     const before = await stars.evaluateAll((els) =>
       els.map((el) => el.textContent).join(""),
@@ -874,6 +929,15 @@ test.describe("section refinement", () => {
         { timeout: 5_000 },
       )
       .not.toBe(before);
+
+    // The contact surface uses plum stars.
+    await page.goto("/contact");
+    await page.waitForSelector(".starfield .star", { timeout: 10_000 });
+    const contactColor = await page
+      .locator("#contact-path .starfield .star")
+      .first()
+      .evaluate((el) => getComputedStyle(el).color);
+    expect(contactColor).toBe("rgb(27, 20, 48)");
 
     // A real hit test on a *visible* star: scroll it into view manually (the star
     // is always animating, so Playwright's stability wait would never settle),
@@ -980,15 +1044,16 @@ test.describe("section refinement", () => {
     page,
   }) => {
     await page.setViewportSize({ width: 1440, height: 1000 });
-    await page.goto("/");
-    await page.evaluate(() => {
-      document.documentElement.style.scrollBehavior = "auto";
-      document.querySelector("#learning-archive")?.scrollIntoView();
-    });
-    await page.waitForTimeout(400);
 
     // Every body section keeps a substantial vertical rhythm (~12vh at 1000px).
-    for (const selector of ["#intro", "#selected-evidence", "#learning-archive", "#contact-path"]) {
+    // Each section is its own page now, so its space is read where it lives.
+    for (const [route, selector] of [
+      ["/", "#intro"],
+      ["/work", "#selected-evidence"],
+      ["/archive", "#learning-archive"],
+      ["/contact", "#contact-path"],
+    ] as const) {
+      await page.goto(route);
       const padding = await page
         .locator(selector)
         .evaluate((el) => Number.parseFloat(getComputedStyle(el).paddingTop));
@@ -996,6 +1061,7 @@ test.describe("section refinement", () => {
     }
 
     // The archive copy is deliberately grouped, never one very long line.
+    await page.goto("/archive");
     const lines = await page
       .locator(".archive-statement")
       .evaluate((el) => {
@@ -1030,7 +1096,7 @@ test.describe("section refinement", () => {
     page,
   }) => {
     await page.setViewportSize({ width: 1440, height: 1000 });
-    await page.goto("/");
+    await page.goto("/contact");
     await page.evaluate(() => document.fonts.ready);
     await page.evaluate(() => {
       document.documentElement.style.scrollBehavior = "auto";
@@ -1059,7 +1125,7 @@ test.describe("section refinement", () => {
     page,
   }) => {
     await page.setViewportSize({ width: 1440, height: 1000 });
-    await page.goto("/");
+    await page.goto("/work");
     await page.waitForFunction(() => window.__afterHoursMotionReady);
     await page.evaluate(() => document.fonts.ready);
 
@@ -1103,7 +1169,11 @@ test.describe("section refinement", () => {
     expect(Math.abs(second.introTop - pinnedTop)).toBeLessThan(2);
     expect(second.indexTop).toBeLessThan(first.indexTop);
 
-    // Past the section, the title column releases normally with the section.
+    // Past the section, the title column releases normally with the section. On a
+    // standalone page the work section is followed only by the footer, so the
+    // release is only observable once the section is much taller than the
+    // viewport: a short viewport supplies that scroll distance.
+    await page.setViewportSize({ width: 1440, height: 400 });
     await page.evaluate(() => {
       const el = document.querySelector("#selected-evidence")!;
       window.scrollTo(
@@ -1123,7 +1193,7 @@ test.describe("section refinement", () => {
 
   test("gives Let's talk. dominant, heavy, unclipped type", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 1000 });
-    await page.goto("/");
+    await page.goto("/contact");
 
     const heading = page.locator("#contact-path-heading");
     const desktop = await heading.evaluate((el) => {
@@ -1196,11 +1266,11 @@ test.describe("section refinement", () => {
     const groups = footer.locator(".footer-inner > *");
     await expect(groups).toHaveCount(2);
 
-    // The right group IS the back-to-top link, with the visible label kept in
-    // its accessible name (Label in Name) and a destination title.
+    // The right group IS the link back to the opening, with the visible label
+    // kept in its accessible name (Label in Name) and a matching title.
     const top = footer.locator(".footer-top");
-    await expect(top).toHaveAttribute("aria-label", "Back to top — Still learning.");
-    await expect(top).toHaveAttribute("title", "Back to top");
+    await expect(top).toHaveAttribute("aria-label", "Back to the opening — Still learning.");
+    await expect(top).toHaveAttribute("title", "Back to the opening");
     await expect(top).toContainText("Still learning.");
     // No separate visible "Back to top" text group remains.
     await expect(footer.getByText("Back to top", { exact: true })).toHaveCount(0);
@@ -1211,8 +1281,11 @@ test.describe("section refinement", () => {
 
     const box = await top.boundingBox();
     expect(box?.height).toBeGreaterThanOrEqual(44);
+    // The right group returns to the opening, which is now its own route, so the
+    // same click is verified from a section page.
+    await page.goto("/contact");
     await top.click();
-    await expect(page).toHaveURL(/#identity$/);
+    await expect(page).toHaveURL(/\/$/);
   });
 
   test("keeps the footer rule full-bleed with a constrained inner layout", async ({
@@ -1256,22 +1329,25 @@ test.describe("section refinement", () => {
 for (const width of [1440, 1101, 1100, 700, 390, 320]) {
   test(`keeps the refined sections intact at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 1000 });
-    await page.goto("/");
-    await page.evaluate(() => {
-      document.documentElement.style.scrollBehavior = "auto";
-      window.scrollTo(0, document.documentElement.scrollHeight);
-    });
-    await page.waitForTimeout(500);
 
-    // No horizontal overflow, and the name reaches the footer at every width.
-    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(
-      width,
-    );
-    await expect(page.locator(".footer-name")).toHaveText(
-      "Fikri Muhammad Abdillah",
-    );
+    // No route overflows horizontally, and the name reaches the footer on each.
+    for (const route of ROUTES) {
+      await page.goto(route);
+      await page.evaluate(() => {
+        document.documentElement.style.scrollBehavior = "auto";
+        window.scrollTo(0, document.documentElement.scrollHeight);
+      });
+      await page.waitForTimeout(500);
+      expect(
+        await page.evaluate(() => document.documentElement.scrollWidth),
+      ).toBe(width);
+      await expect(page.locator(".footer-name")).toHaveText(
+        "Fikri Muhammad Abdillah",
+      );
+    }
 
     // The archive statement stays a multi-line block, not a single long line.
+    await page.goto("/archive");
     const lines = await page.locator(".archive-statement").evaluate((el) => {
       const range = document.createRange();
       range.selectNodeContents(el);
@@ -1279,9 +1355,24 @@ for (const width of [1440, 1101, 1100, 700, 390, 320]) {
     });
     expect(lines).toBeGreaterThanOrEqual(2);
 
-    // All six evidence records and three projects survive.
+    // All six evidence records and three projects survive, each on its own page,
+    // with the three contact paths on the contact page.
+    await page.goto("/profile");
     await expect(page.locator(".evidence-ledger > li")).toHaveCount(6);
+    await page.goto("/work");
     await expect(page.locator(".work-index > li")).toHaveCount(3);
+    // The project names are display type, not the browser's default for their
+    // heading level. They were an h3 whose size came from a class rule, so
+    // promoting the level without carrying the rule over would silently drop
+    // them to a default and still pass every layout check here.
+    for (const size of await page
+      .locator(".work-index h2")
+      .evaluateAll((els) =>
+        els.map((el) => Number.parseFloat(getComputedStyle(el).fontSize)),
+      )) {
+      expect(size).toBeGreaterThanOrEqual(28);
+    }
+    await page.goto("/contact");
     await expect(page.locator("#contact-path a")).toHaveCount(3);
   });
 }

@@ -1,5 +1,11 @@
 import { expect, test, type Page } from "@playwright/test";
 
+/**
+ * Every route the site serves. Each section is its own page, so a per-page
+ * invariant is checked on each rather than on one long document.
+ */
+const ROUTES = ["/", "/work", "/profile", "/archive", "/contact"];
+
 type MotionState = { opacity: number; x: number; y: number };
 
 const motionState = (locator: ReturnType<Page["locator"]>) =>
@@ -31,20 +37,12 @@ const unsettled = (page: Page) =>
       .map((element) => (element.textContent ?? "").trim().slice(0, 40)),
   );
 
-test("reveals every scroll target without leaving one stuck", async ({
-  page,
-}) => {
-  // The opening scene is ~2.25 viewports tall by design, so this full-page
-  // frame-stepped sweep is legitimately long on slower engines.
-  test.slow();
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await page.goto("/");
-  const count = await page.locator("[data-reveal]").count();
-  expect(count).toBeGreaterThan(8);
-
-  // Drive the scroll through rendered frames and let each position settle, so a
-  // slower engine cannot skip a target between timed scroll steps.
-  await page.evaluate(async () => {
+/**
+ * Drive the scroll through rendered frames and let each position settle, so a
+ * slower engine cannot skip a target between timed scroll steps.
+ */
+const sweep = (page: Page) =>
+  page.evaluate(async () => {
     const root = document.documentElement;
     root.style.scrollBehavior = "auto";
     const targets = Array.from(
@@ -76,12 +74,39 @@ test("reveals every scroll target without leaving one stuck", async ({
     await frame();
   });
 
-  await expect.poll(async () => unsettled(page), { timeout: 10_000 }).toEqual([]);
+test("reveals every scroll target without leaving one stuck", async ({
+  page,
+}) => {
+  // Five routes are swept frame by frame, so this is legitimately long on
+  // slower engines.
+  test.slow();
+  await page.setViewportSize({ width: 1440, height: 900 });
+  let total = 0;
+  for (const route of ROUTES) {
+    await page.goto(route);
+    total += await page.locator("[data-reveal]").count();
+    await sweep(page);
+    await expect
+      .poll(async () => unsettled(page), { timeout: 10_000 })
+      .toEqual([]);
+  }
+  // Every page carries reveals, so the sweep above was not vacuous.
+  expect(total).toBeGreaterThan(8);
 });
 
-test("settles targets already passed by a deep link", async ({ page }) => {
+test("settles targets already passed by a jump down the page", async ({
+  page,
+}) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
-  await page.goto("/#contact-path");
+  await page.goto("/profile");
+  // A jump past the record list before its targets are observed, which is what
+  // a restored scroll position or a deep landing looks like. The module must
+  // settle whatever is already behind the viewport rather than leaving it
+  // hidden for good.
+  await page.evaluate(() => {
+    document.documentElement.style.scrollBehavior = "auto";
+    window.scrollTo(0, document.documentElement.scrollHeight);
+  });
   await expect
     .poll(async () => unsettled(page), { timeout: 10_000 })
     .toEqual([]);
@@ -89,7 +114,7 @@ test("settles targets already passed by a deep link", async ({ page }) => {
 
 test("reveals promptly after a single instant scroll jump", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
-  await page.goto("/");
+  await page.goto("/profile");
   await expect.poll(async () => unsettled(page)).toEqual([]);
 
   const elapsed = await page.evaluate(async () => {
@@ -97,9 +122,11 @@ test("reveals promptly after a single instant scroll jump", async ({ page }) => 
     root.style.scrollBehavior = "auto";
     window.scrollTo(0, 0);
     await new Promise((resolve) => window.setTimeout(resolve, 400));
+    // Targets that start below the fold, so the jump is what reveals them.
     const targets = Array.from(
-      document.querySelectorAll<HTMLElement>("#contact-path [data-reveal]"),
-    );
+      document.querySelectorAll<HTMLElement>("#technical-profile [data-reveal]"),
+    ).filter((target) => target.getBoundingClientRect().top >= window.innerHeight);
+    if (!targets.length) return -2;
     const start = performance.now();
     window.scrollTo(0, root.scrollHeight);
     for (;;) {
@@ -118,13 +145,14 @@ test("reveals promptly after a single instant scroll jump", async ({ page }) => 
       if (performance.now() - start > 4000) return -1;
     }
   });
+  // -2 would mean the page had nothing below the fold to reveal.
   expect(elapsed).toBeGreaterThanOrEqual(0);
   expect(elapsed).toBeLessThan(2500);
 });
 
 test("shows a static complete page under reduced motion", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
-  await page.goto("/");
+  await page.goto("/work");
   await expect(page.locator("html")).not.toHaveClass(/\bmotion\b/);
   expect(await unsettled(page)).toEqual([]);
   await expect(page.locator("h1")).toBeVisible();
@@ -178,15 +206,19 @@ test.describe("page motion without JavaScript", () => {
   test.use({ javaScriptEnabled: false });
 
   test("keeps every reveal target visible and unshifted", async ({ page }) => {
-    await page.goto("/");
-    await expect(page.locator("html")).not.toHaveClass(/\bmotion\b/);
-    const targets = page.locator("[data-reveal]");
-    const count = await targets.count();
-    expect(count).toBeGreaterThan(8);
-    for (let index = 0; index < count; index += 1) {
-      await expect(targets.nth(index)).toHaveCSS("opacity", "1");
-      await expect(targets.nth(index)).toHaveCSS("transform", "none");
+    let total = 0;
+    for (const route of ROUTES) {
+      await page.goto(route);
+      await expect(page.locator("html")).not.toHaveClass(/\bmotion\b/);
+      const targets = page.locator("[data-reveal]");
+      const count = await targets.count();
+      total += count;
+      for (let index = 0; index < count; index += 1) {
+        await expect(targets.nth(index)).toHaveCSS("opacity", "1");
+        await expect(targets.nth(index)).toHaveCSS("transform", "none");
+      }
     }
+    expect(total).toBeGreaterThan(8);
   });
 });
 
@@ -198,38 +230,16 @@ test("stops every overlapping reveal when reduced motion is requested", async ({
   // not decide whether the first reveal has finished before the second starts.
   await page.clock.install();
   await page.clock.pauseAt(new Date(Date.now() + 1000));
-  await page.goto("/");
+  await page.goto("/work");
   await expect
     .poll(() => page.evaluate(() => Boolean(window.__afterHoursMotionReady)))
     .toBe(true);
 
-  // Use adjacent sections' boundary targets, not the work section's sticky
-  // heading: a jump across the full project index can finish that earlier
-  // reveal before the profile starts. Both targets must remain in view.
-  const groupA = "#selected-evidence .work-index > li:last-child";
-  const groupB = "#technical-profile-heading";
-  const intoView = (selector: string) =>
-    page.evaluate(
-      (selector) =>
-        new Promise<void>((resolve) => {
-          document.documentElement.style.scrollBehavior = "auto";
-          const target = document.querySelector(selector) as HTMLElement;
-          const observer = new IntersectionObserver(
-            (entries) => {
-              if (!entries.some((entry) => entry.isIntersecting)) return;
-              observer.disconnect();
-              resolve();
-            },
-            { rootMargin: "0px 0px -10% 0px" },
-          );
-          observer.observe(target);
-          window.scrollTo(
-            0,
-            target.getBoundingClientRect().top + window.scrollY - window.innerHeight * 0.5,
-          );
-        }),
-      selector,
-    );
+  // The work page delivers its heading, intro and project entries in one batch,
+  // and the batch is staggered, so the group's tweens genuinely overlap. Two of
+  // them stand in for the whole group.
+  const groupA = "#selected-evidence .section-title";
+  const groupB = "#selected-evidence .work-index > li:first-child";
   const read = () =>
     page.evaluate(
       (selectors) =>
@@ -244,29 +254,22 @@ test("stops every overlapping reveal when reduced motion is requested", async ({
       [groupA, groupB],
     );
 
-  await intoView(groupA);
   // Include the first group's stagger, but stay within its 0.6s reveal.
   await page.clock.runFor(300);
-  const [aMid] = await read();
-  await intoView(groupB);
-  await page.clock.runFor(100);
-  const [aWhenB, bWhenB] = await read();
+  const [aMid, bMid] = await read();
 
-  // The scenario is real: A was mid-flight, and when B's delivery landed A was
-  // still mid-flight while B had just begun. Both must be genuinely tweening
-  // together, not merely A before the second jump.
+  // The scenario is real: A was mid-flight and B had just begun, so both must be
+  // genuinely tweening together.
   expect(aMid.opacity).toBeGreaterThan(0.05);
-  expect(aMid.opacity).toBeLessThan(0.95);
-  expect(aWhenB.opacity).toBeGreaterThan(0.05);
-  expect(aWhenB.opacity).toBeLessThan(0.99);
-  expect(bWhenB.opacity).toBeGreaterThan(0.01);
-  expect(bWhenB.opacity).toBeLessThan(0.99);
-  expect(aWhenB.inViewport).toBe(true);
-  expect(bWhenB.inViewport).toBe(true);
+  expect(aMid.opacity).toBeLessThan(0.99);
+  expect(bMid.opacity).toBeGreaterThan(0.01);
+  expect(bMid.opacity).toBeLessThan(0.99);
+  expect(aMid.inViewport).toBe(true);
+  expect(bMid.inViewport).toBe(true);
 
   await page.emulateMedia({ reducedMotion: "reduce" });
   await expect(page.locator("html")).not.toHaveClass(/\bmotion\b/);
-  // Both groups must settle immediately, not just the most recent one.
+  // Every group must settle immediately, not just the most recent one.
   await expect(page.locator("[data-reveal]").first()).toBeVisible();
   expect(await unsettled(page)).toEqual([]);
   // ...and stay settled.
@@ -277,7 +280,9 @@ test("stops every overlapping reveal when reduced motion is requested", async ({
 test("drops the motion hold when the animation module never loads", async ({
   page,
 }) => {
-  await page.route(/index\.astro_astro_type_script/, (route) => route.abort());
+  await page.route(/Portfolio\.astro_astro_type_script/, (route) =>
+    route.abort(),
+  );
   await page.goto("/");
   // The essential invariant: if the module never runs, the pre-paint hold must
   // not survive. Asserting the transient `.motion` class would race the fallback.
@@ -285,7 +290,7 @@ test("drops the motion hold when the animation module never loads", async ({
     .poll(async () => unsettled(page), { timeout: 6000 })
     .toEqual([]);
   await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
-  await expect(page.locator("#contact-path a")).toHaveCount(3);
+  await expect(page.locator(".intro-link")).toHaveCount(1);
 
   // The sculpture owns its own scene and canvas, so it must still be drawn even
   // though the page-reveal module (which owns `html.motion`) was aborted.

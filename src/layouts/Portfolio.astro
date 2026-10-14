@@ -1,0 +1,440 @@
+---
+/**
+ * The shell every page shares: the document head, the fixed wordmark, the
+ * footer, and the motion module.
+ *
+ * The site is five pages — the opening at `/` and one page per section — and
+ * they differ only in the content they slot in, so the shell lives here once
+ * rather than being restated by each page. The motion module is part of the
+ * shell because reveals, link nudges and the Evidence Ledger all belong to
+ * whichever page is being read.
+ */
+import SparseStars from "../components/SparseStars.svelte";
+import { FLAB_PATH, FLAB_FILL_RULE, FLAB_VIEWBOX } from "../lib/flabMark";
+import { description, ownerName, sections } from "../lib/portfolio";
+import "../styles/fonts.css";
+import "../styles/portfolio.css";
+
+const {
+  /** The document title, which the section pages name themselves in. */
+  title,
+  /** The meta description; the site description by default. */
+  metaDescription = description,
+  /** The route this page is served at, for the canonical and og:url. */
+  path,
+} = Astro.props as {
+  title: string;
+  metaDescription?: string;
+  path: string;
+};
+
+const url = `https://flab.my.id${path}`;
+const year = new Date().getFullYear();
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width" />
+    <title>{title}</title>
+    <meta name="description" content={metaDescription} />
+    <meta name="theme-color" content="#17131e" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={metaDescription} />
+    <meta property="og:url" content={url} />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={metaDescription} />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="canonical" href={url} />
+    <!--
+      The variable sans is the only face above the fold (the wordmark, the opening
+      heading), so it is preloaded to avoid a swap on the largest text. Fonts load
+      in CORS mode, hence the crossorigin attribute.
+    -->
+    <link
+      rel="preload"
+      as="font"
+      type="font/woff2"
+      href="/fonts/schibsted-grotesk-var.woff2"
+      crossorigin
+    />
+    <script is:inline>
+      (function () {
+        var root = document.documentElement;
+        var reduced = false;
+        try {
+          reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        } catch (error) {
+          reduced = false;
+        }
+        if (!reduced) root.classList.add("motion");
+        window.setTimeout(function () {
+          if (!window.__afterHoursMotionReady) root.classList.remove("motion");
+        }, 2000);
+      })();
+    </script>
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="flab-logo" href="/" aria-label="flab — back to the opening">
+        <svg viewBox={`0 0 ${FLAB_VIEWBOX.width} ${FLAB_VIEWBOX.height}`} aria-hidden="true">
+          <path d={FLAB_PATH} fill="currentColor" fill-rule={FLAB_FILL_RULE} />
+        </svg>
+      </a>
+    </header>
+
+    <main id="main-content" tabindex="-1">
+      <slot />
+    </main>
+
+    <footer class="site-footer">
+      <SparseStars seed={6} client:load />
+      <div class="footer-inner">
+        <p class="footer-identity">
+          <span class="footer-name">{ownerName}</span>
+          <span class="footer-sep" aria-hidden="true">·</span>
+          <span class="footer-copy">© {year}</span>
+        </p>
+        <!--
+          The right group is the link to the opening itself, so there is no third
+          visible "Back to top" group. Its accessible name keeps the visible
+          "Still learning." label (Label in Name) while naming the destination.
+        -->
+        <a class="footer-top" href="/" aria-label="Back to the opening — Still learning." title="Back to the opening">
+          <span class="footer-note">Still learning.</span>
+          <span class="footer-dash" aria-hidden="true"></span>
+        </a>
+      </div>
+      <!--
+        The constellation is the opening's navigation, but it is not the only route
+        to a section: this static list carries the same four destinations for
+        anyone who lands on a section page, skips the opening, or cannot use the
+        stage at all.
+      -->
+      <nav class="footer-nav" aria-label="Portfolio sections">
+        <ul>
+          {sections.map(({ href, label }) => (
+            <li><a href={href}>{label}</a></li>
+          ))}
+        </ul>
+      </nav>
+    </footer>
+
+    <script>
+      import gsap from "gsap";
+
+      // Foreground tweens follow elapsed time even when a rendering frame is slow.
+      gsap.ticker.lagSmoothing(0);
+
+      declare global {
+        interface Window {
+          __afterHoursMotionReady?: boolean;
+        }
+      }
+
+      const root = document.documentElement;
+      const motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+      const revealTargets = gsap.utils.toArray<HTMLElement>("[data-reveal]");
+      const nudgeLinks = gsap.utils.toArray<HTMLElement>(
+        ".intro-link, .project-link, .text-link, .ledger-source a, .site-footer a, #contact-path a",
+      );
+      // The nudge animates the trailing arrow when a link has one, so the arrow
+      // is what must be cleaned up when motion is switched off. Contact links
+      // also carry a decorative icon span, so the arrow is named explicitly.
+      const arrowOf = (element: HTMLElement) =>
+        element.querySelector<HTMLElement>(".contact-arrow") ??
+        element.querySelector<HTMLElement>('span[aria-hidden="true"]');
+      const nudgeTargets = nudgeLinks.map(
+        (element) => arrowOf(element) ?? element,
+      );
+
+      let active = false;
+      let revealObserver: IntersectionObserver | undefined;
+      // Retain each grouped reveal so teardown explicitly cancels every
+      // delivery, including groups that overlap within the reveal window.
+      let revealTweens: gsap.core.Tween[] = [];
+      let focusInHandler: ((event: Event) => void) | undefined;
+      let scrollHandler: (() => void) | undefined;
+      let scrollFrame = 0;
+
+      function settle(targets: HTMLElement[]) {
+        // Cancel any in-flight reveal first: otherwise a running opacity/y tween
+        // repaints its earlier pose on the next frame, undoing this settlement.
+        gsap.killTweensOf(targets, "opacity,y");
+        gsap.set(targets, { opacity: 1, y: 0 });
+      }
+
+      function stopMotion() {
+        revealObserver?.disconnect();
+        revealObserver = undefined;
+        if (focusInHandler) document.removeEventListener("focusin", focusInHandler);
+        if (scrollHandler) {
+          window.removeEventListener("scroll", scrollHandler);
+          window.removeEventListener("hashchange", scrollHandler);
+        }
+        if (scrollFrame) cancelAnimationFrame(scrollFrame);
+        focusInHandler = undefined;
+        scrollHandler = undefined;
+        scrollFrame = 0;
+        // Stop the grouped reveals before clearing their inline styles.
+        for (const tween of revealTweens) tween.kill();
+        revealTweens = [];
+        gsap.killTweensOf([...revealTargets, ...nudgeTargets]);
+        gsap.set(nudgeTargets, { clearProps: "transform" });
+        root.classList.remove("motion");
+        gsap.set(revealTargets, { clearProps: "all" });
+        active = false;
+      }
+
+      function startMotion() {
+        if (active) return;
+        active = true;
+        root.classList.add("motion");
+
+        if (revealTargets.length) {
+          revealObserver = new IntersectionObserver(
+            (entries) => {
+              // A queued callback can still be delivered after stopMotion ran
+              // (e.g. a preference change mid-scroll). Starting a reveal tween
+              // then would repaint hidden/offset state the settle just cleared.
+              if (!active) return;
+              const entering = entries
+                .filter((entry) => entry.isIntersecting)
+                .map((entry) => entry.target as HTMLElement);
+              for (const target of entering) revealObserver?.unobserve(target);
+              if (!entering.length) return;
+              gsap.killTweensOf(entering, "opacity,y");
+              revealTweens.push(
+                gsap.to(entering, {
+                  opacity: 1,
+                  y: 0,
+                  duration: 0.6,
+                  ease: "power2.out",
+                  stagger: 0.06,
+                }),
+              );
+            },
+            { rootMargin: "0px 0px -10% 0px" },
+          );
+          for (const target of revealTargets) revealObserver.observe(target);
+        }
+
+        focusInHandler = (event) => {
+          const node = event.target;
+          if (!(node instanceof Element)) return;
+          const target = node.closest<HTMLElement>("[data-reveal]");
+          if (target) settle([target]);
+        };
+        document.addEventListener("focusin", focusInHandler);
+
+        // IntersectionObserver computes intersections on rendering frames, so a
+        // fast scroll, an instant jump, or a deep-link landing can pass an
+        // element without it ever being reported as intersecting. Anything
+        // already scrolled past the viewport is settled here, so no target can
+        // stay permanently hidden.
+        const settlePassed = () => {
+          const passed = revealTargets.filter(
+            (target) =>
+              Number(getComputedStyle(target).opacity) < 1 &&
+              target.getBoundingClientRect().bottom <= 0,
+          );
+          if (!passed.length) return;
+          for (const target of passed) revealObserver?.unobserve(target);
+          settle(passed);
+        };
+
+        scrollHandler = () => {
+          if (scrollFrame) return;
+          scrollFrame = requestAnimationFrame(() => {
+            scrollFrame = 0;
+            settlePassed();
+          });
+        };
+        window.addEventListener("scroll", scrollHandler, { passive: true });
+        // A deep link may have scrolled before this module ran, so sweep once.
+        requestAnimationFrame(settlePassed);
+        window.addEventListener("hashchange", scrollHandler);
+      }
+
+      for (const element of nudgeLinks) {
+        const arrow = arrowOf(element);
+        const nudge = (direction: number) => {
+          if (!active) return;
+          gsap.to(arrow ?? element, {
+            x: direction * 4,
+            duration: 0.22,
+            ease: "power2.out",
+            overwrite: "auto",
+          });
+        };
+        element.addEventListener("pointerenter", () => nudge(1));
+        element.addEventListener("pointerleave", () => nudge(0));
+        element.addEventListener("focus", () => nudge(1));
+        element.addEventListener("blur", () => nudge(0));
+      }
+
+      // Evidence Ledger: on a fine pointer, hovering anywhere in a record — the
+      // summary or its Source links — opens that record without a click, while
+      // native details/summary still owns keyboard and touch. Opening and closing
+      // are animated (and reverse cleanly), driven by a small local controller
+      // that never writes scroll. It enhances the summary's own activation with
+      // preventDefault so the panel animates; it does not capture wheel, touch,
+      // or key input. The Source paragraph sits outside `details`, so its links
+      // stay visible and clickable whether the panel is open or closed. A short
+      // hover-intent delay keeps the row stable while the pointer crosses it, and
+      // only a genuine mouse click that lands on a row this hover opened is
+      // absorbed, so it cannot immediately toggle the row closed again.
+      const finePointer = window.matchMedia("(hover: hover) and (pointer: fine)");
+      type LedgerRecord = {
+        details: HTMLDetailsElement;
+        row: HTMLElement;
+        summary: HTMLElement;
+        panel: HTMLElement;
+        open: boolean;
+        tween: gsap.core.Tween | undefined;
+      };
+      const ledgerRecords: LedgerRecord[] = gsap.utils
+        .toArray<HTMLDetailsElement>(".evidence-ledger details")
+        .map((details) => ({
+          details,
+          row: details.parentElement as HTMLElement,
+          summary: details.querySelector("summary") as HTMLElement,
+          panel: details.querySelector(".ledger-panel") as HTMLElement,
+          open: details.open,
+          tween: undefined,
+        }));
+      const HOVER_INTENT = 110;
+      let hoverTimer = 0;
+      let hoverOpened: LedgerRecord | undefined;
+      let lastPointerType = "mouse";
+      let keyboard = false;
+
+      function clearIntent() {
+        window.clearTimeout(hoverTimer);
+      }
+
+      // Settle a panel to its logical state: `record.open` is the logical target,
+      // and it is written to the native `open` attribute here while the animated
+      // inline height/opacity is cleared, so the natural layout takes over.
+      function settlePanel(record: LedgerRecord) {
+        record.tween?.kill();
+        record.tween = undefined;
+        record.details.open = record.open;
+        gsap.set(record.panel, { clearProps: "height,opacity,overflow" });
+      }
+
+      function settleAllPanels() {
+        for (const record of ledgerRecords) settlePanel(record);
+      }
+
+      function expand(record: LedgerRecord, open: boolean) {
+        if (record.open === open) return;
+        record.open = open;
+        const from = record.details.open
+          ? record.panel.getBoundingClientRect().height
+          : 0;
+        record.tween?.kill();
+        if (motionQuery.matches) {
+          settlePanel(record);
+          return;
+        }
+        // Keep the details open while its panel shrinks to zero, so a closing row
+        // animates instead of snapping.
+        record.details.open = true;
+        gsap.set(record.panel, { height: from, overflow: "hidden" });
+        record.tween = gsap.to(record.panel, {
+          height: open ? record.panel.scrollHeight : 0,
+          opacity: open ? 1 : 0,
+          duration: 0.38,
+          ease: "power2.inOut",
+          overwrite: "auto",
+          onComplete: () => settlePanel(record),
+        });
+      }
+
+      // Exclusivity for every path — hover, click, keyboard and touch: close the
+      // other records, then set this one. Animated here rather than by the native
+      // group name (which JS removes), so the closing row also eases shut.
+      function exclusive(record: LedgerRecord, open: boolean) {
+        for (const other of ledgerRecords) {
+          if (other !== record) expand(other, false);
+        }
+        expand(record, open);
+      }
+
+      function openRow(record: LedgerRecord) {
+        const wasOpen = record.open;
+        exclusive(record, true);
+        // Only claim a row this hover actually opened; a row already open by
+        // default or keyboard stays a native toggle.
+        hoverOpened = wasOpen ? undefined : record;
+      }
+
+      for (const record of ledgerRecords) {
+        // No-JS keeps native mutual exclusion; JS owns the animated coordination.
+        record.details.removeAttribute("name");
+        // The whole row is the hover surface, so the pointer can rest on a
+        // Source link and still open the record.
+        record.row.addEventListener("pointerenter", (event) => {
+          if (!finePointer.matches) return;
+          if ((event as PointerEvent).pointerType !== "mouse") return;
+          keyboard = false;
+          clearIntent();
+          hoverTimer = window.setTimeout(() => openRow(record), HOVER_INTENT);
+        });
+        record.row.addEventListener("pointerleave", clearIntent);
+        record.row.addEventListener("pointerdown", (event) => {
+          // A real press ends the hover deliberation: cancel any pending intent
+          // so it cannot open a row the press is about to toggle.
+          lastPointerType = (event as PointerEvent).pointerType || "mouse";
+          clearIntent();
+        });
+        record.summary.addEventListener("keydown", () => {
+          // Keyboard activation is an explicit choice: cancel any pending hover
+          // intent and drop the hover claim, so a following click (detail 0) is
+          // never treated as hover absorption.
+          keyboard = true;
+          clearIntent();
+          hoverOpened = undefined;
+        });
+        record.summary.addEventListener("click", (event) => {
+          clearIntent();
+          // Explicit activation (keyboard Space/Enter, touch/pen tap, or a real
+          // mouse click that is not absorbing the hover it just caused) toggles
+          // the row through the same exclusive path, so no other row is left open.
+          const mouse =
+            !keyboard &&
+            (event as MouseEvent).detail > 0 &&
+            lastPointerType === "mouse";
+          // Enhance the summary's own activation so the panel animates; the click
+          // is still this row's own summary activation, not a captured gesture.
+          event.preventDefault();
+          if (mouse && record.open && hoverOpened === record) {
+            hoverOpened = undefined;
+            return;
+          }
+          hoverOpened = undefined;
+          exclusive(record, !record.open);
+        });
+      }
+
+      function syncMotionPreference() {
+        if (motionQuery.matches) {
+          // A reduced-motion change must land every disclosure at its logical
+          // state, not only the reveal/nudge tweens.
+          settleAllPanels();
+          if (active) stopMotion();
+          return;
+        }
+        startMotion();
+      }
+
+      motionQuery.addEventListener("change", syncMotionPreference);
+      syncMotionPreference();
+      window.__afterHoursMotionReady = true;
+    </script>
+  </body>
+</html>

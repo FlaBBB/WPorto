@@ -1,0 +1,50 @@
+---
+/**
+ * Archive: the public CTF-oriented learning archive, kept as notes rather than
+ * presented as professional security work.
+ */
+import SectionHeading from "../components/SectionHeading.svelte";
+import SparseStars from "../components/SparseStars.svelte";
+import Portfolio from "../layouts/Portfolio.astro";
+---
+
+<Portfolio
+  title="Archive — Fikri Muhammad Abdillah"
+  metaDescription="A public CTF-oriented learning archive spanning cryptography, digital forensics, reverse engineering, binary exploitation and smart-contract security."
+  path="/archive"
+>
+  <div class="page-body page-section">
+    <section id="learning-archive" aria-labelledby="learning-archive-heading">
+      <SparseStars seed={4} client:load />
+      <div class="section-heading">
+        <SectionHeading
+          index="03"
+          label="Archive"
+          headingId="learning-archive-heading"
+          title="Still learning. Keeping the notes."
+        />
+      </div>
+      <div class="archive-layout">
+        <p class="archive-statement" data-reveal>
+          A public CTF-oriented archive spans cryptography, digital forensics, reverse
+          engineering, binary exploitation, and smart-contract security.
+        </p>
+        <div class="archive-aside">
+          <p class="archive-detail" data-reveal>
+            Drawn from many competition platforms and paired with supporting tools and
+            cheatsheets.
+          </p>
+          <p class="scope-note" data-reveal>Learning material, not professional security experience.</p>
+          <div class="archive-links">
+            <a class="text-link" href="https://github.com/FlaBBB/Cybers_security" data-reveal>
+              Inspect Cybers_security <span aria-hidden="true">↗</span>
+            </a>
+            <a class="text-link" href="https://ctftime.org/user/156246" data-reveal>
+              Competition record on CTFtime <span aria-hidden="true">↗</span>
+            </a>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+</Portfolio>

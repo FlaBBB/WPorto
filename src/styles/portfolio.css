@@ -27,18 +27,6 @@ html {
   background: var(--background);
   scroll-behavior: smooth;
   scroll-padding-top: 6rem;
-  /*
-    The opening is the site's map, not a scrolling document: each section is
-    reached through the Section Map (or the footer's static list), and every
-    section is a destination in its own right. Locking the root stops the visitor
-    from scrolling past the map into content that is meant to be navigated to.
-
-    `overflow: hidden` blocks user scrolling only. The box stays scrollable
-    programmatically, which is what the hash destinations and the reveal module
-    rely on, so a jump to a section still moves the page.
-  */
-  overflow: hidden;
-  overscroll-behavior: none;
 }
 body {
   margin: 0;
@@ -159,12 +147,13 @@ nav a:hover {
 section {
   padding-block: var(--section-space);
   padding-inline: var(--gutter);
-  /* The header is transparent and fixed, so a hash landing must clear it. */
+  /*
+    The header is transparent and fixed. Nothing on the site links to a section
+    by hash any more, but a link into a section page from elsewhere — an old
+    bookmark, a search result — still carries a fragment, and the heading it
+    lands on must clear the header.
+  */
   scroll-margin-top: 6rem;
-}
-/* A heading is a focus target for the constellation, not a visible control. */
-h2[tabindex="-1"]:focus {
-  outline: none;
 }
 .page-body {
   position: relative;
@@ -185,7 +174,16 @@ h2[tabindex="-1"]:focus {
   max-width: 52rem;
   margin-bottom: 3.5rem;
 }
-h2 {
+/*
+  A section page opens at the top of the document, and the header is fixed over
+  it, so the first block has to clear the wordmark. The generous section space
+  already does at most sizes; the floor covers the short viewports where 12vh
+  falls under the header's own height.
+*/
+.page-section > section {
+  padding-top: max(var(--section-space), 7.5rem);
+}
+.section-title {
   font-size: clamp(2.25rem, 5vw, 4.25rem);
   font-weight: 700;
   line-height: 1.02;
@@ -297,7 +295,7 @@ h1 {
   gap: 1rem;
   min-width: 0;
 }
-.project-body h3 {
+.project-body h2 {
   font-size: clamp(1.75rem, 3.6vw, 2.75rem);
   font-weight: 600;
   line-height: 1.05;
@@ -486,7 +484,7 @@ dd {
 #contact-path .eyebrow {
   color: var(--contact-ink);
 }
-#contact-path h2 {
+#contact-path .section-title {
   margin-top: 0.75rem;
   font-size: clamp(3rem, 8vw, 7rem);
   font-weight: 800;
