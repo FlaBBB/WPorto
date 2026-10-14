@@ -4,7 +4,7 @@ import { expect, test, type Page } from "@playwright/test";
  * Every route the site serves. Each section is its own page, so a per-page
  * invariant is checked on each rather than on one long document.
  */
-const ROUTES = ["/", "/work", "/profile", "/archive", "/contact"];
+const ROUTES = ["/", "/work/", "/profile/", "/archive/", "/contact/"];
 
 type MotionState = { opacity: number; x: number; y: number };
 
@@ -98,7 +98,7 @@ test("settles targets already passed by a jump down the page", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
-  await page.goto("/profile");
+  await page.goto("/profile/");
   // A jump past the record list before its targets are observed, which is what
   // a restored scroll position or a deep landing looks like. The module must
   // settle whatever is already behind the viewport rather than leaving it
@@ -114,7 +114,7 @@ test("settles targets already passed by a jump down the page", async ({
 
 test("reveals promptly after a single instant scroll jump", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
-  await page.goto("/profile");
+  await page.goto("/profile/");
   await expect.poll(async () => unsettled(page)).toEqual([]);
 
   const elapsed = await page.evaluate(async () => {
@@ -152,7 +152,7 @@ test("reveals promptly after a single instant scroll jump", async ({ page }) => 
 
 test("shows a static complete page under reduced motion", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
-  await page.goto("/work");
+  await page.goto("/work/");
   await expect(page.locator("html")).not.toHaveClass(/\bmotion\b/);
   expect(await unsettled(page)).toEqual([]);
   await expect(page.locator("h1")).toBeVisible();
@@ -230,7 +230,7 @@ test("stops every overlapping reveal when reduced motion is requested", async ({
   // not decide whether the first reveal has finished before the second starts.
   await page.clock.install();
   await page.clock.pauseAt(new Date(Date.now() + 1000));
-  await page.goto("/work");
+  await page.goto("/work/");
   await expect
     .poll(() => page.evaluate(() => Boolean(window.__afterHoursMotionReady)))
     .toBe(true);

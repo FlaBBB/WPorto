@@ -12,7 +12,7 @@ const repositoryUrls = {
  * Every route the site serves. Each section is its own page, so a per-page
  * invariant is checked on each rather than on one long document.
  */
-const ROUTES = ["/", "/work", "/profile", "/archive", "/contact"];
+const ROUTES = ["/", "/work/", "/profile/", "/archive/", "/contact/"];
 
 const profileRows = (page: Page) =>
   page
@@ -69,7 +69,7 @@ test.describe("static content without JavaScript", () => {
     await expect(page.locator(".sculpture-control")).toHaveCount(0);
 
     // The six reconciled capability records, with their limits, on Profile.
-    await page.goto("/profile");
+    await page.goto("/profile/");
     const rows = profileRows(page);
     await expect(rows).toHaveCount(6);
     await expect(rows.locator("summary .ledger-capability")).toHaveText(
@@ -104,7 +104,7 @@ test.describe("static content without JavaScript", () => {
     }
 
     // The three real project records, on Work.
-    await page.goto("/work");
+    await page.goto("/work/");
     await expect(page.locator(".work-index > li")).toHaveCount(3);
     await expect(page.locator(".work-index h2")).toHaveText([
       "WordyChain",
@@ -122,7 +122,7 @@ test.describe("static content without JavaScript", () => {
     }
 
     // The archive's CTFtime record and its own source link.
-    await page.goto("/archive");
+    await page.goto("/archive/");
     await expect(
       page.getByRole("link", { name: /CTFtime/ }).first(),
     ).toHaveAttribute("href", "https://ctftime.org/user/156246");
@@ -167,7 +167,7 @@ test("publishes canonical metadata, the mark favicon, and direct Contact Paths",
   expect(icon.headers()["content-type"]).toContain("image/svg+xml");
 
   // The Contact Paths are their own route now.
-  await page.goto("/contact");
+  await page.goto("/contact/");
   const contact = page.locator("#contact-path");
   await expect(
     contact.getByRole("link", { name: "GitHub Inspect public work" }),
@@ -211,7 +211,7 @@ test("makes the section navigation keyboard reachable", async ({ page }) => {
 
   await map.getByRole("link", { name: "Contact", exact: true }).focus();
   await page.keyboard.press("Enter");
-  await expect(page).toHaveURL(/\/contact$/);
+  await expect(page).toHaveURL(/\/contact\/$/);
   const header = await page.locator(".site-header").boundingBox();
   const heading = await page.locator("#contact-path-heading").boundingBox();
   expect(heading?.y).toBeGreaterThanOrEqual(
@@ -238,7 +238,7 @@ test("makes the section navigation keyboard reachable", async ({ page }) => {
 test("uses native keyboard disclosure without hiding sources", async ({
   page,
 }) => {
-  await page.goto("/profile");
+  await page.goto("/profile/");
   const rows = profileRows(page);
   await expect(rows.locator("details[open]")).toHaveCount(1);
   await expect(rows.first().locator("details")).toHaveAttribute("open", "");
@@ -289,14 +289,14 @@ for (const width of [320, 390, 768, 801, 1100, 1440]) {
       .getByRole("link", { name: "Contact" });
     await contactNav.focus();
     await page.keyboard.press("Enter");
-    await expect(page).toHaveURL(/\/contact$/);
+    await expect(page).toHaveURL(/\/contact\/$/);
     for (const link of await page.locator("#contact-path a").all()) {
       await expect(link).toBeVisible();
       expect((await link.boundingBox())?.height).toBeGreaterThanOrEqual(44);
     }
 
     // The ledger keeps its touch targets on Profile.
-    await page.goto("/profile");
+    await page.goto("/profile/");
     const thirdRow = profileRows(page).nth(2);
     await thirdRow.locator("summary").click();
     await expect(thirdRow.locator(".ledger-details")).toBeVisible();
@@ -306,7 +306,7 @@ for (const width of [320, 390, 768, 801, 1100, 1440]) {
 
     // The project names, the project copy and the contact heading never
     // overflow their own column, each read on the page that owns it.
-    await page.goto("/work");
+    await page.goto("/work/");
     const workOverflow = await page
       .locator(".work-index h2, .work-index p")
       .evaluateAll((elements) =>
@@ -316,7 +316,7 @@ for (const width of [320, 390, 768, 801, 1100, 1440]) {
       );
     expect(workOverflow).toEqual([]);
 
-    await page.goto("/contact");
+    await page.goto("/contact/");
     const headingOverflow = await page
       .locator("#contact-path .section-title")
       .evaluateAll((elements) =>
@@ -414,9 +414,9 @@ test("keeps text contrast readable on the plum and violet surfaces", async ({
   // painted; every ratio still has to clear 4.5:1.
   const surfaces: [string, string][] = [
     ["/", ".intro-note, .intro-link, nav a"],
-    ["/work", ".section-intro"],
-    ["/profile", ".section-intro, .ledger-qualification dd"],
-    ["/contact", "#contact-path a"],
+    ["/work/", ".section-intro"],
+    ["/profile/", ".section-intro, .ledger-qualification dd"],
+    ["/contact/", "#contact-path a"],
   ];
   for (const [route, selector] of surfaces) {
     await page.goto(route);
@@ -464,7 +464,7 @@ for (const width of [1440, 1101, 1100, 700, 390, 320]) {
     page,
   }) => {
     await page.setViewportSize({ width, height: 1000 });
-    await page.goto("/contact");
+    await page.goto("/contact/");
     // Bring the contact band into view with native smooth scrolling disabled so
     // its reveal targets actually enter the viewport and settle before measuring.
     await page.evaluate(() => {
@@ -518,7 +518,7 @@ test("keeps a visible focus ring on the violet contact band", async ({
 }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.emulateMedia({ reducedMotion: "reduce" });
-  await page.goto("/contact");
+  await page.goto("/contact/");
 
   const links = page.locator("#contact-path a");
   await expect(links).toHaveCount(3);
@@ -601,7 +601,7 @@ test("loads the page and its local assets without browser errors", async ({
   for (const route of ROUTES) await page.goto(route);
   await page.goto("/");
   await expect(page.locator(".sculpture-canvas")).toBeVisible();
-  await page.goto("/profile");
+  await page.goto("/profile/");
   await page.locator("#technical-profile summary").nth(3).click();
   await expect(page.locator("#evidence-detail-3")).toBeVisible();
   expect(errors).toEqual([]);
@@ -613,7 +613,7 @@ test.describe("section refinement", () => {
     page,
   }) => {
     await page.setViewportSize({ width: 1440, height: 1000 });
-    await page.goto("/profile");
+    await page.goto("/profile/");
     await page.evaluate(() => {
       document.documentElement.style.scrollBehavior = "auto";
       document.querySelector("#technical-profile")?.scrollIntoView();
@@ -690,7 +690,7 @@ test.describe("section refinement", () => {
   }) => {
     await page.setViewportSize({ width: 1440, height: 1000 });
     await page.clock.install();
-    await page.goto("/profile");
+    await page.goto("/profile/");
     await page.waitForFunction(() => window.__afterHoursMotionReady);
     await openProfile(page);
 
@@ -764,7 +764,7 @@ test.describe("section refinement", () => {
     page,
   }) => {
     await page.setViewportSize({ width: 1440, height: 1000 });
-    await page.goto("/profile");
+    await page.goto("/profile/");
     await page.waitForFunction(() => window.__afterHoursMotionReady);
     await openProfile(page);
 
@@ -786,7 +786,7 @@ test.describe("section refinement", () => {
     // A reload retains the pointer; keep it outside the ledger so it cannot
     // hover-open another row and start closing the default row during setup.
     await page.mouse.move(2, 2);
-    await page.goto("/profile");
+    await page.goto("/profile/");
     await page.waitForFunction(() => window.__afterHoursMotionReady);
     await openProfile(page);
     const fresh = page.locator(".evidence-ledger details");
@@ -817,7 +817,7 @@ test.describe("section refinement", () => {
       viewport: { width: 393, height: 727 },
     });
     const page = await context.newPage();
-    await page.goto("/profile");
+    await page.goto("/profile/");
     await page.evaluate(() => {
       document.documentElement.style.scrollBehavior = "auto";
       document.querySelector("#technical-profile")?.scrollIntoView();
@@ -854,10 +854,10 @@ test.describe("section refinement", () => {
     // the section.
     const pages = [
       { route: "/", sections: ["#intro", ".site-footer"] },
-      { route: "/work", sections: ["#selected-evidence", ".site-footer"] },
-      { route: "/profile", sections: ["#technical-profile", ".site-footer"] },
-      { route: "/archive", sections: ["#learning-archive", ".site-footer"] },
-      { route: "/contact", sections: ["#contact-path", ".site-footer"] },
+      { route: "/work/", sections: ["#selected-evidence", ".site-footer"] },
+      { route: "/profile/", sections: ["#technical-profile", ".site-footer"] },
+      { route: "/archive/", sections: ["#learning-archive", ".site-footer"] },
+      { route: "/contact/", sections: ["#contact-path", ".site-footer"] },
     ];
     for (const { route, sections } of pages) {
       await page.goto(route);
@@ -931,7 +931,7 @@ test.describe("section refinement", () => {
       .not.toBe(before);
 
     // The contact surface uses plum stars.
-    await page.goto("/contact");
+    await page.goto("/contact/");
     await page.waitForSelector(".starfield .star", { timeout: 10_000 });
     const contactColor = await page
       .locator("#contact-path .starfield .star")
@@ -1049,9 +1049,9 @@ test.describe("section refinement", () => {
     // Each section is its own page now, so its space is read where it lives.
     for (const [route, selector] of [
       ["/", "#intro"],
-      ["/work", "#selected-evidence"],
-      ["/archive", "#learning-archive"],
-      ["/contact", "#contact-path"],
+      ["/work/", "#selected-evidence"],
+      ["/archive/", "#learning-archive"],
+      ["/contact/", "#contact-path"],
     ] as const) {
       await page.goto(route);
       const padding = await page
@@ -1061,7 +1061,7 @@ test.describe("section refinement", () => {
     }
 
     // The archive copy is deliberately grouped, never one very long line.
-    await page.goto("/archive");
+    await page.goto("/archive/");
     const lines = await page
       .locator(".archive-statement")
       .evaluate((el) => {
@@ -1096,7 +1096,7 @@ test.describe("section refinement", () => {
     page,
   }) => {
     await page.setViewportSize({ width: 1440, height: 1000 });
-    await page.goto("/contact");
+    await page.goto("/contact/");
     await page.evaluate(() => document.fonts.ready);
     await page.evaluate(() => {
       document.documentElement.style.scrollBehavior = "auto";
@@ -1125,7 +1125,7 @@ test.describe("section refinement", () => {
     page,
   }) => {
     await page.setViewportSize({ width: 1440, height: 1000 });
-    await page.goto("/work");
+    await page.goto("/work/");
     await page.waitForFunction(() => window.__afterHoursMotionReady);
     await page.evaluate(() => document.fonts.ready);
 
@@ -1193,7 +1193,7 @@ test.describe("section refinement", () => {
 
   test("gives Let's talk. dominant, heavy, unclipped type", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 1000 });
-    await page.goto("/contact");
+    await page.goto("/contact/");
 
     const heading = page.locator("#contact-path-heading");
     const desktop = await heading.evaluate((el) => {
@@ -1283,7 +1283,7 @@ test.describe("section refinement", () => {
     expect(box?.height).toBeGreaterThanOrEqual(44);
     // The right group returns to the opening, which is now its own route, so the
     // same click is verified from a section page.
-    await page.goto("/contact");
+    await page.goto("/contact/");
     await top.click();
     await expect(page).toHaveURL(/\/$/);
   });
@@ -1347,7 +1347,7 @@ for (const width of [1440, 1101, 1100, 700, 390, 320]) {
     }
 
     // The archive statement stays a multi-line block, not a single long line.
-    await page.goto("/archive");
+    await page.goto("/archive/");
     const lines = await page.locator(".archive-statement").evaluate((el) => {
       const range = document.createRange();
       range.selectNodeContents(el);
@@ -1357,9 +1357,9 @@ for (const width of [1440, 1101, 1100, 700, 390, 320]) {
 
     // All six evidence records and three projects survive, each on its own page,
     // with the three contact paths on the contact page.
-    await page.goto("/profile");
+    await page.goto("/profile/");
     await expect(page.locator(".evidence-ledger > li")).toHaveCount(6);
-    await page.goto("/work");
+    await page.goto("/work/");
     await expect(page.locator(".work-index > li")).toHaveCount(3);
     // The project names are display type, not the browser's default for their
     // heading level. They were an h3 whose size came from a class rule, so
@@ -1372,7 +1372,7 @@ for (const width of [1440, 1101, 1100, 700, 390, 320]) {
       )) {
       expect(size).toBeGreaterThanOrEqual(28);
     }
-    await page.goto("/contact");
+    await page.goto("/contact/");
     await expect(page.locator("#contact-path a")).toHaveCount(3);
   });
 }

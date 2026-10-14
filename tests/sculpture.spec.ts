@@ -319,7 +319,7 @@ test.describe("After Hours section map", () => {
     await openMap(page);
 
     await clickStar(page, 3);
-    await page.waitForURL(/\/contact$/);
+    await page.waitForURL(/\/contact\/$/);
 
     // The section page opens at its own top, with the heading clear of the
     // transparent fixed header.
@@ -615,7 +615,7 @@ test.describe("After Hours section map", () => {
     expect(stops).toEqual(["Work", "Profile", "Archive", "Contact"]);
 
     await page.keyboard.press("Enter");
-    await page.waitForURL(/\/contact$/);
+    await page.waitForURL(/\/contact\/$/);
     const heading = page.locator("#contact-path-heading");
     await expect(heading).toBeVisible();
     const box = (await heading.boundingBox())!;
@@ -882,7 +882,7 @@ test.describe("After Hours sculpture fallbacks", () => {
     expect(view.stickyTop).toBeGreaterThanOrEqual(0);
 
     await stars.nth(3).click();
-    await expect(page).toHaveURL(/\/contact$/);
+    await expect(page).toHaveURL(/\/contact\/$/);
   });
 
   test("shows the static mark, its section links, and content without JavaScript", async ({
@@ -904,7 +904,7 @@ test.describe("After Hours sculpture fallbacks", () => {
       await page
         .locator(".sculpture-star")
         .evaluateAll((els) => els.map((el) => el.getAttribute("href"))),
-    ).toEqual(["/work", "/profile", "/archive", "/contact"]);
+    ).toEqual(["/work/", "/profile/", "/archive/", "/contact/"]);
 
     const view = await page.evaluate(() => ({
       scene: document.querySelector(".sculpture-scene")!.getBoundingClientRect()
@@ -914,7 +914,7 @@ test.describe("After Hours sculpture fallbacks", () => {
     expect(view.scene).toBeLessThan(view.vh);
 
     // The sections themselves still serve their content without the bundle.
-    await page.goto("/work");
+    await page.goto("/work/");
     await expect(page.locator(".work-index > li")).toHaveCount(3);
     await context.close();
   });

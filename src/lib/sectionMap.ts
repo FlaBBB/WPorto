@@ -10,7 +10,12 @@
  */
 
 export type SectionDestination = {
-  /** The route that serves this section. */
+  /**
+   * The route that serves this section. The trailing slash is the form the host
+   * serves: a directory build is published as `/work/index.html`, so a request
+   * for `/work` is answered with a redirect to `/work/`. Linking to the served
+   * form keeps a destination click from costing a redirect.
+   */
   href: string;
   /** The visible star label, and the accessible link name. */
   label: string;
@@ -22,10 +27,10 @@ export type SectionDestination = {
  * and the visual order stay the same.
  */
 export const SECTION_DESTINATIONS: SectionDestination[] = [
-  { href: "/work", label: "Work" },
-  { href: "/profile", label: "Profile" },
-  { href: "/archive", label: "Archive" },
-  { href: "/contact", label: "Contact" },
+  { href: "/work/", label: "Work" },
+  { href: "/profile/", label: "Profile" },
+  { href: "/archive/", label: "Archive" },
+  { href: "/contact/", label: "Contact" },
 ];
 
 /** The map is closed, mid-transition, or settled and interactive. */
