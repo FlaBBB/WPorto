@@ -204,14 +204,22 @@ test("makes the section navigation keyboard reachable", async ({ page }) => {
   await expect(map.getByRole("link", { name: "Work", exact: true })).toBeFocused();
   expect(await labels(map)).toEqual(["Work", "Profile", "Archive", "Contact"]);
 
-  // The footer carries the same four destinations, so the opening's map is never
-  // the only route to a section.
-  const footerNav = page.locator(".footer-nav");
-  expect(await labels(footerNav)).toEqual(["Work", "Profile", "Archive", "Contact"]);
+  // The opening carries no header navigation — there the map is the navigation —
+  // so the second route to a section lives in the header of a section page.
+  await expect(page.locator(".site-nav")).toHaveCount(0);
 
   await map.getByRole("link", { name: "Contact", exact: true }).focus();
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL(/\/contact\/$/);
+
+  // The header nav carries the same four destinations, so the opening's map is
+  // never the only route to a section.
+  const headerNav = page.locator(".site-nav");
+  expect(await labels(headerNav)).toEqual(["Work", "Profile", "Archive", "Contact"]);
+  await expect(
+    headerNav.getByRole("link", { name: "Contact", exact: true }),
+  ).toHaveAttribute("aria-current", "page");
+
   const header = await page.locator(".site-header").boundingBox();
   const heading = await page.locator("#contact-path-heading").boundingBox();
   expect(heading?.y).toBeGreaterThanOrEqual(
@@ -269,27 +277,33 @@ for (const width of [320, 390, 768, 801, 1100, 1440]) {
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth),
     ).toBe(width);
-    // Both navigation surfaces — the opening's section map and the footer's
-    // static fallback — must stay inside the viewport with real touch targets.
-    for (const nav of [
-      page.locator(".sculpture-map"),
-      page.locator(".footer-nav"),
-    ]) {
-      await expect(nav).toBeVisible();
-      for (const link of await nav.getByRole("link").all()) {
-        const bounds = await link.boundingBox();
-        expect(bounds?.x).toBeGreaterThanOrEqual(0);
-        expect((bounds?.x ?? 0) + (bounds?.width ?? 0)).toBeLessThanOrEqual(width);
-        expect(bounds?.height).toBeGreaterThanOrEqual(44);
-      }
+    // The opening's section map must stay inside the viewport with real touch
+    // targets.
+    const map = page.locator(".sculpture-map");
+    await expect(map).toBeVisible();
+    for (const link of await map.getByRole("link").all()) {
+      const bounds = await link.boundingBox();
+      expect(bounds?.x).toBeGreaterThanOrEqual(0);
+      expect((bounds?.x ?? 0) + (bounds?.width ?? 0)).toBeLessThanOrEqual(width);
+      expect(bounds?.height).toBeGreaterThanOrEqual(44);
     }
 
-    const contactNav = page
-      .locator(".sculpture-map")
-      .getByRole("link", { name: "Contact" });
+    const contactNav = map.getByRole("link", { name: "Contact" });
     await contactNav.focus();
     await page.keyboard.press("Enter");
     await expect(page).toHaveURL(/\/contact\/$/);
+
+    // The header nav is the other navigation surface, on a section page: it too
+    // must stay inside the viewport with real touch targets.
+    const headerNav = page.locator(".site-nav");
+    await expect(headerNav).toBeVisible();
+    for (const link of await headerNav.getByRole("link").all()) {
+      const bounds = await link.boundingBox();
+      expect(bounds?.x).toBeGreaterThanOrEqual(0);
+      expect((bounds?.x ?? 0) + (bounds?.width ?? 0)).toBeLessThanOrEqual(width);
+      expect(bounds?.height).toBeGreaterThanOrEqual(44);
+    }
+
     for (const link of await page.locator("#contact-path a").all()) {
       await expect(link).toBeVisible();
       expect((await link.boundingBox())?.height).toBeGreaterThanOrEqual(44);
@@ -332,9 +346,9 @@ test("keeps the 320px labels inside the viewport with a wide system font", async
   page,
 }) => {
   // DejaVu Sans is wider than the default stack and reproduced a real overflow
-  // at 320px before the mobile header gap was narrowed to 1rem. The header no
-  // longer carries the labels, so the same regression is now checked on the two
-  // surfaces that do: the opening's section map and the footer's fallback list.
+  // at 320px before the mobile header gap was narrowed to 1rem. The two surfaces
+  // that carry the labels are the opening's section map and the header nav on a
+  // section page, so the same regression is checked on each.
   await page.setViewportSize({ width: 320, height: 900 });
   // Reduced motion keeps both label surfaces laid out in flow, which is the state
   // where a wider face can actually push a label out of the viewport.
@@ -342,10 +356,11 @@ test("keeps the 320px labels inside the viewport with a wide system font", async
   await page.goto("/");
   // The labels that can overflow at 320px are the monospace ones, so the wider
   // face is forced through the font variable they actually read.
-  await page.addStyleTag({
+  const wideMono = {
     content:
       'html { --font-mono: "DejaVu Sans", sans-serif !important; font-family: "DejaVu Sans", sans-serif !important; }',
-  });
+  };
+  await page.addStyleTag(wideMono);
   await page.waitForTimeout(300);
 
   const applied = await page
@@ -358,22 +373,39 @@ test("keeps the 320px labels inside the viewport with a wide system font", async
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(
     320,
   );
-  for (const nav of [
-    page.locator(".sculpture-map"),
-    page.locator(".footer-nav"),
-  ]) {
-    expect(
-      (await nav.getByRole("link").allTextContents()).map((label) =>
-        label.trim(),
-      ),
-    ).toEqual(["Work", "Profile", "Archive", "Contact"]);
-    for (const link of await nav.getByRole("link").all()) {
-      const box = await link.boundingBox();
-      expect(box?.x).toBeGreaterThanOrEqual(0);
-      expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(320);
-      // Targets stay at least 44px tall; the fix narrows the gap, not the targets.
-      expect(box?.height).toBeGreaterThanOrEqual(44);
-    }
+  const map = page.locator(".sculpture-map");
+  expect(
+    (await map.getByRole("link").allTextContents()).map((label) =>
+      label.trim(),
+    ),
+  ).toEqual(["Work", "Profile", "Archive", "Contact"]);
+  for (const link of await map.getByRole("link").all()) {
+    const box = await link.boundingBox();
+    expect(box?.x).toBeGreaterThanOrEqual(0);
+    expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(320);
+    // Targets stay at least 44px tall; the fix narrows the gap, not the targets.
+    expect(box?.height).toBeGreaterThanOrEqual(44);
+  }
+
+  // The header nav carries the same four mono labels on a section page, so the
+  // wide-face regression is checked there too.
+  await page.goto("/contact/");
+  await page.addStyleTag(wideMono);
+  await page.waitForTimeout(300);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(
+    320,
+  );
+  const headerNav = page.locator(".site-nav");
+  expect(
+    (await headerNav.getByRole("link").allTextContents()).map((label) =>
+      label.trim(),
+    ),
+  ).toEqual(["Work", "Profile", "Archive", "Contact"]);
+  for (const link of await headerNav.getByRole("link").all()) {
+    const box = await link.boundingBox();
+    expect(box?.x).toBeGreaterThanOrEqual(0);
+    expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(320);
+    expect(box?.height).toBeGreaterThanOrEqual(44);
   }
 });
 
@@ -849,15 +881,14 @@ test.describe("section refinement", () => {
   }) => {
     await page.setViewportSize({ width: 1440, height: 1000 });
 
-    // One local layer per lower section and the footer. Each section is its own
-    // page now, so the same public DOM contract is read on the page that owns
-    // the section.
+    // One local layer per section. Each section is its own page now, so the same
+    // public DOM contract is read on the page that owns the section.
     const pages = [
-      { route: "/", sections: ["#intro", ".site-footer"] },
-      { route: "/work/", sections: ["#selected-evidence", ".site-footer"] },
-      { route: "/profile/", sections: ["#technical-profile", ".site-footer"] },
-      { route: "/archive/", sections: ["#learning-archive", ".site-footer"] },
-      { route: "/contact/", sections: ["#contact-path", ".site-footer"] },
+      { route: "/", sections: ["#intro"] },
+      { route: "/work/", sections: ["#selected-evidence"] },
+      { route: "/profile/", sections: ["#technical-profile"] },
+      { route: "/archive/", sections: ["#learning-archive"] },
+      { route: "/contact/", sections: ["#contact-path"] },
     ];
     for (const { route, sections } of pages) {
       await page.goto(route);
@@ -887,11 +918,10 @@ test.describe("section refinement", () => {
       }
       // No canvas is used for the lower-page decoration.
       expect(await page.locator(".page-body canvas").count()).toBe(0);
-      expect(await page.locator(".site-footer canvas").count()).toBe(0);
 
       // Every star is inside its own section's painted box, and really visible.
       const bounds = await page.evaluate(() =>
-        [...document.querySelectorAll(".page-body > section, .site-footer")].map(
+        [...document.querySelectorAll(".page-body > section")].map(
           (section) => {
             const box = section.getBoundingClientRect();
             return [...section.querySelectorAll(".starfield .star")].map((star) => {
@@ -1169,11 +1199,11 @@ test.describe("section refinement", () => {
     expect(Math.abs(second.introTop - pinnedTop)).toBeLessThan(2);
     expect(second.indexTop).toBeLessThan(first.indexTop);
 
-    // Past the section, the title column releases normally with the section. On a
-    // standalone page the work section is followed only by the footer, so the
-    // release is only observable once the section is much taller than the
-    // viewport: a short viewport supplies that scroll distance.
-    await page.setViewportSize({ width: 1440, height: 400 });
+    // Past the section, the title column releases normally with the section. The
+    // work section is now the last content, so the page cannot scroll past its end:
+    // the release is only observable once the viewport is shorter than the title
+    // column itself, which lets the section's end rise above it as it scrolls off.
+    await page.setViewportSize({ width: 1440, height: 280 });
     await page.evaluate(() => {
       const el = document.querySelector("#selected-evidence")!;
       window.scrollTo(
@@ -1248,65 +1278,6 @@ test.describe("section refinement", () => {
     expect(delta).toBeLessThanOrEqual(8);
   });
 
-  test("matches the two-group footer reference and keeps back-to-top reachable", async ({
-    page,
-  }) => {
-    await page.setViewportSize({ width: 1440, height: 1000 });
-    await page.goto("/");
-
-    const year = new Date().getFullYear();
-    const footer = page.locator(".site-footer");
-    await expect(footer.locator(".footer-name")).toHaveText(
-      "Fikri Muhammad Abdillah",
-    );
-    await expect(footer.locator(".footer-copy")).toHaveText(`© ${year}`);
-    await expect(footer.locator(".footer-note")).toContainText("Still learning.");
-
-    // Exactly two groups: identity and the right-hand link.
-    const groups = footer.locator(".footer-inner > *");
-    await expect(groups).toHaveCount(2);
-
-    // The right group IS the link back to the opening, with the visible label
-    // kept in its accessible name (Label in Name) and a matching title.
-    const top = footer.locator(".footer-top");
-    await expect(top).toHaveAttribute("aria-label", "Back to the opening — Still learning.");
-    await expect(top).toHaveAttribute("title", "Back to the opening");
-    await expect(top).toContainText("Still learning.");
-    // No separate visible "Back to top" text group remains.
-    await expect(footer.getByText("Back to top", { exact: true })).toHaveCount(0);
-
-    // A thin violet rule on a near-black plum surface.
-    const rule = await footer.evaluate((el) => getComputedStyle(el).borderTopColor);
-    expect(rule).not.toBe("rgba(0, 0, 0, 0)");
-
-    const box = await top.boundingBox();
-    expect(box?.height).toBeGreaterThanOrEqual(44);
-    // The right group returns to the opening, which is now its own route, so the
-    // same click is verified from a section page.
-    await page.goto("/contact/");
-    await top.click();
-    await expect(page).toHaveURL(/\/$/);
-  });
-
-  test("keeps the footer rule full-bleed with a constrained inner layout", async ({
-    page,
-  }) => {
-    await page.setViewportSize({ width: 1920, height: 1000 });
-    await page.goto("/");
-    const metrics = await page.evaluate(() => {
-      const footer = document.querySelector(".site-footer")!;
-      const inner = document.querySelector(".footer-inner")!;
-      return {
-        footerWidth: Math.round(footer.getBoundingClientRect().width),
-        innerWidth: Math.round(inner.getBoundingClientRect().width),
-        viewport: window.innerWidth,
-      };
-    });
-    // The surface spans the viewport; the readable measure is constrained.
-    expect(metrics.footerWidth).toBe(metrics.viewport);
-    expect(metrics.innerWidth).toBeLessThan(metrics.footerWidth);
-  });
-
   test("publishes the full personal name in metadata and the h1", async ({
     page,
   }) => {
@@ -1330,7 +1301,7 @@ for (const width of [1440, 1101, 1100, 700, 390, 320]) {
   test(`keeps the refined sections intact at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 1000 });
 
-    // No route overflows horizontally, and the name reaches the footer on each.
+    // No route overflows horizontally, even scrolled to its end.
     for (const route of ROUTES) {
       await page.goto(route);
       await page.evaluate(() => {
@@ -1341,9 +1312,6 @@ for (const width of [1440, 1101, 1100, 700, 390, 320]) {
       expect(
         await page.evaluate(() => document.documentElement.scrollWidth),
       ).toBe(width);
-      await expect(page.locator(".footer-name")).toHaveText(
-        "Fikri Muhammad Abdillah",
-      );
     }
 
     // The archive statement stays a multi-line block, not a single long line.

@@ -26,7 +26,13 @@
     }>();
 </script>
 
-<p class="eyebrow">{index} / {label}</p>
+<!--
+  The eyebrow carries the same view-transition name as the destination star that
+  leads here, so choosing a star morphs that star into this page's marker rather
+  than cutting to a new document. The name is set as a raw CSS property because
+  Astro's `transition:name` directive is not available inside a Svelte component.
+-->
+<p class="eyebrow" style={`view-transition-name: star-${label.toLowerCase()}`}>{index} / {label}</p>
 <h1 id={headingId} class="section-title" data-reveal>{title}</h1>
 {#if intro}
   <p class={introClass} data-reveal>{intro}</p>

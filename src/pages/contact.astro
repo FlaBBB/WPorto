@@ -20,7 +20,7 @@ const LINKEDIN_ICON =
   metaDescription="Explore the source, connect on LinkedIn, or send a note directly to Fikri Muhammad Abdillah."
   path="/contact/"
 >
-  <div class="page-body page-section">
+  <div class="page-body">
     <section id="contact-path" aria-labelledby="contact-path-heading">
       <SparseStars seed={5} tone="plum" client:load />
       <div class="contact-layout">
@@ -35,7 +35,7 @@ const LINKEDIN_ICON =
           />
         </div>
         <ul class="contact-paths">
-          <li data-reveal>
+          <li data-reveal data-enter="right">
             <a href={githubProfile}>
               <span class="contact-icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24" fill="currentColor"><path d={GITHUB_ICON} /></svg>
@@ -44,7 +44,7 @@ const LINKEDIN_ICON =
               <span class="contact-arrow" aria-hidden="true">↗</span>
             </a>
           </li>
-          <li data-reveal>
+          <li data-reveal data-enter="left" data-enter-delay="0.1">
             <a href={linkedInProfile}>
               <span class="contact-icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24" fill="currentColor"><path d={LINKEDIN_ICON} /></svg>
@@ -53,7 +53,7 @@ const LINKEDIN_ICON =
               <span class="contact-arrow" aria-hidden="true">↗</span>
             </a>
           </li>
-          <li data-reveal>
+          <li data-reveal data-enter="up" data-enter-delay="0.2">
             <!--email_off--><a href={`mailto:${email}`}>
               <span class="contact-icon contact-icon-envelope" aria-hidden="true">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">

@@ -10,9 +10,6 @@
   /* Open contact band: light violet surface with plum ink (6.7:1). */
   --contact-band: #a78bfa;
   --contact-ink: #1b1430;
-  /* Footer: near-black plum with a thin violet rule. */
-  --footer-bg: #141019;
-  --footer-rule: color-mix(in srgb, var(--accent) 62%, transparent);
   --gutter: clamp(1.25rem, 5vw, 5rem);
   /* Generous, substantial space for every body section. */
   --section-space: clamp(4.5rem, 12vh, 8rem);
@@ -34,6 +31,14 @@ body {
   color: var(--ink);
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
+  /*
+    A column with a viewport-minimum height, so the page's content can fill what is
+    left under the header. Without a definite height on this chain a short section
+    cannot stretch, and the fill below would do nothing.
+  */
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
 }
 h1,
 h2,
@@ -87,23 +92,39 @@ main:focus {
 
 /* Header */
 /*
-  Fixed rather than sticky: the opening is one full viewport, so the header
-  overlays the stage instead of pushing it down. It carries no background and
-  no blur, so the star field reads straight through it and no container edge
-  is ever drawn over the sky. The bar itself ignores pointer events, and the
-  wordmark takes them back, so the rest of the opening stays clickable.
+  The opening's header is fixed rather than sticky: the opening is one full
+  viewport, so the header overlays the stage instead of pushing it down. It
+  carries no background and no blur, so the star field reads straight through it
+  and no container edge is ever drawn over the sky. The bar itself ignores
+  pointer events, and the wordmark takes them back, so the rest of the opening
+  stays clickable.
+
+  A section page scrolls, so its header sticks instead: it takes its own space in
+  the flow and then holds at the top, which keeps the wordmark and the section
+  links legible over moving content without a spacer or a padding guess, and
+  without a bar ever being drawn over the opening's sky.
 */
 .site-header {
   position: fixed;
   inset: 0 0 auto;
   z-index: 10;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
+  justify-content: space-between;
+  gap: 0.25rem var(--gutter);
   padding: 1.1rem var(--gutter);
   pointer-events: none;
 }
 .site-header > * {
   pointer-events: auto;
+}
+.site-header[data-nav="sections"] {
+  position: sticky;
+  inset: auto;
+  top: 0;
+  background: var(--background);
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
 }
 .flab-logo {
   display: inline-flex;
@@ -119,6 +140,50 @@ main:focus {
   width: 3.75rem;
   height: auto;
   display: block;
+}
+/*
+  The section pages' navigation. It carries the same four destinations the map
+  does, in the same reading order, in the same mono uppercase the destination
+  labels use — so it reads as the same navigation seen from a different place,
+  not as a second, unrelated menu. The current section is marked by the accent
+  dot as well as `aria-current`, so the state is not carried by colour alone.
+*/
+.site-nav ul {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem clamp(0.9rem, 2.2vw, 1.9rem);
+  padding: 0;
+  list-style: none;
+}
+.site-nav a {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  /*
+    2.8125rem rather than 2.75rem: the latter is exactly 44px only if the root
+    font size is exactly 16px, and a fractional root lands the target a hair under
+    the 44px minimum. This is the value the rest of the site's nav targets use.
+  */
+  min-height: 2.8125rem;
+  color: var(--muted-ink);
+  font: 500 0.72rem/1 var(--font-mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  text-decoration: none;
+}
+.site-nav a:hover {
+  color: var(--ink);
+}
+.site-nav a[aria-current="page"] {
+  color: var(--ink);
+}
+.site-nav a[aria-current="page"]::before {
+  content: "";
+  width: 0.3rem;
+  height: 0.3rem;
+  border-radius: 50%;
+  background: var(--accent);
 }
 nav {
   min-width: 0;
@@ -157,14 +222,31 @@ section {
 }
 .page-body {
   position: relative;
+  /* See `main` below: the page's content fills the viewport under the header. */
+  flex: 1;
+  display: flex;
+  flex-direction: column;
 }
 /*
-  Each lower section and the footer isolate their own stacking context, so
-  the local sparse-star layer (z-index: -1) paints above that section's
-  background but under its content.
+  A section page's content fills the viewport beneath the header. The footer that
+  used to close the page is gone, so without this a short section — Contact's band
+  is the clearest case — ends mid-viewport and leaves a dead strip of page
+  background under it.
 */
-.page-body > section,
-.site-footer {
+main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+.page-body > section {
+  flex: 1;
+}
+/*
+  Each lower section isolates its own stacking context, so the local sparse-star
+  layer (z-index: -1) paints above that section's background but under its
+  content.
+*/
+.page-body > section {
   position: relative;
   isolation: isolate;
 }
@@ -173,15 +255,6 @@ section {
   gap: 1rem;
   max-width: 52rem;
   margin-bottom: 3.5rem;
-}
-/*
-  A section page opens at the top of the document, and the header is fixed over
-  it, so the first block has to clear the wordmark. The generous section space
-  already does at most sizes; the floor covers the short viewports where 12vh
-  falls under the header's own height.
-*/
-.page-section > section {
-  padding-top: max(var(--section-space), 7.5rem);
 }
 .section-title {
   font-size: clamp(2.25rem, 5vw, 4.25rem);
@@ -277,9 +350,6 @@ h1 {
   display: grid;
   gap: 0;
 }
-.work-index > li {
-  border-top: 1px solid var(--rule);
-}
 .work-index article {
   display: grid;
   grid-template-columns: 3.5rem 1fr;
@@ -347,7 +417,6 @@ h1 {
   padding: 0;
 }
 .evidence-ledger > li {
-  border-top: 1px solid var(--rule);
   padding-bottom: 0.5rem;
 }
 .ledger-disclosure {
@@ -560,85 +629,12 @@ dd {
   text-underline-offset: 0.2em;
 }
 
-/* Footer: near-black plum, a thin violet top rule and one compact muted
-   row — a quiet close, not another tall section. The surface stays
-   full-bleed; an inner layout holds the readable measure. */
-.site-footer {
-  min-height: 6.25rem;
-  padding-block: 1.25rem;
-  background: var(--footer-bg);
-  border-top: 1px solid var(--footer-rule);
-  color: var(--muted-ink);
-  font: 600 0.875rem/1.6 var(--font-mono);
-  letter-spacing: 0.02em;
-}
-.footer-inner {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem 2rem;
-  max-width: 108rem;
-  margin-inline: auto;
-  padding-inline: var(--gutter);
-}
-.footer-identity {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.6rem;
-}
-.footer-sep {
-  color: color-mix(in srgb, var(--muted-ink) 55%, transparent);
-}
-/* The right group is the back-to-top link; the violet dash closes it. */
-.footer-top {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.75rem;
-  min-height: 2.75rem;
-  color: var(--muted-ink);
-  text-decoration: none;
-}
-.footer-top:hover .footer-note {
-  text-decoration: underline;
-  text-underline-offset: 0.25em;
-}
-.footer-dash {
-  width: 1.5rem;
-  height: 2px;
-  border-radius: 1px;
-  background: var(--accent);
-}
 /*
-  The static fallback route to the four sections. It sits outside
-  `.footer-inner` so the footer keeps its two-group shape, and it matches the
-  inner layout's constrained measure.
+  The footer is gone. It carried the same four labels the map already offers, so
+  on the opening the destinations appeared twice, and on a section page it was a
+  second row of mono text under an empty half-width — the navigation now lives in
+  the header, where it costs no vertical space and reads as page chrome.
 */
-.footer-nav {
-  max-width: 108rem;
-  margin: 0.75rem auto 0;
-  padding-inline: var(--gutter);
-  border-top: 1px solid color-mix(in srgb, var(--rule) 70%, transparent);
-}
-.footer-nav ul {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.25rem 1.75rem;
-  padding: 0;
-  list-style: none;
-}
-.footer-nav a {
-  display: inline-flex;
-  align-items: center;
-  min-height: 2.75rem;
-  color: var(--muted-ink);
-  text-decoration: none;
-}
-.footer-nav a:hover {
-  color: var(--ink);
-  text-decoration: underline;
-  text-underline-offset: 0.25em;
-}
 
 @media (min-width: 1700px) {
   /* The opening and the contact band are edge-to-edge, so the legacy
@@ -751,21 +747,48 @@ dd {
     width: 1.5rem;
     height: 1.5rem;
   }
-  .site-footer {
-    min-height: 0;
-    padding-block: 1.5rem;
-  }
-  .footer-inner {
-    gap: 0.5rem 1rem;
-  }
-  .footer-top {
-    min-height: 2.75rem;
-  }
+}
+
+/*
+  A rule is drawn rather than simply present: it is the line that introduces a
+  record, so it draws first and the content it introduces settles in behind it. It
+  is an element instead of a border because a border cannot be drawn.
+*/
+.reveal-rule {
+  display: block;
+  height: 1px;
+  background: var(--rule);
+  transform-origin: left center;
 }
 
 .motion [data-reveal] {
   opacity: 0;
   transform: translateY(1.25rem);
+}
+/*
+  Entrance variants: where each page's content starts from, and the single source
+  of truth for it. The motion module completes these to the identity, so a variant
+  cannot drift between the pre-paint state and the tween that follows it.
+
+  Each page arrives the way it reads. Work's index assembles from the left. The
+  ledger is recorded rather than travelled, so it only fades. The archive's
+  statement lies flat like a page settling. The contact paths converge from three
+  directions.
+*/
+.motion [data-reveal][data-enter="right"] {
+  transform: translateX(-1.25rem);
+}
+.motion [data-reveal][data-enter="left"] {
+  transform: translateX(1.25rem);
+}
+.motion [data-reveal][data-enter="settle"] {
+  transform: translateY(0.875rem) rotate(-1.2deg);
+}
+.motion [data-reveal][data-enter="fade"] {
+  transform: none;
+}
+.motion [data-rule] {
+  transform: scaleX(0);
 }
 /*
   Colour and surface only. `transform` is deliberately absent: gsap writes
@@ -782,7 +805,7 @@ dd {
   .text-link,
   .ledger-source a,
   #contact-path a,
-  .site-footer a {
+  .site-nav a {
     transition:
       color 180ms ease,
       background-color 180ms ease,

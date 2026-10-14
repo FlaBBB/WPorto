@@ -21,7 +21,8 @@
 -->
 <ol class="evidence-ledger" aria-label="Technical Profile evidence ledger">
   {#each records as record, index}
-    <li data-reveal>
+    <li data-reveal data-enter="fade">
+      <span class="reveal-rule" data-rule aria-hidden="true"></span>
       <details name="technical-profile" open={index === 0}>
         <summary class="ledger-disclosure" aria-label={`Evidence detail: ${record.capability}`}>
           <span class="ledger-number" aria-hidden="true">0{index + 1}</span>

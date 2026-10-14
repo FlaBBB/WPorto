@@ -14,7 +14,7 @@ import { projects } from "../lib/portfolio";
   metaDescription="Three public repositories by Fikri Muhammad Abdillah, with the source material open to inspection."
   path="/work/"
 >
-  <div class="page-body page-section">
+  <div class="page-body">
     <section id="selected-evidence" aria-labelledby="selected-evidence-heading">
       <SparseStars seed={2} client:load />
       <div class="work-layout">
@@ -29,7 +29,8 @@ import { projects } from "../lib/portfolio";
         </div>
         <ol class="work-index">
           {projects.map((project) => (
-            <li data-reveal>
+            <li data-reveal data-enter="right">
+              <span class="reveal-rule" data-rule aria-hidden="true"></span>
               <article aria-labelledby={`${project.id}-heading`}>
                 <p class="project-index" aria-hidden="true">{project.index}</p>
                 <div class="project-body">

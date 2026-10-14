@@ -756,6 +756,7 @@
                   <a
                     class="sculpture-star"
                     href={destination.href}
+                    style={`view-transition-name: star-${destination.label.toLowerCase()}`}
                     onclick={handleStarClick}
                     onpointerenter={() => (beaconHovered = index)}
                     onpointerleave={() => (beaconHovered = -1)}
