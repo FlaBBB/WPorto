@@ -196,6 +196,14 @@ test("makes the section navigation keyboard reachable", async ({ page }) => {
   ).toBeFocused();
   expect(await labels(headerNav)).toEqual(["Work", "Profile", "Archive", "Contact"]);
 
+  // The footer carries the same four destinations, so the header's list is never
+  // the only route to a section.
+  const footerNav = page.locator(".footer-nav");
+  expect(await labels(footerNav)).toEqual(["Work", "Profile", "Archive", "Contact"]);
+  await expect(
+    footerNav.getByRole("link", { name: "Contact", exact: true }),
+  ).toHaveAttribute("href", "#contact-path");
+
   // The four links are in-page anchors, so the header is the route to every
   // section for a visitor who already knows which one they want.
   const contactNav = headerNav.getByRole("link", { name: "Contact", exact: true });
@@ -263,15 +271,16 @@ for (const width of [320, 390, 768, 801, 1100, 1440]) {
       await page.evaluate(() => document.documentElement.scrollWidth),
     ).toBe(width);
 
-    // The header's section links are the navigation surface: they must stay
-    // inside the viewport with real touch targets.
-    const headerNav = page.locator(".site-nav");
-    await expect(headerNav).toBeVisible();
-    for (const link of await headerNav.getByRole("link").all()) {
-      const bounds = await link.boundingBox();
-      expect(bounds?.x).toBeGreaterThanOrEqual(0);
-      expect((bounds?.x ?? 0) + (bounds?.width ?? 0)).toBeLessThanOrEqual(width);
-      expect(bounds?.height).toBeGreaterThanOrEqual(44);
+    // Both navigation surfaces — the header's section links and the footer's —
+    // must stay inside the viewport with real touch targets.
+    for (const nav of [page.locator(".site-nav"), page.locator(".footer-nav")]) {
+      await expect(nav).toBeVisible();
+      for (const link of await nav.getByRole("link").all()) {
+        const bounds = await link.boundingBox();
+        expect(bounds?.x).toBeGreaterThanOrEqual(0);
+        expect((bounds?.x ?? 0) + (bounds?.width ?? 0)).toBeLessThanOrEqual(width);
+        expect(bounds?.height).toBeGreaterThanOrEqual(44);
+      }
     }
 
     for (const link of await page.locator("#contact-path a").all()) {
@@ -325,22 +334,24 @@ test("keeps the 320px labels inside the viewport with a wide system font", async
     .evaluate((el) => getComputedStyle(el).fontFamily);
   expect(applied).toContain("DejaVu Sans");
 
-  // No horizontal overflow, and the labels are retained and still fit.
+  // No horizontal overflow, and the labels are retained and still fit on both
+  // surfaces that carry them.
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(
     320,
   );
-  const headerNav = page.locator(".site-nav");
-  expect(
-    (await headerNav.getByRole("link").allTextContents()).map((label) =>
-      label.trim(),
-    ),
-  ).toEqual(["Work", "Profile", "Archive", "Contact"]);
-  for (const link of await headerNav.getByRole("link").all()) {
-    const box = await link.boundingBox();
-    expect(box?.x).toBeGreaterThanOrEqual(0);
-    expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(320);
-    // Targets stay at least 44px tall; the fix narrows the gap, not the targets.
-    expect(box?.height).toBeGreaterThanOrEqual(44);
+  for (const nav of [page.locator(".site-nav"), page.locator(".footer-nav")]) {
+    expect(
+      (await nav.getByRole("link").allTextContents()).map((label) =>
+        label.trim(),
+      ),
+    ).toEqual(["Work", "Profile", "Archive", "Contact"]);
+    for (const link of await nav.getByRole("link").all()) {
+      const box = await link.boundingBox();
+      expect(box?.x).toBeGreaterThanOrEqual(0);
+      expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(320);
+      // Targets stay at least 44px tall; the fix narrows the gap, not the targets.
+      expect(box?.height).toBeGreaterThanOrEqual(44);
+    }
   }
 });
 
@@ -828,6 +839,7 @@ test.describe("section refinement", () => {
       "#technical-profile",
       "#learning-archive",
       "#contact-path",
+      ".site-footer",
     ];
     // Read the same public DOM contract in one round trip; repeated protocol
     // reads can consume the entire test budget on a software-rendered browser.
@@ -853,10 +865,11 @@ test.describe("section refinement", () => {
     }
     // No canvas is used for the lower-page decoration.
     expect(await page.locator(".page-body canvas").count()).toBe(0);
+    expect(await page.locator(".site-footer canvas").count()).toBe(0);
 
     // Every star is inside its own section's painted box, and really visible.
     const bounds = await page.evaluate(() =>
-      [...document.querySelectorAll(".page-body > section")].map(
+      [...document.querySelectorAll(".page-body > section, .site-footer")].map(
         (section) => {
           const box = section.getBoundingClientRect();
           return [...section.querySelectorAll(".starfield .star")].map((star) => {
@@ -1229,6 +1242,72 @@ test.describe("section refinement", () => {
       /Fikri Muhammad Abdillah.*TypeScript.*public source material/,
     );
   });
+
+  test("matches the two-group footer reference and keeps the opening reachable", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.goto("/");
+
+    const year = new Date().getFullYear();
+    const footer = page.locator(".site-footer");
+    await expect(footer.locator(".footer-name")).toHaveText(
+      "Fikri Muhammad Abdillah",
+    );
+    await expect(footer.locator(".footer-copy")).toHaveText(`© ${year}`);
+    await expect(footer.locator(".footer-note")).toContainText("Still learning.");
+
+    // Exactly two groups: identity and the right-hand link.
+    const groups = footer.locator(".footer-inner > *");
+    await expect(groups).toHaveCount(2);
+
+    // The right group IS the link back to the opening, with the visible label kept
+    // in its accessible name (Label in Name) and a matching title.
+    const top = footer.locator(".footer-top");
+    await expect(top).toHaveAttribute("aria-label", "Back to the opening — Still learning.");
+    await expect(top).toHaveAttribute("title", "Back to the opening");
+    await expect(top).toContainText("Still learning.");
+    // No separate visible "Back to top" text group remains.
+    await expect(footer.getByText("Back to top", { exact: true })).toHaveCount(0);
+
+    // A thin violet rule on a near-black plum surface.
+    const rule = await footer.evaluate((el) => getComputedStyle(el).borderTopColor);
+    expect(rule).not.toBe("rgba(0, 0, 0, 0)");
+
+    const box = await top.boundingBox();
+    expect(box?.height).toBeGreaterThanOrEqual(44);
+
+    // The foot of the page is a long way from the opening now, so the link has to
+    // bring the visitor back to it rather than merely being present.
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    await expect
+      .poll(() => page.evaluate(() => window.scrollY))
+      .toBeGreaterThan(0);
+    await top.click();
+    await expect(page).toHaveURL(/#identity$/);
+    await expect
+      .poll(() => page.evaluate(() => window.scrollY))
+      .toBeLessThan(2);
+  });
+
+  test("keeps the footer rule full-bleed with a constrained inner layout", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1920, height: 1000 });
+    await page.goto("/");
+    const metrics = await page.evaluate(() => {
+      const footer = document.querySelector(".site-footer")!;
+      const inner = document.querySelector(".footer-inner")!;
+      return {
+        footerWidth: Math.round(footer.getBoundingClientRect().width),
+        innerWidth: Math.round(inner.getBoundingClientRect().width),
+        viewport: window.innerWidth,
+      };
+    });
+    // The surface spans the viewport; the readable measure is constrained.
+    expect(metrics.footerWidth).toBe(metrics.viewport);
+    expect(metrics.innerWidth).toBeLessThan(metrics.footerWidth);
+  });
 });
 
 for (const width of [1440, 1101, 1100, 700, 390, 320]) {
@@ -1245,6 +1324,11 @@ for (const width of [1440, 1101, 1100, 700, 390, 320]) {
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth),
     ).toBe(width);
+
+    // The name reaches the footer at every width.
+    await expect(page.locator(".footer-name")).toHaveText(
+      "Fikri Muhammad Abdillah",
+    );
 
     // The archive statement stays a multi-line block, not a single long line.
     const lines = await page.locator(".archive-statement").evaluate((el) => {

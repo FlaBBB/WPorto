@@ -1,13 +1,14 @@
 ---
 /**
- * The shell the page is built in: the document head, the header, and the motion
- * module.
+ * The shell the page is built in: the document head, the header, the footer, and
+ * the motion module.
  *
  * The site is one page, so the shell is written once and the page slots its
  * content in.
  */
+import SparseStars from "../components/SparseStars.svelte";
 import { FLAB_PATH, FLAB_FILL_RULE, FLAB_VIEWBOX } from "../lib/flabMark";
-import { description, sections } from "../lib/portfolio";
+import { description, ownerName, sections } from "../lib/portfolio";
 import "../styles/fonts.css";
 import "../styles/portfolio.css";
 
@@ -25,6 +26,7 @@ const {
 };
 
 const url = `https://flab.my.id${path}`;
+const year = new Date().getFullYear();
 ---
 
 <!doctype html>
@@ -96,6 +98,38 @@ const url = `https://flab.my.id${path}`;
     <main id="main-content" tabindex="-1">
       <slot />
     </main>
+
+    <footer class="site-footer">
+      <SparseStars seed={6} client:load />
+      <div class="footer-inner">
+        <p class="footer-identity">
+          <span class="footer-name">{ownerName}</span>
+          <span class="footer-sep" aria-hidden="true">·</span>
+          <span class="footer-copy">© {year}</span>
+        </p>
+        <!--
+          The right group is the link back to the opening itself, so there is no
+          third visible "Back to top" group. Its accessible name keeps the visible
+          "Still learning." label (Label in Name) while naming the destination.
+        -->
+        <a class="footer-top" href="#identity" aria-label="Back to the opening — Still learning." title="Back to the opening">
+          <span class="footer-note">Still learning.</span>
+          <span class="footer-dash" aria-hidden="true"></span>
+        </a>
+      </div>
+      <!--
+        The header's section links are the shortcut past the opening; this is the
+        same four destinations for a visitor who has already scrolled to the foot
+        of the page and would otherwise have to scroll back to the top for them.
+      -->
+      <nav class="footer-nav" aria-label="Portfolio sections">
+        <ul>
+          {sections.map(({ id, label }) => (
+            <li><a href={`#${id}`}>{label}</a></li>
+          ))}
+        </ul>
+      </nav>
+    </footer>
 
     <script>
       import { initPageMotion } from "../lib/pageMotion";
