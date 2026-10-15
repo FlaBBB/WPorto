@@ -31,14 +31,6 @@ body {
   color: var(--ink);
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
-  /*
-    A column with a viewport-minimum height, so the page's content can fill what is
-    left under the header. Without a definite height on this chain a short section
-    cannot stretch, and the fill below would do nothing.
-  */
-  min-height: 100dvh;
-  display: flex;
-  flex-direction: column;
 }
 h1,
 h2,
@@ -119,12 +111,15 @@ main:focus {
 .site-header > * {
   pointer-events: auto;
 }
-.site-header[data-nav="sections"] {
-  position: sticky;
-  inset: auto;
-  top: 0;
-  background: var(--background);
-  border-bottom: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+/*
+  Over the opening the bar is unbacked, so the sky reads through it. Once the
+  opening has scrolled away it sits over content instead, where an unbacked bar
+  would leave the wordmark and the section links floating over body text.
+*/
+.site-header[data-scrolled] {
+  background: color-mix(in srgb, var(--background) 88%, transparent);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 26%, transparent);
 }
 .flab-logo {
   display: inline-flex;
@@ -142,12 +137,13 @@ main:focus {
   display: block;
 }
 /*
-  The section pages' navigation. It carries the same four destinations the map
-  does, in the same reading order, in the same mono uppercase the destination
-  labels use — so it reads as the same navigation seen from a different place,
-  not as a second, unrelated menu. The current section is marked by the accent
-  dot as well as `aria-current`, so the state is not carried by colour alone.
+  The header's section links. They are a shortcut past the opening to a section the
+  visitor has already decided they want, in the same mono uppercase the eyebrows
+  use, so the bar reads as page chrome rather than as content.
 */
+.site-nav {
+  min-width: 0;
+}
 .site-nav ul {
   display: flex;
   flex-wrap: wrap;
@@ -175,71 +171,19 @@ main:focus {
 .site-nav a:hover {
   color: var(--ink);
 }
-.site-nav a[aria-current="page"] {
-  color: var(--ink);
-}
-.site-nav a[aria-current="page"]::before {
-  content: "";
-  width: 0.3rem;
-  height: 0.3rem;
-  border-radius: 50%;
-  background: var(--accent);
-}
-nav {
-  min-width: 0;
-}
-nav ul {
-  display: flex;
-  align-items: center;
-  gap: clamp(0.75rem, 2vw, 2rem);
-  padding: 0;
-  list-style: none;
-}
-nav a {
-  display: inline-flex;
-  align-items: center;
-  min-height: 2.8125rem;
-  white-space: nowrap;
-  color: var(--muted-ink);
-  font-size: 0.9375rem;
-  text-decoration: none;
-  transition: color 180ms ease;
-}
-nav a:hover {
-  color: var(--ink);
-}
 
 section {
   padding-block: var(--section-space);
   padding-inline: var(--gutter);
   /*
-    The header is transparent and fixed. Nothing on the site links to a section
-    by hash any more, but a link into a section page from elsewhere — an old
-    bookmark, a search result — still carries a fragment, and the heading it
-    lands on must clear the header.
+    The header is transparent and fixed over the page, so an anchor jump — the
+    header's own section links are the main one — must land the section's heading
+    clear of it rather than underneath the bar.
   */
   scroll-margin-top: 6rem;
 }
 .page-body {
   position: relative;
-  /* See `main` below: the page's content fills the viewport under the header. */
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-}
-/*
-  A section page's content fills the viewport beneath the header. The footer that
-  used to close the page is gone, so without this a short section — Contact's band
-  is the clearest case — ends mid-viewport and leaves a dead strip of page
-  background under it.
-*/
-main {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-}
-.page-body > section {
-  flex: 1;
 }
 /*
   Each lower section isolates its own stacking context, so the local sparse-star
@@ -365,7 +309,7 @@ h1 {
   gap: 1rem;
   min-width: 0;
 }
-.project-body h2 {
+.project-body h3 {
   font-size: clamp(1.75rem, 3.6vw, 2.75rem);
   font-weight: 600;
   line-height: 1.05;

@@ -2,11 +2,11 @@
  * The Portfolio Site's content.
  *
  * Everything a visitor reads, and every address they can follow, lives here so
- * the page composes markup instead of restating copy. The section destinations
- * come from `sectionMap`, because they are also the constellation's data.
+ * the page composes markup instead of restating copy. The section list comes from
+ * `sections`, because it is also the header navigation's data.
  */
 
-import { SECTION_DESTINATIONS } from "./sectionMap";
+import { SECTIONS } from "./sections";
 
 export const ownerName = "Fikri Muhammad Abdillah";
 
@@ -17,8 +17,8 @@ export const email = "f12345ff67@gmail.com";
 export const description =
   "Fikri Muhammad Abdillah’s Portfolio Site: explore TypeScript web and realtime projects, agentic SDLC tooling, and a security-learning archive through public source material.";
 
-/** The four section destinations, shared with the opening's section map. */
-export const sections = SECTION_DESTINATIONS;
+/** The four sections, shared with the header's section links. */
+export const sections = SECTIONS;
 
 export const profileRecords = [
   {

@@ -8,12 +8,6 @@ const repositoryUrls = {
   Cybers_security: "https://github.com/FlaBBB/Cybers_security",
 };
 
-/**
- * Every route the site serves. Each section is its own page, so a per-page
- * invariant is checked on each rather than on one long document.
- */
-const ROUTES = ["/", "/work/", "/profile/", "/archive/", "/contact/"];
-
 const profileRows = (page: Page) =>
   page
     .getByRole("list", { name: "Technical Profile evidence ledger" })
@@ -68,8 +62,7 @@ test.describe("static content without JavaScript", () => {
     await expect(page.locator(".sculpture-canvas")).toHaveCount(0);
     await expect(page.locator(".sculpture-control")).toHaveCount(0);
 
-    // The six reconciled capability records, with their limits, on Profile.
-    await page.goto("/profile/");
+    // The six reconciled capability records, with their limits.
     const rows = profileRows(page);
     await expect(rows).toHaveCount(6);
     await expect(rows.locator("summary .ledger-capability")).toHaveText(
@@ -103,10 +96,9 @@ test.describe("static content without JavaScript", () => {
       ).toHaveAttribute("href", repositoryUrls[project]);
     }
 
-    // The three real project records, on Work.
-    await page.goto("/work/");
+    // The three real project records.
     await expect(page.locator(".work-index > li")).toHaveCount(3);
-    await expect(page.locator(".work-index h2")).toHaveText([
+    await expect(page.locator(".work-index h3")).toHaveText([
       "WordyChain",
       "JMC",
       "harness-agentic-sdlc",
@@ -122,7 +114,6 @@ test.describe("static content without JavaScript", () => {
     }
 
     // The archive's CTFtime record and its own source link.
-    await page.goto("/archive/");
     await expect(
       page.getByRole("link", { name: /CTFtime/ }).first(),
     ).toHaveAttribute("href", "https://ctftime.org/user/156246");
@@ -166,8 +157,7 @@ test("publishes canonical metadata, the mark favicon, and direct Contact Paths",
   expect(icon.ok()).toBeTruthy();
   expect(icon.headers()["content-type"]).toContain("image/svg+xml");
 
-  // The Contact Paths are their own route now.
-  await page.goto("/contact/");
+  // The Contact Paths close the same document.
   const contact = page.locator("#contact-path");
   await expect(
     contact.getByRole("link", { name: "GitHub Inspect public work" }),
@@ -185,15 +175,15 @@ test("makes the section navigation keyboard reachable", async ({ page }) => {
   await page.goto("/");
 
   // The Skip to content link was removed, so the wordmark is the first tab stop
-  // and forward order continues into the opening's own section list.
+  // and forward order continues into the header's section links.
   await page.keyboard.press("Tab");
   await expect(
-    page.getByRole("link", { name: "flab — back to the opening" }),
+    page.getByRole("link", { name: "flab — back to the top" }),
   ).toBeFocused();
   await expect(page.getByRole("link", { name: "Skip to content" })).toHaveCount(0);
 
-  const map = page.locator(".sculpture-map");
-  const labels = (scope: typeof map) =>
+  const headerNav = page.locator(".site-nav");
+  const labels = (scope: typeof headerNav) =>
     scope
       .getByRole("link")
       .evaluateAll((links) =>
@@ -201,25 +191,20 @@ test("makes the section navigation keyboard reachable", async ({ page }) => {
       );
 
   await page.keyboard.press("Tab");
-  await expect(map.getByRole("link", { name: "Work", exact: true })).toBeFocused();
-  expect(await labels(map)).toEqual(["Work", "Profile", "Archive", "Contact"]);
-
-  // The opening carries no header navigation — there the map is the navigation —
-  // so the second route to a section lives in the header of a section page.
-  await expect(page.locator(".site-nav")).toHaveCount(0);
-
-  await map.getByRole("link", { name: "Contact", exact: true }).focus();
-  await page.keyboard.press("Enter");
-  await expect(page).toHaveURL(/\/contact\/$/);
-
-  // The header nav carries the same four destinations, so the opening's map is
-  // never the only route to a section.
-  const headerNav = page.locator(".site-nav");
-  expect(await labels(headerNav)).toEqual(["Work", "Profile", "Archive", "Contact"]);
   await expect(
-    headerNav.getByRole("link", { name: "Contact", exact: true }),
-  ).toHaveAttribute("aria-current", "page");
+    headerNav.getByRole("link", { name: "Work", exact: true }),
+  ).toBeFocused();
+  expect(await labels(headerNav)).toEqual(["Work", "Profile", "Archive", "Contact"]);
 
+  // The four links are in-page anchors, so the header is the route to every
+  // section for a visitor who already knows which one they want.
+  const contactNav = headerNav.getByRole("link", { name: "Contact", exact: true });
+  await expect(contactNav).toHaveAttribute("href", "#contact-path");
+  await contactNav.focus();
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/#contact-path$/);
+
+  // The jump lands the heading clear of the fixed header.
   const header = await page.locator(".site-header").boundingBox();
   const heading = await page.locator("#contact-path-heading").boundingBox();
   expect(heading?.y).toBeGreaterThanOrEqual(
@@ -231,10 +216,10 @@ test("makes the section navigation keyboard reachable", async ({ page }) => {
   await page.goto("/");
   const order = [
     page.locator(".flab-logo"),
-    map.getByRole("link", { name: "Work", exact: true }),
-    map.getByRole("link", { name: "Profile", exact: true }),
-    map.getByRole("link", { name: "Archive", exact: true }),
-    map.getByRole("link", { name: "Contact", exact: true }),
+    headerNav.getByRole("link", { name: "Work", exact: true }),
+    headerNav.getByRole("link", { name: "Profile", exact: true }),
+    headerNav.getByRole("link", { name: "Archive", exact: true }),
+    headerNav.getByRole("link", { name: "Contact", exact: true }),
     page.getByRole("link", { name: "Selected work" }),
   ];
   for (const [index, locator] of order.entries()) {
@@ -246,7 +231,7 @@ test("makes the section navigation keyboard reachable", async ({ page }) => {
 test("uses native keyboard disclosure without hiding sources", async ({
   page,
 }) => {
-  await page.goto("/profile/");
+  await page.goto("/");
   const rows = profileRows(page);
   await expect(rows.locator("details[open]")).toHaveCount(1);
   await expect(rows.first().locator("details")).toHaveAttribute("open", "");
@@ -277,24 +262,9 @@ for (const width of [320, 390, 768, 801, 1100, 1440]) {
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth),
     ).toBe(width);
-    // The opening's section map must stay inside the viewport with real touch
-    // targets.
-    const map = page.locator(".sculpture-map");
-    await expect(map).toBeVisible();
-    for (const link of await map.getByRole("link").all()) {
-      const bounds = await link.boundingBox();
-      expect(bounds?.x).toBeGreaterThanOrEqual(0);
-      expect((bounds?.x ?? 0) + (bounds?.width ?? 0)).toBeLessThanOrEqual(width);
-      expect(bounds?.height).toBeGreaterThanOrEqual(44);
-    }
 
-    const contactNav = map.getByRole("link", { name: "Contact" });
-    await contactNav.focus();
-    await page.keyboard.press("Enter");
-    await expect(page).toHaveURL(/\/contact\/$/);
-
-    // The header nav is the other navigation surface, on a section page: it too
-    // must stay inside the viewport with real touch targets.
+    // The header's section links are the navigation surface: they must stay
+    // inside the viewport with real touch targets.
     const headerNav = page.locator(".site-nav");
     await expect(headerNav).toBeVisible();
     for (const link of await headerNav.getByRole("link").all()) {
@@ -309,8 +279,7 @@ for (const width of [320, 390, 768, 801, 1100, 1440]) {
       expect((await link.boundingBox())?.height).toBeGreaterThanOrEqual(44);
     }
 
-    // The ledger keeps its touch targets on Profile.
-    await page.goto("/profile/");
+    // The ledger keeps its touch targets.
     const thirdRow = profileRows(page).nth(2);
     await thirdRow.locator("summary").click();
     await expect(thirdRow.locator(".ledger-details")).toBeVisible();
@@ -319,26 +288,15 @@ for (const width of [320, 390, 768, 801, 1100, 1440]) {
     ).toBeGreaterThanOrEqual(44);
 
     // The project names, the project copy and the contact heading never
-    // overflow their own column, each read on the page that owns it.
-    await page.goto("/work/");
-    const workOverflow = await page
-      .locator(".work-index h2, .work-index p")
+    // overflow their own column.
+    const overflow = await page
+      .locator(".work-index h3, .work-index p, #contact-path .section-title")
       .evaluateAll((elements) =>
         elements
           .filter((el) => el.scrollWidth > el.clientWidth + 1)
           .map((el) => el.textContent),
       );
-    expect(workOverflow).toEqual([]);
-
-    await page.goto("/contact/");
-    const headingOverflow = await page
-      .locator("#contact-path .section-title")
-      .evaluateAll((elements) =>
-        elements
-          .filter((el) => el.scrollWidth > el.clientWidth + 1)
-          .map((el) => el.textContent),
-      );
-    expect(headingOverflow).toEqual([]);
+    expect(overflow).toEqual([]);
   });
 }
 
@@ -346,52 +304,28 @@ test("keeps the 320px labels inside the viewport with a wide system font", async
   page,
 }) => {
   // DejaVu Sans is wider than the default stack and reproduced a real overflow
-  // at 320px before the mobile header gap was narrowed to 1rem. The two surfaces
-  // that carry the labels are the opening's section map and the header nav on a
-  // section page, so the same regression is checked on each.
+  // at 320px before the mobile header gap was narrowed to 1rem. The header's
+  // section links are the labels that carry it.
   await page.setViewportSize({ width: 320, height: 900 });
-  // Reduced motion keeps both label surfaces laid out in flow, which is the state
-  // where a wider face can actually push a label out of the viewport.
+  // Reduced motion keeps the labels laid out in flow, which is the state where a
+  // wider face can actually push a label out of the viewport.
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto("/");
   // The labels that can overflow at 320px are the monospace ones, so the wider
   // face is forced through the font variable they actually read.
-  const wideMono = {
+  await page.addStyleTag({
     content:
       'html { --font-mono: "DejaVu Sans", sans-serif !important; font-family: "DejaVu Sans", sans-serif !important; }',
-  };
-  await page.addStyleTag(wideMono);
+  });
   await page.waitForTimeout(300);
 
   const applied = await page
-    .locator(".sculpture-star-label")
+    .locator(".site-nav a")
     .first()
     .evaluate((el) => getComputedStyle(el).fontFamily);
   expect(applied).toContain("DejaVu Sans");
 
   // No horizontal overflow, and the labels are retained and still fit.
-  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(
-    320,
-  );
-  const map = page.locator(".sculpture-map");
-  expect(
-    (await map.getByRole("link").allTextContents()).map((label) =>
-      label.trim(),
-    ),
-  ).toEqual(["Work", "Profile", "Archive", "Contact"]);
-  for (const link of await map.getByRole("link").all()) {
-    const box = await link.boundingBox();
-    expect(box?.x).toBeGreaterThanOrEqual(0);
-    expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(320);
-    // Targets stay at least 44px tall; the fix narrows the gap, not the targets.
-    expect(box?.height).toBeGreaterThanOrEqual(44);
-  }
-
-  // The header nav carries the same four mono labels on a section page, so the
-  // wide-face regression is checked there too.
-  await page.goto("/contact/");
-  await page.addStyleTag(wideMono);
-  await page.waitForTimeout(300);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(
     320,
   );
@@ -405,6 +339,7 @@ test("keeps the 320px labels inside the viewport with a wide system font", async
     const box = await link.boundingBox();
     expect(box?.x).toBeGreaterThanOrEqual(0);
     expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(320);
+    // Targets stay at least 44px tall; the fix narrows the gap, not the targets.
     expect(box?.height).toBeGreaterThanOrEqual(44);
   }
 });
@@ -442,18 +377,22 @@ const contrastRatios = (page: Page, selector: string) =>
 test("keeps text contrast readable on the plum and violet surfaces", async ({
   page,
 }) => {
-  // The surfaces now live on different pages, so each is checked where it is
-  // painted; every ratio still has to clear 4.5:1.
+  // Every surface is on the one page, so each is checked where it is painted;
+  // every ratio still has to clear 4.5:1.
   const surfaces: [string, string][] = [
-    ["/", ".intro-note, .intro-link, nav a"],
-    ["/work/", ".section-intro"],
-    ["/profile/", ".section-intro, .ledger-qualification dd"],
-    ["/contact/", "#contact-path a"],
+    ["#intro", ".intro-note, .intro-link"],
+    ["#selected-evidence", "#selected-evidence .section-intro"],
+    [
+      "#technical-profile",
+      "#technical-profile .section-intro, .ledger-qualification dd",
+    ],
+    ["#contact-path", "#contact-path a"],
+    ["header", ".site-nav a"],
   ];
-  for (const [route, selector] of surfaces) {
-    await page.goto(route);
+  await page.goto("/");
+  for (const [surface, selector] of surfaces) {
     const contrast = await contrastRatios(page, selector);
-    expect(contrast.length, `${route} ${selector}`).toBeGreaterThan(0);
+    expect(contrast.length, `${surface} ${selector}`).toBeGreaterThan(0);
     for (const ratio of contrast) expect(ratio).toBeGreaterThanOrEqual(4.5);
   }
 });
@@ -496,7 +435,7 @@ for (const width of [1440, 1101, 1100, 700, 390, 320]) {
     page,
   }) => {
     await page.setViewportSize({ width, height: 1000 });
-    await page.goto("/contact/");
+    await page.goto("/");
     // Bring the contact band into view with native smooth scrolling disabled so
     // its reveal targets actually enter the viewport and settle before measuring.
     await page.evaluate(() => {
@@ -550,7 +489,7 @@ test("keeps a visible focus ring on the violet contact band", async ({
 }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.emulateMedia({ reducedMotion: "reduce" });
-  await page.goto("/contact/");
+  await page.goto("/");
 
   const links = page.locator("#contact-path a");
   await expect(links).toHaveCount(3);
@@ -629,11 +568,9 @@ test("loads the page and its local assets without browser errors", async ({
     if (response.status() >= 400)
       failedResponses.push(`${response.status()} ${response.url()}`);
   });
-  // Every route has to load its own bundle and local assets cleanly.
-  for (const route of ROUTES) await page.goto(route);
+  // The one page has to load its own bundle and local assets cleanly.
   await page.goto("/");
   await expect(page.locator(".sculpture-canvas")).toBeVisible();
-  await page.goto("/profile/");
   await page.locator("#technical-profile summary").nth(3).click();
   await expect(page.locator("#evidence-detail-3")).toBeVisible();
   expect(errors).toEqual([]);
@@ -645,7 +582,7 @@ test.describe("section refinement", () => {
     page,
   }) => {
     await page.setViewportSize({ width: 1440, height: 1000 });
-    await page.goto("/profile/");
+    await page.goto("/");
     await page.evaluate(() => {
       document.documentElement.style.scrollBehavior = "auto";
       document.querySelector("#technical-profile")?.scrollIntoView();
@@ -722,7 +659,7 @@ test.describe("section refinement", () => {
   }) => {
     await page.setViewportSize({ width: 1440, height: 1000 });
     await page.clock.install();
-    await page.goto("/profile/");
+    await page.goto("/");
     await page.waitForFunction(() => window.__afterHoursMotionReady);
     await openProfile(page);
 
@@ -796,7 +733,7 @@ test.describe("section refinement", () => {
     page,
   }) => {
     await page.setViewportSize({ width: 1440, height: 1000 });
-    await page.goto("/profile/");
+    await page.goto("/");
     await page.waitForFunction(() => window.__afterHoursMotionReady);
     await openProfile(page);
 
@@ -818,7 +755,7 @@ test.describe("section refinement", () => {
     // A reload retains the pointer; keep it outside the ledger so it cannot
     // hover-open another row and start closing the default row during setup.
     await page.mouse.move(2, 2);
-    await page.goto("/profile/");
+    await page.goto("/");
     await page.waitForFunction(() => window.__afterHoursMotionReady);
     await openProfile(page);
     const fresh = page.locator(".evidence-ledger details");
@@ -849,7 +786,7 @@ test.describe("section refinement", () => {
       viewport: { width: 393, height: 727 },
     });
     const page = await context.newPage();
-    await page.goto("/profile/");
+    await page.goto("/");
     await page.evaluate(() => {
       document.documentElement.style.scrollBehavior = "auto";
       document.querySelector("#technical-profile")?.scrollIntoView();
@@ -880,73 +817,70 @@ test.describe("section refinement", () => {
     page,
   }) => {
     await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.goto("/");
+    await page.waitForSelector(".starfield .star", { timeout: 10_000 });
 
-    // One local layer per section. Each section is its own page now, so the same
-    // public DOM contract is read on the page that owns the section.
-    const pages = [
-      { route: "/", sections: ["#intro"] },
-      { route: "/work/", sections: ["#selected-evidence"] },
-      { route: "/profile/", sections: ["#technical-profile"] },
-      { route: "/archive/", sections: ["#learning-archive"] },
-      { route: "/contact/", sections: ["#contact-path"] },
+    // One local layer per lower section, all in the one document, so the same
+    // public DOM contract is read for every section that carries it.
+    const sections = [
+      "#intro",
+      "#selected-evidence",
+      "#technical-profile",
+      "#learning-archive",
+      "#contact-path",
     ];
-    for (const { route, sections } of pages) {
-      await page.goto(route);
-      await page.waitForSelector(".starfield .star", { timeout: 10_000 });
+    // Read the same public DOM contract in one round trip; repeated protocol
+    // reads can consume the entire test budget on a software-rendered browser.
+    const layers = await page.evaluate((selectors) => selectors.map((selector) => {
+      const fields = document.querySelectorAll(`${selector} .starfield`);
+      const field = fields[0];
+      return {
+        selector,
+        count: fields.length,
+        ariaHidden: field?.getAttribute("aria-hidden"),
+        pointerEvents: field ? getComputedStyle(field).pointerEvents : null,
+        stars: field?.querySelectorAll(".star").length ?? 0,
+      };
+    }), sections);
+    for (const { selector, count, ariaHidden, pointerEvents, stars } of layers) {
+      expect(count, selector).toBe(1);
+      expect(ariaHidden, selector).toBe("true");
+      expect(pointerEvents, selector).toBe("none");
+      // A moderate budget per section: more presence than the first sparse pass,
+      // still far below the opening's full field.
+      expect(stars, selector).toBeGreaterThanOrEqual(4);
+      expect(stars, selector).toBeLessThanOrEqual(10);
+    }
+    // No canvas is used for the lower-page decoration.
+    expect(await page.locator(".page-body canvas").count()).toBe(0);
 
-      // Read the same public DOM contract in one round trip; repeated protocol
-      // reads can consume the entire test budget on a software-rendered browser.
-      const layers = await page.evaluate((selectors) => selectors.map((selector) => {
-        const fields = document.querySelectorAll(`${selector} .starfield`);
-        const field = fields[0];
-        return {
-          selector,
-          count: fields.length,
-          ariaHidden: field?.getAttribute("aria-hidden"),
-          pointerEvents: field ? getComputedStyle(field).pointerEvents : null,
-          stars: field?.querySelectorAll(".star").length ?? 0,
-        };
-      }), sections);
-      for (const { selector, count, ariaHidden, pointerEvents, stars } of layers) {
-        expect(count, `${route} ${selector}`).toBe(1);
-        expect(ariaHidden, `${route} ${selector}`).toBe("true");
-        expect(pointerEvents, `${route} ${selector}`).toBe("none");
-        // A moderate budget per section: more presence than the first sparse pass,
-        // still far below the opening's full field.
-        expect(stars, `${route} ${selector}`).toBeGreaterThanOrEqual(4);
-        expect(stars, `${route} ${selector}`).toBeLessThanOrEqual(10);
-      }
-      // No canvas is used for the lower-page decoration.
-      expect(await page.locator(".page-body canvas").count()).toBe(0);
-
-      // Every star is inside its own section's painted box, and really visible.
-      const bounds = await page.evaluate(() =>
-        [...document.querySelectorAll(".page-body > section")].map(
-          (section) => {
-            const box = section.getBoundingClientRect();
-            return [...section.querySelectorAll(".starfield .star")].map((star) => {
-              const rect = star.getBoundingClientRect();
-              return {
-                withinX: rect.left >= box.left - 2 && rect.right <= box.right + 2,
-                withinY: rect.top >= box.top - 2 && rect.bottom <= box.bottom + 2,
-                size: rect.width * rect.height,
-                opacity: Number(getComputedStyle(star).opacity),
-              };
-            });
-          },
-        ),
-      );
-      for (const sectionStars of bounds) {
-        for (const star of sectionStars) {
-          expect(star.withinX).toBe(true);
-          expect(star.withinY).toBe(true);
-          expect(star.size).toBeGreaterThan(0);
-          expect(star.opacity).toBeGreaterThan(0);
-        }
+    // Every star is inside its own section's painted box, and really visible.
+    const bounds = await page.evaluate(() =>
+      [...document.querySelectorAll(".page-body > section")].map(
+        (section) => {
+          const box = section.getBoundingClientRect();
+          return [...section.querySelectorAll(".starfield .star")].map((star) => {
+            const rect = star.getBoundingClientRect();
+            return {
+              withinX: rect.left >= box.left - 2 && rect.right <= box.right + 2,
+              withinY: rect.top >= box.top - 2 && rect.bottom <= box.bottom + 2,
+              size: rect.width * rect.height,
+              opacity: Number(getComputedStyle(star).opacity),
+            };
+          });
+        },
+      ),
+    );
+    for (const sectionStars of bounds) {
+      for (const star of sectionStars) {
+        expect(star.withinX).toBe(true);
+        expect(star.withinY).toBe(true);
+        expect(star.size).toBeGreaterThan(0);
+        expect(star.opacity).toBeGreaterThan(0);
       }
     }
 
-    // The glyph clock is the same component on every page, so its liveness is
+    // The glyph clock is the same component in every section, so its liveness is
     // asserted once rather than five times over.
     const stars = page.locator(".starfield .star");
     const before = await stars.evaluateAll((els) =>
@@ -961,8 +895,6 @@ test.describe("section refinement", () => {
       .not.toBe(before);
 
     // The contact surface uses plum stars.
-    await page.goto("/contact/");
-    await page.waitForSelector(".starfield .star", { timeout: 10_000 });
     const contactColor = await page
       .locator("#contact-path .starfield .star")
       .first()
@@ -1074,24 +1006,30 @@ test.describe("section refinement", () => {
     page,
   }) => {
     await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.goto("/");
 
     // Every body section keeps a substantial vertical rhythm (~12vh at 1000px).
-    // Each section is its own page now, so its space is read where it lives.
-    for (const [route, selector] of [
-      ["/", "#intro"],
-      ["/work/", "#selected-evidence"],
-      ["/archive/", "#learning-archive"],
-      ["/contact/", "#contact-path"],
-    ] as const) {
-      await page.goto(route);
+    for (const selector of [
+      "#intro",
+      "#selected-evidence",
+      "#learning-archive",
+      "#contact-path",
+    ]) {
       const padding = await page
         .locator(selector)
         .evaluate((el) => Number.parseFloat(getComputedStyle(el).paddingTop));
       expect(padding, selector).toBeGreaterThanOrEqual(100);
     }
 
+    // Bring the archive into view so its reveals settle before the statement and
+    // its aside are measured against each other.
+    await page.evaluate(() => {
+      document.documentElement.style.scrollBehavior = "auto";
+      document.querySelector("#learning-archive")?.scrollIntoView();
+    });
+    await page.waitForTimeout(400);
+
     // The archive copy is deliberately grouped, never one very long line.
-    await page.goto("/archive/");
     const lines = await page
       .locator(".archive-statement")
       .evaluate((el) => {
@@ -1126,7 +1064,7 @@ test.describe("section refinement", () => {
     page,
   }) => {
     await page.setViewportSize({ width: 1440, height: 1000 });
-    await page.goto("/contact/");
+    await page.goto("/");
     await page.evaluate(() => document.fonts.ready);
     await page.evaluate(() => {
       document.documentElement.style.scrollBehavior = "auto";
@@ -1155,7 +1093,7 @@ test.describe("section refinement", () => {
     page,
   }) => {
     await page.setViewportSize({ width: 1440, height: 1000 });
-    await page.goto("/work/");
+    await page.goto("/");
     await page.waitForFunction(() => window.__afterHoursMotionReady);
     await page.evaluate(() => document.fonts.ready);
 
@@ -1199,11 +1137,7 @@ test.describe("section refinement", () => {
     expect(Math.abs(second.introTop - pinnedTop)).toBeLessThan(2);
     expect(second.indexTop).toBeLessThan(first.indexTop);
 
-    // Past the section, the title column releases normally with the section. The
-    // work section is now the last content, so the page cannot scroll past its end:
-    // the release is only observable once the viewport is shorter than the title
-    // column itself, which lets the section's end rise above it as it scrolls off.
-    await page.setViewportSize({ width: 1440, height: 280 });
+    // Past the section, the title column releases normally with the section.
     await page.evaluate(() => {
       const el = document.querySelector("#selected-evidence")!;
       window.scrollTo(
@@ -1223,7 +1157,7 @@ test.describe("section refinement", () => {
 
   test("gives Let's talk. dominant, heavy, unclipped type", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 1000 });
-    await page.goto("/contact/");
+    await page.goto("/");
 
     const heading = page.locator("#contact-path-heading");
     const desktop = await heading.evaluate((el) => {
@@ -1300,22 +1234,19 @@ test.describe("section refinement", () => {
 for (const width of [1440, 1101, 1100, 700, 390, 320]) {
   test(`keeps the refined sections intact at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 1000 });
+    await page.goto("/");
+    await page.evaluate(() => {
+      document.documentElement.style.scrollBehavior = "auto";
+      window.scrollTo(0, document.documentElement.scrollHeight);
+    });
+    await page.waitForTimeout(500);
 
-    // No route overflows horizontally, even scrolled to its end.
-    for (const route of ROUTES) {
-      await page.goto(route);
-      await page.evaluate(() => {
-        document.documentElement.style.scrollBehavior = "auto";
-        window.scrollTo(0, document.documentElement.scrollHeight);
-      });
-      await page.waitForTimeout(500);
-      expect(
-        await page.evaluate(() => document.documentElement.scrollWidth),
-      ).toBe(width);
-    }
+    // No horizontal overflow, even scrolled to the end of the page.
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth),
+    ).toBe(width);
 
     // The archive statement stays a multi-line block, not a single long line.
-    await page.goto("/archive/");
     const lines = await page.locator(".archive-statement").evaluate((el) => {
       const range = document.createRange();
       range.selectNodeContents(el);
@@ -1323,24 +1254,20 @@ for (const width of [1440, 1101, 1100, 700, 390, 320]) {
     });
     expect(lines).toBeGreaterThanOrEqual(2);
 
-    // All six evidence records and three projects survive, each on its own page,
-    // with the three contact paths on the contact page.
-    await page.goto("/profile/");
+    // All six evidence records, three projects and three contact paths survive.
     await expect(page.locator(".evidence-ledger > li")).toHaveCount(6);
-    await page.goto("/work/");
     await expect(page.locator(".work-index > li")).toHaveCount(3);
     // The project names are display type, not the browser's default for their
-    // heading level. They were an h3 whose size came from a class rule, so
-    // promoting the level without carrying the rule over would silently drop
-    // them to a default and still pass every layout check here.
+    // heading level. They are an h3 again, so the rule has to name the h3: the
+    // level was demoted back from h2, and a rule left on the h2 would silently
+    // drop them to a default and still pass every layout check here.
     for (const size of await page
-      .locator(".work-index h2")
+      .locator(".work-index h3")
       .evaluateAll((els) =>
         els.map((el) => Number.parseFloat(getComputedStyle(el).fontSize)),
       )) {
       expect(size).toBeGreaterThanOrEqual(28);
     }
-    await page.goto("/contact/");
     await expect(page.locator("#contact-path a")).toHaveCount(3);
   });
 }

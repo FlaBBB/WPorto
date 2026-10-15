@@ -1,22 +1,18 @@
 ---
 /**
- * The shell every page shares: the document head, the fixed wordmark, the
- * section navigation, and the view transition between pages.
+ * The shell the page is built in: the document head, the header, and the motion
+ * module.
  *
- * The site is five pages — the opening at `/` and one page per section — and
- * they differ only in the content they slot in, so the shell lives here once
- * rather than being restated by each page. A view transition moves between them,
- * which is what keeps the moment of a destination click continuous instead of a
- * hard document swap.
+ * The site is one page, so the shell is written once and the page slots its
+ * content in.
  */
-import { ClientRouter } from "astro:transitions";
 import { FLAB_PATH, FLAB_FILL_RULE, FLAB_VIEWBOX } from "../lib/flabMark";
 import { description, sections } from "../lib/portfolio";
 import "../styles/fonts.css";
 import "../styles/portfolio.css";
 
 const {
-  /** The document title, which the section pages name themselves in. */
+  /** The document title. */
   title,
   /** The meta description; the site description by default. */
   metaDescription = description,
@@ -29,16 +25,6 @@ const {
 };
 
 const url = `https://flab.my.id${path}`;
-
-/**
- * The section this page serves, if it serves one.
- *
- * The opening serves none, so it carries no section navigation: there the map
- * *is* the navigation, and a bar of links would compete with the stars it exists
- * to reveal. A section page carries the four links, because a visitor who landed
- * on one has no map in front of them.
- */
-const current = sections.find((section) => section.href === path);
 ---
 
 <!doctype html>
@@ -58,13 +44,6 @@ const current = sections.find((section) => section.href === path);
     <meta name="twitter:description" content={metaDescription} />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="canonical" href={url} />
-    {/*
-      Moves between the five pages without a hard document swap, so the moment a
-      destination is chosen can stay continuous. See `src/lib/pageMotion.ts` for
-      what has to be re-wired per page once navigation no longer reloads the
-      document.
-    */}
-    <ClientRouter />
     <!--
       The variable sans is the only face above the fold (the wordmark, the opening
       heading), so it is preloaded to avoid a swap on the largest text. Fonts load
@@ -94,28 +73,24 @@ const current = sections.find((section) => section.href === path);
     </script>
   </head>
   <body>
-    <header class="site-header" data-nav={current ? "sections" : undefined}>
-      <a class="flab-logo" href="/" aria-label="flab — back to the opening">
+    <header class="site-header">
+      <a class="flab-logo" href="#identity" aria-label="flab — back to the top">
         <svg viewBox={`0 0 ${FLAB_VIEWBOX.width} ${FLAB_VIEWBOX.height}`} aria-hidden="true">
           <path d={FLAB_PATH} fill="currentColor" fill-rule={FLAB_FILL_RULE} />
         </svg>
       </a>
       {/*
-        The map is the opening's navigation and this is the section pages'. Each
-        page carries one route to every section, so a visitor who arrived on a
-        section page is never stranded there.
+        The four sections are one page now, so these are anchors rather than routes:
+        they are a shortcut past the opening to a section the visitor has already
+        decided they want, not the only way to reach it.
       */}
-      {current && (
-        <nav class="site-nav" aria-label="Portfolio sections">
-          <ul>
-            {sections.map(({ href, label }) => (
-              <li>
-                <a href={href} aria-current={href === path ? "page" : undefined}>{label}</a>
-              </li>
-            ))}
-          </ul>
-        </nav>
-      )}
+      <nav class="site-nav" aria-label="Portfolio sections">
+        <ul>
+          {sections.map(({ id, label }) => (
+            <li><a href={`#${id}`}>{label}</a></li>
+          ))}
+        </ul>
+      </nav>
     </header>
 
     <main id="main-content" tabindex="-1">
@@ -123,12 +98,29 @@ const current = sections.find((section) => section.href === path);
     </main>
 
     <script>
-      import { holdIncomingReveals, initPageMotion } from "../lib/pageMotion";
+      import { initPageMotion } from "../lib/pageMotion";
 
-      // The reveals of the page being navigated to are held before it paints, so
-      // the entrance is the reveal rather than a flash of settled content.
-      document.addEventListener("astro:before-swap", holdIncomingReveals);
       initPageMotion();
+
+      /*
+        The header is transparent over the opening, so the star field reads through
+        it with no container edge over the sky. Once the opening has scrolled away
+        it sits over content instead, where an unbacked bar would leave the wordmark
+        and the section links floating over body text.
+      */
+      const header = document.querySelector(".site-header");
+      const opening = document.getElementById("identity");
+      if (header && opening) {
+        const observer = new IntersectionObserver(
+          (entries) => {
+            const [entry] = entries;
+            if (!entry) return;
+            header.toggleAttribute("data-scrolled", !entry.isIntersecting);
+          },
+          { threshold: 0 },
+        );
+        observer.observe(opening);
+      }
     </script>
   </body>
 </html>

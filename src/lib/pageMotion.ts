@@ -1,11 +1,9 @@
 /**
  * The page motion module: reveals, link nudges, and the Evidence Ledger.
  *
- * The site is five pages and a view transition replaces the document's body
- * without re-running a bundled module, so none of this can live at module scope.
- * It is built per page and torn down before the next one is wired, which is what
- * keeps a navigation from leaving a previous page's observer, listeners or
- * timers behind.
+ * The page is one document, so this is built once at load. It is still a module
+ * rather than a block in the layout because the reveal, nudge and disclosure work
+ * is one coherent concern with its own teardown.
  */
 
 import gsap from "gsap";
@@ -85,17 +83,6 @@ const delayOf = (element: HTMLElement) => {
 };
 
 let page: Page | undefined;
-
-/**
- * The `<main>` element the current wiring belongs to.
- *
- * A view transition replaces this element, so comparing it is what tells a
- * re-wiring apart from a duplicate one. It is deliberately not an event flag:
- * whether `astro:page-load` fires before or after this module first runs depends
- * on bundling, and a flag that guesses wrong either skips a navigation's wiring
- * or wires the first page twice.
- */
-let wiredMain: Element | null = null;
 
 function settle(targets: HTMLElement[]) {
   // Cancel any in-flight reveal first: otherwise a running opacity/y tween
@@ -418,61 +405,22 @@ function buildPage(): Page {
   return current;
 }
 
-function teardownPage() {
-  if (!page) return;
-  stopMotion();
-  window.clearTimeout(page.hoverTimer);
-  for (const record of page.ledgerRecords) {
-    record.tween?.kill();
-    record.tween = undefined;
-  }
-  page = undefined;
-  wiredMain = null;
-}
-
-function initPage() {
-  const main = document.getElementById("main-content");
-  // Already wired for this document, so a repeated `astro:page-load` cannot add a
-  // second set of listeners to the same elements.
-  if (main && main === wiredMain) return;
-  teardownPage();
+/**
+ * Wire the page's motion.
+ *
+ * Called once, at load. Everything it registers is retained on `page` so the
+ * reduced-motion path can tear the animated half down and leave the page readable.
+ */
+export function initPageMotion() {
   page = buildPage();
-  wiredMain = main;
   syncMotionPreference();
   window.__afterHoursMotionReady = true;
 }
 
 /**
- * Wire the page, and re-wire it after every view-transition navigation.
- *
- * `astro:page-load` fires on the first load and after each navigation, so the one
- * listener covers every page. The direct call below wires this document even when
- * the router never runs; `initPage` makes the two paths idempotent.
- */
-export function initPageMotion() {
-  document.addEventListener("astro:page-load", () => initPage());
-  initPage();
-}
-
-/**
  * Follow a live preference change.
  *
- * Registered once at module scope rather than per page: the media query is
- * global, and a listener added per navigation would accumulate and re-settle the
- * same panels once per page visited.
+ * Registered at module scope rather than per page: the media query is global, and
+ * this is the one page.
  */
 motionQuery.addEventListener("change", syncMotionPreference);
-
-/**
- * Hold the incoming page's reveals before it paints.
- *
- * Without this the new page shows its settled content for a frame and only then
- * hides it to reveal it, which reads as a flicker. Only hold once the module is
- * running: if it never loaded, nothing would release the hold.
- */
-export function holdIncomingReveals(event: Event) {
-  const swap = event as Event & { newDocument?: Document };
-  if (!swap.newDocument) return;
-  if (!window.__afterHoursMotionReady || motionQuery.matches) return;
-  swap.newDocument.documentElement.classList.add("motion");
-}

@@ -1,11 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
 
-/**
- * Every route the site serves. Each section is its own page, so a per-page
- * invariant is checked on each rather than on one long document.
- */
-const ROUTES = ["/", "/work/", "/profile/", "/archive/", "/contact/"];
-
 type MotionState = { opacity: number; x: number; y: number };
 
 const motionState = (locator: ReturnType<Page["locator"]>) =>
@@ -77,28 +71,24 @@ const sweep = (page: Page) =>
 test("reveals every scroll target without leaving one stuck", async ({
   page,
 }) => {
-  // Five routes are swept frame by frame, so this is legitimately long on
-  // slower engines.
+  // The opening is a 2.25-viewport scroll scene, so the sweep is legitimately
+  // long on slower engines.
   test.slow();
   await page.setViewportSize({ width: 1440, height: 900 });
-  let total = 0;
-  for (const route of ROUTES) {
-    await page.goto(route);
-    total += await page.locator("[data-reveal]").count();
-    await sweep(page);
-    await expect
-      .poll(async () => unsettled(page), { timeout: 10_000 })
-      .toEqual([]);
-  }
-  // Every page carries reveals, so the sweep above was not vacuous.
-  expect(total).toBeGreaterThan(8);
+  await page.goto("/");
+  const count = await page.locator("[data-reveal]").count();
+  expect(count).toBeGreaterThan(8);
+  await sweep(page);
+  await expect
+    .poll(async () => unsettled(page), { timeout: 10_000 })
+    .toEqual([]);
 });
 
 test("settles targets already passed by a jump down the page", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
-  await page.goto("/profile/");
+  await page.goto("/");
   // A jump past the record list before its targets are observed, which is what
   // a restored scroll position or a deep landing looks like. The module must
   // settle whatever is already behind the viewport rather than leaving it
@@ -114,7 +104,7 @@ test("settles targets already passed by a jump down the page", async ({
 
 test("reveals promptly after a single instant scroll jump", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
-  await page.goto("/profile/");
+  await page.goto("/");
   await expect.poll(async () => unsettled(page)).toEqual([]);
 
   const elapsed = await page.evaluate(async () => {
@@ -152,7 +142,7 @@ test("reveals promptly after a single instant scroll jump", async ({ page }) => 
 
 test("shows a static complete page under reduced motion", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
-  await page.goto("/work/");
+  await page.goto("/");
   await expect(page.locator("html")).not.toHaveClass(/\bmotion\b/);
   expect(await unsettled(page)).toEqual([]);
   await expect(page.locator("h1")).toBeVisible();
@@ -206,19 +196,15 @@ test.describe("page motion without JavaScript", () => {
   test.use({ javaScriptEnabled: false });
 
   test("keeps every reveal target visible and unshifted", async ({ page }) => {
-    let total = 0;
-    for (const route of ROUTES) {
-      await page.goto(route);
-      await expect(page.locator("html")).not.toHaveClass(/\bmotion\b/);
-      const targets = page.locator("[data-reveal]");
-      const count = await targets.count();
-      total += count;
-      for (let index = 0; index < count; index += 1) {
-        await expect(targets.nth(index)).toHaveCSS("opacity", "1");
-        await expect(targets.nth(index)).toHaveCSS("transform", "none");
-      }
+    await page.goto("/");
+    await expect(page.locator("html")).not.toHaveClass(/\bmotion\b/);
+    const targets = page.locator("[data-reveal]");
+    const count = await targets.count();
+    expect(count).toBeGreaterThan(8);
+    for (let index = 0; index < count; index += 1) {
+      await expect(targets.nth(index)).toHaveCSS("opacity", "1");
+      await expect(targets.nth(index)).toHaveCSS("transform", "none");
     }
-    expect(total).toBeGreaterThan(8);
   });
 });
 
@@ -230,16 +216,44 @@ test("stops every overlapping reveal when reduced motion is requested", async ({
   // not decide whether the first reveal has finished before the second starts.
   await page.clock.install();
   await page.clock.pauseAt(new Date(Date.now() + 1000));
-  await page.goto("/work/");
+  await page.goto("/");
   await expect
     .poll(() => page.evaluate(() => Boolean(window.__afterHoursMotionReady)))
     .toBe(true);
 
-  // The work page delivers its heading, intro and project entries in one batch,
-  // and the batch is staggered, so the group's tweens genuinely overlap. Two of
-  // them stand in for the whole group.
+  // The work section delivers its heading and its first project entry in one
+  // batch, side by side, and the batch is staggered — so the group's tweens
+  // genuinely overlap. Two of them stand in for the whole group.
   const groupA = "#selected-evidence .section-title";
   const groupB = "#selected-evidence .work-index > li:first-child";
+  // The work section sits below the opening's scroll scene, so it has to be
+  // scrolled into range before its reveals can be delivered. Waiting on an
+  // observer rather than a fixed delay keeps the delivery itself, not the host's
+  // frame rate, in charge of when the group starts.
+  const intoView = (selector: string) =>
+    page.evaluate(
+      (selector) =>
+        new Promise<void>((resolve) => {
+          document.documentElement.style.scrollBehavior = "auto";
+          const target = document.querySelector(selector) as HTMLElement;
+          const observer = new IntersectionObserver(
+            (entries) => {
+              if (!entries.some((entry) => entry.isIntersecting)) return;
+              observer.disconnect();
+              resolve();
+            },
+            { rootMargin: "0px 0px -10% 0px" },
+          );
+          observer.observe(target);
+          window.scrollTo(
+            0,
+            target.getBoundingClientRect().top +
+              window.scrollY -
+              window.innerHeight * 0.5,
+          );
+        }),
+      selector,
+    );
   const read = () =>
     page.evaluate(
       (selectors) =>
@@ -254,7 +268,8 @@ test("stops every overlapping reveal when reduced motion is requested", async ({
       [groupA, groupB],
     );
 
-  // Include the first group's stagger, but stay within its 0.6s reveal.
+  await intoView(groupA);
+  // Include the batch's stagger, but stay within its 0.6s reveal.
   await page.clock.runFor(300);
   const [aMid, bMid] = await read();
 
