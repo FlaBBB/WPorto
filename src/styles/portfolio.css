@@ -275,166 +275,134 @@ h1 {
   text-decoration: underline;
 }
 
-/* Work: one adjoining gallery; the selected project makes room for its study. */
-#selected-evidence {
-  padding-block: clamp(4.5rem, 9vh, 6rem);
-}
+/* Editorial Preview: the left source study follows the right reading index. */
 .work-layout {
   display: grid;
-  gap: 1.5rem;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 2.5rem 4rem;
+  align-items: start;
 }
-.work-header {
-  display: flex;
-  align-items: end;
-  justify-content: space-between;
-  gap: 1rem 2rem;
+.work-intro {
+  position: sticky;
+  top: 6.5rem;
+  display: grid;
+  gap: 1.5rem;
 }
 .work-heading {
   display: grid;
   gap: 0.85rem;
 }
 .work-heading .section-title {
-  max-width: none;
+  max-width: 11ch;
 }
-.work-hint,
+.work-intro .section-intro {
+  max-width: 38ch;
+}
+.work-preview-stage,
 .work-preview-note {
-  color: var(--muted-ink);
-  font: 400 0.6875rem/1.6 var(--font-mono);
-}
-.work-hint {
-  padding-bottom: 0.35rem;
-}
-.work-hover-hint {
   display: none;
 }
-.work-gallery {
-  min-width: 0;
-  margin: 0;
-  padding: 0;
-  border: 0;
-}
-.work-panels {
-  display: flex;
-  min-height: clamp(35rem, 64vh, 41rem);
-  padding: 0;
-  list-style: none;
-  border: 1px solid #51464d;
-}
-.work-project {
-  --background: #211d25;
-  --surface: #29242b;
-  --ink: #eee8df;
-  --muted-ink: #b5aaa6;
-  --rule: #51464d;
-  --accent: #c7603d;
-  --accent-ink: #e0b69e;
+.work-preview-stage {
   position: relative;
-  display: flex;
-  flex: 1 1 0;
-  min-width: 0;
-  background: var(--background);
-  color: var(--ink);
-  container-type: inline-size;
+  /*
+     The pinned column is one viewport minus the space above it, so the study's
+     height is what the viewport leaves once the header offset, the heading and
+     the note below it are accounted for. That reserve is 26rem: 6.5rem of header
+     offset plus the widest heading and its note, which is 18.625rem at the
+     widest supported measure. Reserving less pushes the note past the fold at the
+     heights this layout is allowed to run at.
+
+     The stage is also the study's size container. Its height is the height the
+     study has to live in, so the study can tighten its own vertical rhythm from
+     that number instead of guessing from the viewport width.
+  */
+  height: clamp(19rem, calc(100dvh - 26rem), 28rem);
+  max-width: 42rem;
+  overflow: hidden;
+  container: study / size;
 }
-.work-project + .work-project {
-  border-left: 1px solid #51464d;
+.work-preview-panel {
+  position: absolute;
+  inset: 0;
 }
-.work-project:has(.work-choice:checked) {
-  --background: #eee8db;
-  --surface: #e5decf;
-  --ink: #251e1b;
-  --muted-ink: #6a5e55;
-  --rule: #c9bfae;
-  --accent-ink: #97412a;
-  flex-grow: 2.8;
-  color-scheme: light;
+/* In-flow studies sit in a reading column, so their plate stays quieter. */
+.work-inline-preview .project-preview {
+  --plate-opacity: 0.3;
 }
-.work-project article {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  min-width: 0;
-  padding: clamp(1.25rem, 2.3vw, 2.5rem);
+.work-inline-preview {
+  margin-block: 0.25rem;
 }
-.work-project-select {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  min-height: 2.8125rem;
-  margin-top: -0.5rem;
-  cursor: pointer;
+/* Short viewports use in-flow media too: the sticky heading and study must
+   never need more room than the viewport can provide. No-JS/reduced motion
+   retain a complete inline preview for every project.
+
+   The gate is `work-preview` alone, plus the motion preference. It deliberately
+   does not read `html.motion`: that class is the page-reveal module's, so gating
+   Work's geometry on it let an unrelated module's timing reformat this section —
+   a slow page module dropping the class would collapse the stage and move the
+   whole page, and then re-pin it when the module arrived. `work-preview` is
+   reserved before paint and released only by Work's own hold, so Work's layout
+   follows Work. Reduced motion is read from the media query, which is what the
+   preference actually is; a live change to it still falls back to the readable
+   in-flow studies. */
+@media (min-width: 901px) and (min-height: 740px) and (prefers-reduced-motion: no-preference) {
+  html.work-preview .work-preview-stage,
+  html.work-preview .work-preview-note {
+    display: block;
+  }
+  html.work-preview .work-inline-preview {
+    display: none;
+  }
 }
-.work-project-mark {
-  color: var(--muted-ink);
-  font: 300 1.75rem/1 var(--font-sans);
+.work-index {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 0;
+}
+.work-index article {
+  display: grid;
+  grid-template-columns: 3.5rem 1fr;
+  gap: 1rem 1.5rem;
+  min-height: 34rem;
+  padding: 2.25rem 0;
+}
+.work-index > li[data-active] .reveal-rule {
+  background: color-mix(in srgb, var(--accent) 60%, var(--rule));
 }
 .project-index {
   color: var(--muted-ink);
-  font: 500 0.75rem/1.6 var(--font-mono);
+  font: 500 0.875rem/1.6 var(--font-mono);
 }
-.work-project:has(.work-choice:checked) .project-index {
-  color: var(--accent-ink);
+.work-index > li[data-active] .project-index {
+  color: var(--accent);
 }
-.work-project:has(.work-choice:checked) .work-project-mark {
-  visibility: hidden;
+.project-body {
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+  /*
+    The record is taller than its content — the article reserves a minimum height
+    so the reading index has a rhythm — so the leftover space lands inside this
+    grid. With the default `align-content`, the grid's own rows absorb that space
+    and stretch, and the flex items inside a stretched row (the technology pills)
+    inherit the extra height: their text then sits at the top of a taller box
+    instead of centred in the pill. Packing the rows at their intrinsic size keeps
+    every pill exactly as tall as its own text, and leaves the spare height at the
+    end of the record where it belongs.
+  */
+  align-content: start;
 }
-.work-project:has(.work-choice:focus-visible) .work-project-head {
-  outline: 2px solid var(--accent-ink);
-  outline-offset: 6px;
-}
-.work-project h3 {
-  margin-block: 0.75rem 1rem;
-  font-size: clamp(1.5rem, 6.5cqi, 3.25rem);
+.project-body h3 {
+  font-size: clamp(1.75rem, 3.6vw, 2.75rem);
   font-weight: 600;
-  line-height: 1.08;
+  line-height: 1.05;
   letter-spacing: -0.035em;
   overflow-wrap: anywhere;
 }
-.work-project h3 label {
-  display: block;
-  min-height: 2.8125rem;
-  cursor: pointer;
-}
 .project-deck {
-  max-width: 33ch;
-  color: var(--muted-ink);
-  font: 400 0.8125rem/1.6 var(--font-mono);
-}
-.work-project-preview {
-  display: flex;
-  flex: 1;
-  min-width: 0;
-  margin-block: 0.75rem 1.5rem;
-}
-.work-project:not(:has(.work-choice:checked)) .project-link-name,
-.work-project:not(:has(.work-choice:checked)) .project-notes {
-  display: none;
-}
-.project-notes summary {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  min-height: 2.8125rem;
   color: var(--ink);
-  font: 400 0.6875rem/1.5 var(--font-mono);
-  list-style: none;
-  cursor: pointer;
-}
-.project-notes summary::-webkit-details-marker {
-  display: none;
-}
-.project-notes summary > span {
-  font-size: 1.25rem;
-}
-.project-notes[open] summary > span {
-  transform: rotate(45deg);
-}
-.project-notes-body {
-  display: grid;
-  gap: 1rem;
-  padding-block: 0.5rem 0.25rem;
+  font-size: 1.0625rem;
 }
 .project-structure {
   display: flex;
@@ -464,105 +432,25 @@ h1 {
   align-items: center;
   gap: 0.4rem;
   min-height: 2.8125rem;
-  margin-top: 0.5rem;
   color: var(--accent-ink);
-  align-self: start;
-  font-size: 0.8125rem;
-  overflow-wrap: anywhere;
+  justify-self: start;
 }
 .project-link:hover {
   text-decoration: underline;
 }
 .project-sources {
   display: grid;
-  border-top: 1px solid var(--rule);
+  justify-items: start;
+  gap: 0.1rem;
 }
 .preview-reference {
-  display: inline-flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
+  display: inline-block;
   min-height: 2.8125rem;
   max-width: 100%;
   padding-block: 0.75rem;
   color: var(--muted-ink);
   font: 400 0.6875rem/1.5 var(--font-mono);
   overflow-wrap: anywhere;
-}
-.work-project a:focus-visible,
-.work-project summary:focus-visible {
-  outline-color: var(--accent-ink);
-}
-@media (hover: hover) and (pointer: fine) {
-  .work-hover-hint {
-    display: inline;
-  }
-  .work-touch-hint {
-    display: none;
-  }
-}
-/* This three-panel accordion intentionally changes real width, not text scale.
-   Only pointer changes ease; keyboard and reduced motion select immediately. */
-@media (min-width: 901px) and (prefers-reduced-motion: no-preference) {
-  .work-layout[data-input="pointer"] .work-project {
-    transition: flex-grow 280ms cubic-bezier(0.32, 0.72, 0, 1), background-color 180ms ease, color 180ms ease;
-  }
-}
-@media (max-width: 900px) {
-  .work-header {
-    align-items: start;
-    flex-direction: column;
-    gap: 0.75rem;
-  }
-  .work-panels {
-    flex-direction: column;
-    min-height: 0;
-  }
-  .work-project + .work-project {
-    border-top: 1px solid #51464d;
-    border-left: 0;
-  }
-  .work-project article {
-    padding: 1.5rem;
-  }
-  .work-project-head {
-    position: relative;
-  }
-  .work-project-select {
-    margin: 0;
-  }
-  .work-project h3 {
-    margin-block: 0.35rem 1rem;
-    font-size: clamp(1.75rem, 5.5cqi, 2.75rem);
-  }
-  .work-project:not(:has(.work-choice:checked)) .work-project-head {
-    display: grid;
-    grid-template-columns: 2rem minmax(0, 1fr);
-    align-items: center;
-    gap: 0.75rem;
-    padding-right: 2rem;
-  }
-  .work-project:not(:has(.work-choice:checked)) .work-project-mark {
-    position: absolute;
-    right: 0;
-  }
-  .work-project:not(:has(.work-choice:checked)) h3 {
-    margin: 0;
-    font-size: clamp(1.125rem, 4cqi, 1.5rem);
-  }
-  .work-project:not(:has(.work-choice:checked)) h3 label {
-    display: flex;
-    align-items: center;
-  }
-  .work-project:not(:has(.work-choice:checked)) .project-deck,
-  .work-project:not(:has(.work-choice:checked)) .project-link,
-  .work-project:not(:has(.work-choice:checked)) .work-project-preview,
-  .work-project:not(:has(.work-choice:checked)) .project-sources {
-    display: none;
-  }
-  .work-project-preview {
-    min-height: 17rem;
-  }
 }
 
 /* Writing: the newest entries, with a plate that changes as the feed is read. */
@@ -1643,6 +1531,7 @@ html[data-contact-resizing] {
   }
 }
 @media (max-width: 900px) {
+  .work-layout,
   .intro-layout,
   .archive-layout,
   .writing-grid {
@@ -1657,6 +1546,12 @@ html[data-contact-resizing] {
   }
   .archive-statement {
     max-width: 34ch;
+  }
+  .work-intro {
+    position: static;
+  }
+  .work-intro .section-intro {
+    max-width: 48ch;
   }
   .writing-plate-frame {
     position: static;
@@ -1724,6 +1619,10 @@ html[data-contact-resizing] {
   .ledger-details,
   .ledger-source {
     padding-left: 2.25rem;
+  }
+  .work-index article {
+    grid-template-columns: 2.25rem 1fr;
+    gap: 0.5rem 1rem;
   }
   .contact-paths {
     grid-template-columns: 1fr;
