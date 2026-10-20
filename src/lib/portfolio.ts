@@ -17,7 +17,7 @@ export const email = "f12345ff67@gmail.com";
 export const description =
   "Fikri Muhammad Abdillah’s Portfolio Site: explore TypeScript web and realtime projects, agentic SDLC tooling, and a security-learning archive through public source material.";
 
-/** The four sections, shared with the header's section links. */
+/** The page's sections, shared with the header's section links. */
 export const sections = SECTIONS;
 
 export const profileRecords = [
@@ -97,6 +97,11 @@ export const profileRecords = [
   },
 ];
 
+/**
+ * Each project carries an `image`, the plate behind its source study. It is
+ * atmosphere rather than evidence: the study stays the thing a visitor reads,
+ * and the plate is duotoned into the page so it never competes with it.
+ */
 export const projects = [
   {
     id: "wordychain",
@@ -106,9 +111,19 @@ export const projects = [
     structureLabel: "Visible WordyChain packages",
     structure: ["web", "realtime", "shared", "dictionary", "game-core"],
     copy: "Public project structure separates realtime, web, shared, dictionary, and game-core packages; unit-flow, end-to-end, and package-level test directories are visible.",
-    scopeNote:
-      "Repository structure is evidence of visible project organization, not a claim of exclusive authorship.",
     href: "https://github.com/FlaBBB/WordyChain",
+    image: "/images/work/wordychain.webp",
+    preview: {
+      kind: "boundaries" as const,
+      label: "Documented package boundaries",
+      source: "AGENTS.md",
+      href: "https://github.com/FlaBBB/WordyChain/blob/HEAD/AGENTS.md#L9-L11",
+      packages: [
+        { name: "game-core", responsibility: "Gameplay state transitions" },
+        { name: "dictionary", responsibility: "Loading & normalization" },
+        { name: "shared", responsibility: "Client/server protocol schemas" },
+      ],
+    },
   },
   {
     id: "jmc",
@@ -118,9 +133,17 @@ export const projects = [
     structureLabel: "Documented JMC stack",
     structure: ["Next.js", "TypeScript", "PostgreSQL", "Prisma", "Docker"],
     copy: "JMC documents a Next.js and TypeScript application with PostgreSQL/Prisma, NextAuth.js, Tailwind CSS, Bun, Docker, and sandboxed multi-language code execution.",
-    scopeNote:
-      "This describes JMC’s documented stack. It does not assert individual authorship or proficiency; its README says the project was written by AI.",
     href: "https://github.com/FlaBBB/JMC",
+    image: "/images/work/jmc.webp",
+    preview: {
+      kind: "compose" as const,
+      label: "Documented local Compose stack",
+      source: "docker-compose.yml",
+      href: "https://github.com/FlaBBB/JMC/blob/HEAD/docker-compose.yml#L3-L23",
+      port: "3000",
+      services: ["judgemycode-app", "judgemycode-db"],
+      database: "postgres:15-alpine",
+    },
   },
   {
     id: "harness",
@@ -130,8 +153,32 @@ export const projects = [
     structureLabel: "Documented harness-agentic-sdlc surface",
     structure: ["TypeScript", "CLI", "YAML workflows", "Mission Control", "JSON output"],
     copy: "A repository-local harness publishes a request-to-deploy lifecycle with structured workflows, approval and CI evidence, a Mission Control projection for multi-feature work, and machine-readable output.",
-    scopeNote:
-      "This describes the project’s documented capabilities, not verified personal authorship or production adoption.",
     href: "https://github.com/FlaBBB/harness-agentic-sdlc",
+    image: "/images/work/harness.webp",
+    preview: {
+      kind: "lifecycle" as const,
+      label: "Documented delivery lifecycle",
+      source: "README.md",
+      href: "https://github.com/FlaBBB/harness-agentic-sdlc/blob/HEAD/README.md#L21-L28",
+      steps: [
+        "request",
+        "classify",
+        "workflow",
+        "inspect",
+        "plan/specify",
+        "approve",
+        "implement",
+        "validate",
+        "review",
+        "CI",
+        "deployment approval",
+        "deploy",
+        "verify",
+        "complete",
+      ],
+    },
   },
 ];
+
+/** A Work entry, including its source-derived visual rather than a mock UI. */
+export type Project = (typeof projects)[number];

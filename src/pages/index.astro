@@ -10,6 +10,7 @@ import EvidenceLedger from "../components/EvidenceLedger.svelte";
 import FlabSculpture from "../components/FlabSculpture.svelte";
 import SectionHeading from "../components/SectionHeading.svelte";
 import SparseStars from "../components/SparseStars.svelte";
+import WorkShowcase from "../components/WorkShowcase.svelte";
 import WritingShowcase from "../components/WritingShowcase.svelte";
 import Portfolio from "../layouts/Portfolio.astro";
 import {
@@ -79,37 +80,7 @@ const LINKEDIN_ICON =
 
     <section id="selected-evidence" aria-labelledby="selected-evidence-heading">
       <SparseStars seed={2} client:load />
-      <div class="work-layout">
-        <div class="work-intro">
-          <SectionHeading
-            index="01"
-            label="Work"
-            headingId="selected-evidence-heading"
-            title="Look inside the work."
-            intro="Three public repositories. Different systems, with the source material open to inspection."
-          />
-        </div>
-        <ol class="work-index">
-          {projects.map((project) => (
-            <li data-reveal data-enter="right">
-              <span class="reveal-rule" data-rule aria-hidden="true"></span>
-              <article aria-labelledby={`${project.id}-heading`}>
-                <p class="project-index" aria-hidden="true">{project.index}</p>
-                <div class="project-body">
-                  <h3 id={`${project.id}-heading`}>{project.name}</h3>
-                  <p class="project-deck">{project.deck}</p>
-                  <div class="project-structure" aria-label={project.structureLabel}>
-                    {project.structure.map((item) => <span>{item}</span>)}
-                  </div>
-                  <p class="project-copy">{project.copy}</p>
-                  <p class="scope-note">{project.scopeNote}</p>
-                  <a class="project-link" href={project.href}>Source: {project.name} <span aria-hidden="true">↗</span></a>
-                </div>
-              </article>
-            </li>
-          ))}
-        </ol>
-      </div>
+      <WorkShowcase projects={projects} client:load />
     </section>
 
     <section id="writing" aria-labelledby="writing-heading">

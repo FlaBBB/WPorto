@@ -80,7 +80,7 @@ const year = new Date().getFullYear();
       href="/fonts/schibsted-grotesk-var.woff2"
       crossorigin
     />
-    <script is:inline>
+    <script is:inline define:vars={{ home: isHome }}>
       (function () {
         var root = document.documentElement;
         var reduced = false;
@@ -90,9 +90,122 @@ const year = new Date().getFullYear();
           reduced = false;
         }
         if (!reduced) root.classList.add("motion");
+        /*
+          The Work section's editorial preview reserves its geometry before paint,
+          so the document is the same height whether or not the Work module has
+          hydrated: a deep link lands where it was aimed, and nothing below the
+          fold moves under the visitor.
+
+          If the module has not confirmed itself by the end of the hold, the
+          reservation is released and the section becomes the readable in-flow
+          layout. That changes the document's height, so a visitor who is already
+          in or past the section would have the page reformat under them; their
+          reading position is restored across the release. A visitor above the
+          section sees nothing move, because the change is below them.
+        */
+        if (!reduced && home) root.classList.add("work-preview");
         window.setTimeout(function () {
           if (!window.__afterHoursMotionReady) root.classList.remove("motion");
+          if (!home) return;
+          if (window.__workPreviewReady) return;
+          var anchor = readingAnchor();
+          root.classList.remove("work-preview");
+          if (!anchor || !anchor.node.isConnected) return;
+          /*
+            The correction is applied twice. The first pass runs immediately, in the
+            same task as the class change, so the frame the new layout is painted in
+            is already corrected and the visitor never sees an uncorrected frame. The
+            passes after it cover an engine that finishes that layout later than the
+            style change, which would otherwise leave the correction measured against
+            the old geometry. They run before their frame is painted, and they are
+            no-ops once the anchor is back where it was.
+          */
+          var apply = function () {
+            if (!anchor.node.isConnected) return;
+            var moved = anchor.node.getBoundingClientRect().top - anchor.top;
+            if (!moved) return;
+            try {
+              window.scrollTo({ top: window.scrollY + moved, behavior: "instant" });
+            } catch (error) {
+              window.scrollTo(0, window.scrollY + moved);
+            }
+          };
+          apply();
+          requestAnimationFrame(function () {
+            apply();
+            requestAnimationFrame(apply);
+          });
         }, 2000);
+
+        /*
+          The unit the visitor is reading, which is the thing whose place on the
+          screen has to survive the release.
+
+          Inside Work the release reflows the records themselves — the in-flow
+          study appears between a record's deck and its copy — so the unit is the
+          line of content the reading line has reached, not the record around it.
+          The section's own heading is deliberately not eligible: it sits in a
+          sticky column, so it is pinned in place and says nothing about how far the
+          visitor has read.
+
+          The point is sampled across the line rather than taken at the exact
+          centre, because the centre of this two-column section is its gutter, where
+          no element's box contains the point at all. Below Work the sections do not
+          reflow, so the section the line is in is enough. A visitor above Work sees
+          nothing move, because the whole change is below them.
+        */
+        function readingAnchor() {
+          var line = window.innerHeight * 0.35;
+          var fractions = [0.5, 0.35, 0.65, 0.25, 0.75, 0.15, 0.85];
+          for (var f = 0; f < fractions.length; f += 1) {
+            var x = Math.round(window.innerWidth * fractions[f]);
+            var node = document.elementFromPoint(x, Math.round(line));
+            if (!node || node === document.body || node === document.documentElement) continue;
+            // Descend to the innermost element that still contains the point, and
+            // when the point falls in a gap between children — a grid gutter, a
+            // margin — take the child nearest the line rather than stopping at the
+            // container. Stopping at the container would anchor on something whose
+            // top is far above the line, and correcting against that leaves the text
+            // the visitor is on wherever it fell.
+            for (;;) {
+              var deeper = null;
+              var nearest = Infinity;
+              for (var i = 0; i < node.children.length; i += 1) {
+                var child = node.children[i];
+                var box = child.getBoundingClientRect();
+                if (box.height <= 0 || box.left > x || box.right <= x) continue;
+                if (box.top <= line && box.bottom > line) {
+                  deeper = child;
+                  break;
+                }
+                var gap = box.top > line ? box.top - line : line - box.bottom;
+                if (gap < nearest) {
+                  nearest = gap;
+                  deeper = child;
+                }
+              }
+              if (!deeper) break;
+              node = deeper;
+            }
+            // The pinned column and the study are both things whose place on the
+            // screen does not mean "where the visitor is reading".
+            if (node.closest(".work-intro") || node.closest(".work-preview-stage")) continue;
+            // A container as tall as the viewport is a column or a section, not a
+            // line of content, so it cannot say where the visitor is either.
+            if (node.getBoundingClientRect().height >= window.innerHeight * 0.6) continue;
+            return { node: node, top: node.getBoundingClientRect().top };
+          }
+          var sections = document.querySelectorAll(
+            "#intro, #selected-evidence, #writing, #technical-profile, #learning-archive, #contact-path, .site-footer",
+          );
+          for (var s = 0; s < sections.length; s += 1) {
+            var sectionBox = sections[s].getBoundingClientRect();
+            if (sectionBox.top <= line && sectionBox.bottom > line) {
+              return { node: sections[s], top: sectionBox.top };
+            }
+          }
+          return null;
+        }
       })();
     </script>
   </head>
