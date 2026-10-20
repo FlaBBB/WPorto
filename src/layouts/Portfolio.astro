@@ -160,25 +160,6 @@ const year = new Date().getFullYear();
       import { initPageMotion } from "../lib/pageMotion";
 
       initPageMotion();
-      /*
-        The header is transparent over the opening, so the star field reads through
-        it with no container edge over the sky. Once the opening has scrolled away
-        it sits over content instead, where an unbacked bar would leave the wordmark
-        and the section links floating over body text.
-      */
-      const header = document.querySelector(".site-header");
-      const opening = document.getElementById("identity");
-      if (header && opening) {
-        const observer = new IntersectionObserver(
-          (entries) => {
-            const [entry] = entries;
-            if (!entry) return;
-            header.toggleAttribute("data-scrolled", !entry.isIntersecting);
-          },
-          { threshold: 0 },
-        );
-        observer.observe(opening);
-      }
     </script>
   </body>
 </html>

@@ -90,17 +90,11 @@ main:focus {
 
 /* Header */
 /*
-  The opening's header is fixed rather than sticky: the opening is one full
-  viewport, so the header overlays the stage instead of pushing it down. It
-  carries no background and no blur, so the star field reads straight through it
-  and no container edge is ever drawn over the sky. The bar itself ignores
-  pointer events, and the wordmark takes them back, so the rest of the opening
-  stays clickable.
-
-  A section page scrolls, so its header sticks instead: it takes its own space in
-  the flow and then holds at the top, which keeps the wordmark and the section
-  links legible over moving content without a spacer or a padding guess, and
-  without a bar ever being drawn over the opening's sky.
+  The fixed header overlays the opening without pushing it down. Keep its
+  semi-transparent backing and blur in every section, including the opening:
+  removing the lane border must not leave the wordmark and links unbacked.
+  The bar itself ignores pointer events; its children take them back so the
+  surrounding stage stays clickable.
 */
 .site-header {
   position: fixed;
@@ -112,20 +106,12 @@ main:focus {
   justify-content: space-between;
   gap: 0.25rem var(--gutter);
   padding: 1.1rem var(--gutter);
+  background: color-mix(in srgb, var(--background) 88%, transparent);
+  backdrop-filter: blur(10px);
   pointer-events: none;
 }
 .site-header > * {
   pointer-events: auto;
-}
-/*
-  Over the opening the bar is unbacked, so the sky reads through it. Once the
-  opening has scrolled away it sits over content instead, where an unbacked bar
-  would leave the wordmark and the section links floating over body text.
-*/
-.site-header[data-scrolled] {
-  background: color-mix(in srgb, var(--background) 88%, transparent);
-  backdrop-filter: blur(10px);
-  border-bottom: 1px solid color-mix(in srgb, var(--accent) 26%, transparent);
 }
 .flab-logo {
   display: inline-flex;

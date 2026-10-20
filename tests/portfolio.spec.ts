@@ -1318,6 +1318,47 @@ test.describe("section refinement", () => {
     expect(metrics.footerWidth).toBe(metrics.viewport);
     expect(metrics.innerWidth).toBeLessThan(metrics.footerWidth);
   });
+
+  for (const width of [1440, 390]) {
+    test(`keeps the header translucent and borderless at ${width}px`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width, height: 1000 });
+      await page.goto("/");
+      const header = page.locator(".site-header");
+
+      // The backing must survive entry, body content, and returning to the top;
+      // neither a missing nor a fully opaque background satisfies this contract.
+      for (const id of ["identity", "technical-profile", "identity"]) {
+        await page.evaluate((sectionId) => {
+          document.documentElement.style.scrollBehavior = "auto";
+          const section = document.getElementById(sectionId)!;
+          window.scrollTo(0, section.getBoundingClientRect().top + window.scrollY);
+        }, id);
+        const painted = await header.evaluate((el) => {
+          const style = getComputedStyle(el);
+          const background = style.backgroundColor;
+          // CSSOM can serialize color-mix as color(srgb ... / alpha) or rgba().
+          const alpha = /\/\s*([\d.]+)\s*\)$/.exec(background) ??
+            /^rgba\([^,]+,[^,]+,[^,]+,\s*([\d.]+)\s*\)$/.exec(background);
+          return {
+            alpha: alpha ? Number(alpha[1]) : 1,
+            backdrop: style.backdropFilter,
+            borderBottomWidth: style.borderBottomWidth,
+            borderBottomStyle: style.borderBottomStyle,
+          };
+        });
+
+        expect(painted.alpha, `${id}: a visible backing`).toBeGreaterThan(0);
+        expect(painted.alpha, `${id}: still semi-transparent`).toBeLessThan(1);
+        expect(painted.backdrop, `${id}: retain the blur`).toContain("blur(");
+        expect(
+          painted.borderBottomWidth === "0px" || painted.borderBottomStyle === "none",
+          `${id}: no bottom lane rule`,
+        ).toBe(true);
+      }
+    });
+  }
 });
 
 for (const width of [1440, 1101, 1100, 700, 390, 320]) {
