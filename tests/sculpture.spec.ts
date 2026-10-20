@@ -88,7 +88,6 @@ type Metrics = {
   gather: number;
   motion: string;
   collapsed: string;
-  map: string;
   tether: number;
 };
 
@@ -112,38 +111,47 @@ const metrics = (page: Page): Promise<Metrics> =>
       gather: Number(sculpture.dataset.gather),
       motion: sculpture.dataset.motion ?? "",
       collapsed: sculpture.dataset.collapsed ?? "",
-      map: sculpture.dataset.map ?? "",
       tether: Number(sculpture.dataset.tether ?? 0),
     };
   });
 
 /**
- * The drawn pose settles on its own clock, so a test waits for the published
- * gather rather than assuming a frame count.
+ * Scroll to a fraction of the scene's scrub length and return the pose the
+ * component published for that position.
+ *
+ * The stage sticks for `scene - sticky` px of scroll, and the mark is broken apart
+ * across exactly that distance, so a fraction of the scrub length is a position in
+ * the gesture. The pose itself is read back rather than predicted: the component
+ * computes it from the scroll position on the next frame, so this waits two frames
+ * and reports what it actually published. That keeps the tests independent of how
+ * the component maps scroll to pose — a test asserts the pose it observed, so a
+ * wrong mapping fails instead of being mirrored.
+ *
+ * The scroll is forced instant so the wait measures the pose rather than the
+ * stylesheet's smooth-scroll animation.
  */
-const settlePose = async (page: Page, target: number) =>
-  page.waitForFunction(
-    (value) =>
-      Math.abs(
-        Number(
-          document.querySelector<HTMLElement>(".sculpture")!.dataset.gather,
-        ) - value,
-      ) < 0.002,
-    target,
-    { timeout: 6000 },
-  );
+const scrollToPose = async (page: Page, fraction: number) =>
+  page.evaluate(async (value) => {
+    const scene = document.querySelector<HTMLElement>(".sculpture-scene")!;
+    const sticky = document.querySelector<HTMLElement>(".sculpture-sticky")!;
+    const el = document.querySelector<HTMLElement>(".sculpture")!;
+    const total = scene.offsetHeight - sticky.offsetHeight;
+    window.scrollTo({ top: total * value, behavior: "instant" });
+    const frame = () =>
+      new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    // The scroll listener computes the pose in the frame it is queued for.
+    await frame();
+    await frame();
+    return Number(el.dataset.gather);
+  }, fraction);
 
-/** Activate the mark the way a visitor does, and wait for the scatter to settle. */
-const openMap = async (page: Page) => {
-  await page.locator(".sculpture-control").click();
-  await settlePose(page, 0);
-  await page.waitForSelector('.sculpture[data-map="open"]', { timeout: 6000 });
-};
-
-/** Reform the mark from the keyboard, which is the documented way back. */
-const closeMap = async (page: Page) => {
-  await page.keyboard.press("Escape");
-  await settlePose(page, 1);
+/**
+ * The painted frame at the middle of the scatter. It is reached by scrolling
+ * halfway through the scene rather than by racing a transition.
+ */
+const sampleMidScatter = async (page: Page) => {
+  await scrollToPose(page, 0.5);
+  return main(page);
 };
 
 /** The live magnetic pull, in whole px, as the component publishes it. */
@@ -222,20 +230,20 @@ const expectStableMark = (before: Painted, after: Painted) => {
   expectAlignedProfile(before.profileY, after.profileY);
 };
 
-test.describe("After Hours section map", () => {
+test.describe("After Hours opening scene", () => {
   test.use({ viewport: { width: 1280, height: 800 } });
 
-  test("gathers the exact mark in a full-viewport opening that scroll never moves", async ({
-    page,
-  }) => {
+  test("gathers the exact mark in a full-viewport opening", async ({ page }) => {
     await hydrate(page);
     const start = await metrics(page);
 
-    // The opening is exactly one viewport and is no longer a scroll scene, so
-    // there is no scroll length left to scrub and no sticky spacer to leave.
+    // The opening is a scroll scene: the stage is one viewport and sticks inside
+    // a scene 2.25 viewports tall, so the visitor's own scroll scrubs the mark
+    // apart across the extra length. At the very top it is fully assembled.
     expect(start.gather).toBe(1);
-    expect(start.map).toBe("closed");
-    expect(Math.abs(start.scene - start.vh)).toBeLessThan(2);
+    expect(Math.abs(start.scene - start.vh * 2.25)).toBeLessThan(
+      start.vh * 0.02,
+    );
     expect(Math.abs(start.sticky - start.vh)).toBeLessThan(2);
     expect(Math.abs(start.fieldH - start.vh)).toBeLessThan(2);
     expect(Math.abs(start.fieldW - start.vw)).toBeLessThan(2);
@@ -249,28 +257,43 @@ test.describe("After Hours section map", () => {
     const aspect = gathered.width / gathered.height;
     expect(Math.abs(aspect - MARK_ASPECT) / MARK_ASPECT).toBeLessThan(0.3);
 
-    // The page scrolls natively past the opening, and scrolling it never drives
-    // the mark: the pose is the same before and after.
-    await page.evaluate(() => {
-      document.documentElement.style.scrollBehavior = "auto";
-      window.scrollTo(0, window.innerHeight * 0.6);
-    });
-    await page.waitForTimeout(400);
-    expect((await metrics(page)).gather).toBe(1);
-
-    await page.evaluate(() => window.scrollTo(0, 0));
-    await page.waitForTimeout(400);
-    expect((await metrics(page)).gather).toBe(1);
-    expectStableMark(gathered, await main(page));
+    // The scene is taller than the viewport, but the document scrolls normally
+    // past it: native scroll is the only input, and nothing locks the visitor in.
+    await page.mouse.move(start.vw / 2, start.vh / 2);
+    await page.mouse.wheel(0, 1400);
+    await page.waitForTimeout(500);
+    expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
   });
 
-  test("scatters on activation and reforms, leaving no letter silhouette", async ({
+  test("breaks the mark apart as the scene is scrubbed in, and reforms it coming back", async ({
+    page,
+  }) => {
+    await hydrate(page);
+    expect((await metrics(page)).gather).toBe(1);
+
+    const poses: number[] = [];
+    for (const fraction of [0.15, 0.3, 0.45, 0.6, 0.8, 1]) {
+      poses.push(await scrollToPose(page, fraction));
+    }
+    // Gather only ever falls as the scene is scrubbed in, and reaches fully
+    // scattered by the end of the scrub length.
+    for (let index = 1; index < poses.length; index += 1) {
+      expect(poses[index]).toBeLessThan(poses[index - 1]);
+    }
+    expect(poses[poses.length - 1]).toBe(0);
+
+    // Scrolling back to the top reforms the mark exactly.
+    await scrollToPose(page, 0);
+    expect((await metrics(page)).gather).toBe(1);
+  });
+
+  test("scatters through the scene and reforms, leaving no letter silhouette", async ({
     page,
   }) => {
     await hydrate(page);
     const gathered = await main(page);
 
-    await openMap(page);
+    await scrollToPose(page, 1);
     expect((await metrics(page)).gather).toBe(0);
 
     const scattered = await main(page);
@@ -309,9 +332,8 @@ test.describe("After Hours section map", () => {
       });
     for (const count of corners) expect(count).toBeGreaterThan(10);
 
-    await closeMap(page);
+    await scrollToPose(page, 0);
     expect((await metrics(page)).gather).toBe(1);
-    expect((await metrics(page)).map).toBe("closed");
     expectStableMark(gathered, await main(page));
   });
 
@@ -319,23 +341,9 @@ test.describe("After Hours section map", () => {
     await hydrate(page);
     const gathered = await main(page);
 
-    // Sample the transition itself, from the published pose rather than a
-    // frame count, so a slow or fast host does not decide what is captured.
-    await page.locator(".sculpture-control").click();
-    await page.waitForFunction(
-      () =>
-        Number(
-          document.querySelector<HTMLElement>(".sculpture")!.dataset.gather,
-        ) > 0.3 &&
-        Number(
-          document.querySelector<HTMLElement>(".sculpture")!.dataset.gather,
-        ) < 0.8,
-      undefined,
-      { timeout: 6000 },
-    );
-    const midPainted = await main(page);
+    const midPainted = await sampleMidScatter(page);
 
-    await settlePose(page, 0);
+    await scrollToPose(page, 1);
     const scattered = await main(page);
 
     // The three drawn states are genuinely different poses, not the same frame
@@ -348,153 +356,8 @@ test.describe("After Hours section map", () => {
     expect(scattered.alphaSum).not.toBe(midPainted.alphaSum);
 
     // Reforming returns the centered mark; glyphs keep rotating.
-    await closeMap(page);
+    await scrollToPose(page, 0);
     expectStableMark(gathered, await main(page));
-  });
-
-  test("opens and closes from the mark itself, and from empty sky", async ({
-    page,
-  }) => {
-    await hydrate(page);
-    const control = page.locator(".sculpture-control");
-    await expect(control).toHaveAttribute("aria-expanded", "false");
-    await expect(control).toHaveAttribute("aria-label", "Open the section map");
-
-    await control.click();
-    await settlePose(page, 0);
-    await expect(control).toHaveAttribute("aria-expanded", "true");
-    await expect(control).toHaveAttribute("aria-label", "Close the section map");
-
-    // Activating the mark again reforms it.
-    await control.click();
-    await settlePose(page, 1);
-    await expect(control).toHaveAttribute("aria-expanded", "false");
-
-    // A click on empty sky reforms it too, and leaves the control live.
-    await control.click();
-    await settlePose(page, 0);
-    await page.mouse.click(40, 720);
-    await settlePose(page, 1);
-    expect((await metrics(page)).map).toBe("closed");
-    await expect(control).toHaveAttribute("aria-expanded", "false");
-  });
-
-  test("keeps every destination star still, reachable and in reading order", async ({
-    page,
-  }) => {
-    await hydrate(page);
-    const map = page.locator(".sculpture-map");
-    await expect(map).toBeHidden();
-    await openMap(page);
-    await expect(map).toBeVisible();
-
-    const stars = page.locator(".sculpture-star");
-    await expect(stars).toHaveCount(4);
-    expect(
-      await stars.evaluateAll((els) => els.map((el) => el.textContent?.trim())),
-    ).toEqual(["✦ Work", "✦ Profile", "✦ Archive", "✦ Contact"]);
-
-    // Every star is a real target of at least 44x44, and the anchors run left to
-    // right so the tab order matches the visual order.
-    const boxes = await stars.evaluateAll((els) =>
-      els.map((el) => {
-        const box = el.getBoundingClientRect();
-        return { x: box.x, width: box.width, height: box.height };
-      }),
-    );
-    for (const box of boxes) {
-      expect(box.width).toBeGreaterThanOrEqual(44);
-      expect(box.height).toBeGreaterThanOrEqual(44);
-    }
-    for (let index = 1; index < boxes.length; index += 1) {
-      expect(boxes[index].x).toBeGreaterThan(boxes[index - 1].x);
-    }
-
-    // Hovering brightens and enlarges the inner glyph. The anchor — the thing the
-    // visitor is aiming at — must not move.
-    const first = stars.first();
-    const glyph = first.locator(".sculpture-star-glyph");
-    const anchorBefore = (await first.boundingBox())!;
-    const glyphBefore = (await glyph.boundingBox())!;
-    await first.hover();
-    await expect
-      .poll(async () => (await glyph.boundingBox())!.width)
-      .toBeGreaterThan(glyphBefore.width + 0.5);
-    const anchorAfter = (await first.boundingBox())!;
-    expect(Math.abs(anchorAfter.x - anchorBefore.x)).toBeLessThan(1);
-    expect(Math.abs(anchorAfter.y - anchorBefore.y)).toBeLessThan(1);
-    // The breath pauses on hover, so the star is exactly where it was committed.
-    await expect(glyph).toHaveCSS("animation-play-state", "paused");
-  });
-
-  test("takes no pointer events while the stars are still flying", async ({
-    page,
-  }) => {
-    await hydrate(page);
-    // The opening phase is brief, so it is recorded from inside the page rather
-    // than raced from the outside.
-    await page.evaluate(() => {
-      const stage = document.querySelector<HTMLElement>(".sculpture")!;
-      const seen: { phase: string; pointerEvents: string }[] = [];
-      (window as unknown as { __phases: typeof seen }).__phases = seen;
-      const record = () =>
-        seen.push({
-          phase: stage.dataset.map ?? "",
-          pointerEvents: getComputedStyle(
-            document.querySelector(".sculpture-star")!,
-          ).pointerEvents,
-        });
-      record();
-      new MutationObserver(record).observe(stage, {
-        attributes: true,
-        attributeFilter: ["data-map"],
-      });
-    });
-
-    await page.locator(".sculpture-control").click();
-    await page.waitForSelector('.sculpture[data-map="open"]', { timeout: 6000 });
-
-    const seen = await page.evaluate(
-      () => (window as unknown as { __phases: { phase: string; pointerEvents: string }[] }).__phases,
-    );
-    const opening = seen.find((entry) => entry.phase === "opening");
-    const open = seen.find((entry) => entry.phase === "open");
-    // While the stars are flying they must not accept a click...
-    expect(opening?.pointerEvents).toBe("none");
-    // ...and once they settle they must.
-    expect(open?.pointerEvents).toBe("auto");
-  });
-
-  test("hands keyboard focus to the section heading it navigates to", async ({
-    page,
-  }) => {
-    await hydrate(page);
-    const control = page.locator(".sculpture-control");
-    await control.focus();
-    await page.keyboard.press("Enter");
-    await settlePose(page, 0);
-    await page.waitForSelector('.sculpture[data-map="open"]', { timeout: 6000 });
-
-    // Forward tabbing from the control that opened the map reaches the four
-    // destinations in order.
-    const stops: string[] = [];
-    for (let index = 0; index < 4; index += 1) {
-      await page.keyboard.press("Tab");
-      stops.push(
-        (await page.evaluate(() => document.activeElement?.textContent?.trim())) ??
-          "",
-      );
-    }
-    expect(stops).toEqual(["✦ Work", "✦ Profile", "✦ Archive", "✦ Contact"]);
-
-    await page.keyboard.press("Enter");
-    await page.waitForURL(/#contact-path$/);
-    await expect(page.locator("#contact-path-heading")).toBeFocused();
-    const heading = (await page.locator("#contact-path-heading").boundingBox())!;
-    const header = (await page.locator(".site-header").boundingBox())!;
-    // The transparent fixed header must not cover the landing.
-    expect(heading.y).toBeGreaterThanOrEqual(header.y + header.height - 1);
-    await expect(control).toHaveAttribute("aria-expanded", "false");
   });
 
   test("does not intercept wheel input", async ({ page }) => {
@@ -539,6 +402,8 @@ test.describe("After Hours section map", () => {
     // Deliberately slow: the pull only responds to a pointer that is not being
     // thrown across the screen, so the test has to move in small, paced steps.
     test.slow();
+    // The pull is the assembled mark leaning toward the pointer, so it only
+    // exists near the top of the page where the mark is still whole.
     await hydrate(page);
     const centre = await page.locator(".sculpture-field").evaluate((el) => {
       const box = el.getBoundingClientRect();
@@ -579,10 +444,11 @@ test.describe("After Hours section map", () => {
     page,
   }) => {
     await hydrate(page);
-    await openMap(page);
+    await scrollToPose(page, 1);
 
     await page.setViewportSize({ width: 390, height: 844 });
     await page.waitForTimeout(600);
+    await scrollToPose(page, 1);
     const small = await metrics(page);
     expect(Math.abs(small.fieldW - 390)).toBeLessThan(2);
     expect(small.docW).toBe(390);
@@ -590,11 +456,12 @@ test.describe("After Hours section map", () => {
 
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.waitForTimeout(600);
+    await scrollToPose(page, 1);
     const restored = await metrics(page);
     expect(Math.abs(restored.fieldH - restored.vh)).toBeLessThan(2);
     expect(restored.gather).toBe(0);
 
-    await closeMap(page);
+    await scrollToPose(page, 0);
     expect((await metrics(page)).gather).toBe(1);
     expect((await main(page)).spanX).toBeLessThan(0.62);
   });
@@ -625,7 +492,7 @@ test.describe("After Hours sculpture geometry", () => {
     expect(gathered.count).toBeGreaterThan(200);
     expect((await metrics(page)).fieldW).toBe(3840);
 
-    await openMap(page);
+    await scrollToPose(page, 1);
     const scattered = await main(page, 4);
     expect(scattered.count).toBeGreaterThan(200);
     expect(scattered.spanX).toBeGreaterThan(0.8);
@@ -727,7 +594,7 @@ test.describe("After Hours sculpture geometry", () => {
 });
 
 test.describe("After Hours sculpture fallbacks", () => {
-  test("collapses to a static mark and a plain section list under reduced motion", async ({
+  test("collapses to a static mark and plain section links under reduced motion", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
@@ -739,12 +606,11 @@ test.describe("After Hours sculpture fallbacks", () => {
     await expect(page.locator(".sculpture-canvas")).toHaveCount(0);
     await expect(page.locator("html")).not.toHaveClass(/\bmotion\b/);
 
-    // Without a canvas there is nothing to scatter, so the four destinations must
-    // still be an ordinary, clickable list.
-    const stars = page.locator(".sculpture-star");
-    await expect(stars).toHaveCount(4);
-    await expect(stars.first()).toHaveCSS("visibility", "visible");
-    await expect(page.locator(".sculpture-map")).toHaveCSS("position", "static");
+    // Without a canvas there is nothing to scatter, so the four sections must
+    // still be ordinary, reachable links — now the header's section list.
+    const links = page.locator(".site-nav a");
+    await expect(links).toHaveCount(4);
+    await expect(links.first()).toHaveCSS("visibility", "visible");
     // No control is rendered, because there is nothing to open.
     await expect(page.locator(".sculpture-control")).toHaveCount(0);
 
@@ -754,8 +620,10 @@ test.describe("After Hours sculpture fallbacks", () => {
     expect(view.scene).toBeLessThan(view.vh);
     expect(view.stickyTop).toBeGreaterThanOrEqual(0);
 
-    await stars.nth(3).click();
+    // The last link still lands the visitor on its section.
+    await links.nth(3).click();
     await expect(page).toHaveURL(/#contact-path$/);
+    await expect(page.locator("#contact-path-heading")).toBeInViewport();
   });
 
   test("shows the static mark, its section links, and content without JavaScript", async ({
@@ -769,12 +637,13 @@ test.describe("After Hours sculpture fallbacks", () => {
     await page.goto("/");
     await expect(page.locator(".flab-mark svg")).toBeVisible();
     await expect(page.locator(".sculpture-canvas")).toHaveCount(0);
-    await expect(page.locator(".work-index > li")).toHaveCount(3);
+    await expect(page.locator(".intro-link")).toHaveCount(1);
 
-    // The destinations are in the served HTML, not built by the bundle.
+    // The section links are in the served HTML, not built by the bundle, and each
+    // one anchors to its section on the same page.
     expect(
       await page
-        .locator(".sculpture-star")
+        .locator(".site-nav a")
         .evaluateAll((els) => els.map((el) => el.getAttribute("href"))),
     ).toEqual([
       "#selected-evidence",
@@ -789,6 +658,9 @@ test.describe("After Hours sculpture fallbacks", () => {
       vh: window.innerHeight,
     }));
     expect(view.scene).toBeLessThan(view.vh);
+
+    // The sections themselves still serve their content without the bundle.
+    await expect(page.locator(".work-index > li")).toHaveCount(3);
     await context.close();
   });
 
@@ -809,7 +681,7 @@ test.describe("After Hours sculpture fallbacks", () => {
     await expect(page.locator(".flab-mark svg")).toBeVisible();
     await expect(page.locator(".sculpture-canvas")).toHaveCount(0);
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
-    await expect(page.locator("#contact-path a")).toHaveCount(3);
+    await expect(page.locator(".intro-link")).toHaveCount(1);
     await expect(page.locator(".sculpture-control")).toHaveCount(0);
 
     const view = await page.evaluate(() => ({
@@ -837,19 +709,15 @@ test.describe("After Hours sculpture fallbacks", () => {
     });
     await page.waitForTimeout(400);
 
-    // Open the map first: the preference change must reset the stage to a
+    // Scatter the mark first: the preference change must reset the stage to a
     // complete mark rather than leaving a half-scattered cloud behind.
-    await openMap(page);
-    await expect(page.locator(".sculpture-control")).toHaveAttribute(
-      "aria-expanded",
-      "true",
-    );
+    await scrollToPose(page, 1);
+    expect((await metrics(page)).gather).toBe(0);
 
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.waitForTimeout(500);
     const reduced = await metrics(page);
     expect(reduced.motion).toBe("off");
-    expect(reduced.map).toBe("closed");
     expect(reduced.gather).toBe(1);
     expect(reduced.scene).toBeLessThan(reduced.vh);
     await expect(page.locator(".sculpture-control")).toHaveCount(0);
@@ -859,15 +727,13 @@ test.describe("After Hours sculpture fallbacks", () => {
       timeout: 10_000,
     });
     await page.waitForTimeout(600);
+    // Back at the top of the reformed scene, the mark is whole again.
+    await scrollToPose(page, 0);
     const restored = await metrics(page);
     expect(restored.motion).toBe("on");
     expect(restored.gather).toBe(1);
     expect(Math.abs(restored.sticky - restored.vh)).toBeLessThan(2);
     expect((await main(page)).count).toBeGreaterThan(200);
-    await expect(page.locator(".sculpture-control")).toHaveAttribute(
-      "aria-expanded",
-      "false",
-    );
   });
 
   test("keeps drawing when the page-reveal module is aborted", async ({

@@ -20,41 +20,25 @@
     GLYPHS,
     starColor,
   } from "../lib/stars";
-  import {
-    beaconPosition,
-    type MapPhase,
-    type SectionDestination,
-  } from "../lib/sectionMap";
 
   /**
    * The opening sculpture. Its assembled target is sampled from the same filled
    * `flab` geometry that renders the header logo, so the gathered shape is the
    * real mark rather than an approximation.
    *
-   * The mark is the section map's control, not a scroll effect. The opening is
-   * exactly one viewport tall and the page never moves it: activating the mark
-   * breaks it into a depth-varied star cloud, with the impulse radiating from the
-   * activation point, and four destination stars settle into a constellation
-   * around it. Choosing a destination returns to the page; Escape, the close
-   * control, or a click on empty sky reforms the mark.
+   * Motion is driven by native scroll only. The section is a sticky scene whose
+   * scroll progress breaks the mark into a depth-varied star cloud; reversing the
+   * scroll reforms it, and then the scene leaves. There is no hold: the mark starts
+   * breaking on the first scrolled pixel, so the gesture is continuous with the
+   * page rather than a state the visitor has to enter and leave.
    *
-   * Navigation is never canvas-only. The destination stars are real links in the
-   * document, so keyboard, screen readers, reduced motion and a missing bundle
-   * all reach the same four sections; the canvas stays aria-hidden and only draws
-   * the sky and the constellation edges.
-   *
-   * A second, sparse ambient population drifts on its own clock behind the mark
-   * so the sky stays alive at rest without touching the mark's legibility.
+   * A second, sparse ambient population drifts on its own clock behind the mark so
+   * the sky stays alive at rest without touching the mark's legibility.
    */
-
-  let { destinations = [] } = $props<{
-    destinations?: SectionDestination[];
-  }>();
 
   let scene: HTMLDivElement;
   let sticky: HTMLDivElement;
   let field: HTMLDivElement;
-  let control: HTMLButtonElement | undefined;
   let canvas: HTMLCanvasElement | undefined;
   let context: CanvasRenderingContext2D | undefined;
   let ambientCanvas: HTMLCanvasElement | undefined;
@@ -62,44 +46,33 @@
 
   let motionEnabled = $state(false);
   let collapsed = $state(false);
-  // The built field: particles, ambient sky, and every projection constant. It is
-  // rebuilt whenever the stage changes size, and undefined means the stage could
-  // not be built at all.
-  //
-  // `$state.raw` matters here: the field holds hundreds of particle objects that
-  // the render loop only ever reads, so a deep reactive proxy would add cost to
-  // every frame without ever being useful. Reassignment is what the template
-  // needs, and that is exactly what raw state provides.
+  // Published as `data-gather` for the tests and for the stylesheet: 1 is fully
+  // assembled, 0 fully scattered.
   let built = $state.raw<Field | undefined>(undefined);
   let width = $state(0);
   let height = $state(0);
   let dpr = 1;
   let ambientDpr = 1;
-  // 1 = the mark is assembled, 0 = it is fully scattered. It is driven by the
-  // section map's own state machine, never by the page's scroll position.
+
+  /**
+   * How far the mark is broken apart, from the scroll position alone.
+   *
+   * Scroll is the only input, so this is written by the scroll handler rather than
+   * eased toward a target: a tween here would lag the page and read as the mark
+   * drifting behind the visitor's own scroll.
+   */
   let gather = $state(1);
-  let mapOpen = $state(false);
-  // The four links exist as soon as the map opens, but they only take pointer
-  // events once the scatter has settled, so a target still in flight can never be
-  // clicked by accident.
-  let mapSettled = $state(false);
-  const mapPhase = $derived<MapPhase>(
-    mapOpen ? (mapSettled ? "open" : "opening") : "closed",
-  );
   let frame = 0;
+  let scrollFrame = 0;
   let running = false;
   let visible = true;
   let clock = 0;
-  // The per-frame clock is needed to advance the assemble/scatter transition and
-  // to decay the activation impulse independently of the frame rate.
   let lastTick = 0;
-  // Target the drawn pose eases toward; the tween itself lives in `tick`, so the
-  // pose keeps moving even when no new event arrives.
-  let gatherTarget = 1;
-  // Activation impulse, in field coordinates relative to the centre.
-  let impulseX = 0;
-  let impulseY = 0;
-  let impulse = 0;
+
+  // The field's body rotation. It is published so the render and the labels agree
+  // on where the cloud is pointing.
+  let bodyRotationY = $state(0);
+
   // Magnetic pull on the mark, in field coordinates relative to the centre.
   let tetherOn = false;
   let tetherReadyAt = 0;
@@ -108,32 +81,22 @@
   let pointerAt = 0;
   let tetherTarget = { x: 0, y: 0 };
   let tetherOffset = { x: 0, y: 0 };
-  let settleTimer = 0;
-  // Observable contract for tests: the live pull in whole px, written only when it
-  // changes so the attribute is not touched on every frame.
   let tetherDistance = $state(0);
-  // Set on mount: the pointer handlers only run in the browser, so the query is
-  // never read during the server render.
+
   let fineHoverQuery: MediaQueryList | undefined;
   let fontFamily = "ui-monospace, monospace";
 
-  /** Seconds for a full transition in each direction. */
-  const SCATTER_SECONDS = 0.72;
-  const ASSEMBLE_SECONDS = 0.75;
-  const IMPULSE_SECONDS = 0.9;
   /**
-   * The destination stars are links, so a target that is still flying must not be
-   * clickable: the map takes pointer events only once the scatter has settled.
+   * Magnetic pull on the central mark.
+   *
+   * The pull is the assembled mark leaning toward a nearby pointer. Scrolling is
+   * what breaks the mark apart, so the pull only applies while the mark is still
+   * substantially assembled: past that there is no letterform for it to lean.
+   * The pull never closes more than a third of the gap, so the mark can never end
+   * up stuck to the pointer, and the enter/exit radii differ so a pointer hovering
+   * on the boundary cannot flicker the pull on and off.
    */
-  const SCATTER_SETTLE_MS = SCATTER_SECONDS * 1000;
-
-  /**
-   * Magnetic pull on the central mark. The destination stars stay still; only the
-   * mark leans toward the pointer, which is the phase where there is no link to
-   * mis-hit. The pull never closes more than a third of the gap, so the mark can
-   * never end up stuck to the pointer, and the enter/exit radii differ so a
-   * pointer hovering on the boundary cannot flicker the pull on and off.
-   */
+  const TETHER_MIN_GATHER = 0.6;
   const TETHER_ENTER_RADIUS = 80;
   const TETHER_EXIT_RADIUS = 160;
   const TETHER_MAX_SHARE = 0.45;
@@ -165,31 +128,11 @@
     // volume. It relaxes to zero at full assembly, keeping the mark stable. The
     // amplitudes match MAX_ROT_* that the projection bound is derived from.
     const opening = 1 - gather;
-    const rotY = Math.sin(clock * 0.12) * MAX_ROT_Y * opening;
+    const rotY = bodyRotationY;
     const rotX = Math.cos(clock * 0.09) * MAX_ROT_X * opening;
 
     context.textAlign = "center";
     context.textBaseline = "middle";
-
-    // The constellation edges fade in with the scatter, so the four destinations
-    // read as one figure rather than four unrelated stars. The canvas only draws
-    // the figure; the labels and hit areas stay in the document.
-    const openness = 1 - gather;
-    if (openness > 0.05 && destinations.length > 1) {
-      context.strokeStyle = `rgba(167, 139, 250, ${(openness * 0.3).toFixed(3)})`;
-      context.lineWidth = 1;
-      context.beginPath();
-      // Consecutive destinations only, in reading order: a path reads as a
-      // constellation, whereas closing the loop adds an edge that crosses the
-      // others and makes the figure harder to read.
-      for (let index = 0; index < destinations.length - 1; index += 1) {
-        const from = beaconPosition(index, width, height);
-        const to = beaconPosition(index + 1, width, height);
-        if (index === 0) context.moveTo(cx + from.x, cy + from.y);
-        context.lineTo(cx + to.x, cy + to.y);
-      }
-      context.stroke();
-    }
 
     for (const particle of particles) {
       const local = clamp01((gather - particle.delay) / (1 - GATHER_STAGGER));
@@ -198,18 +141,6 @@
       let x = particle.sx + (particle.tx - particle.sx) * eased;
       let y = particle.sy + (particle.ty - particle.sy) * eased;
       const z = particle.sz + (particle.tz - particle.sz) * eased;
-
-      // The activation impulse pushes nearby particles outward from the point the
-      // visitor pressed, so the break reads as a shock rather than a dissolve.
-      if (impulse > 0) {
-        const dx = x - impulseX;
-        const dy = y - impulseY;
-        const distance = Math.hypot(dx, dy) || 1;
-        const push =
-          impulse * 130 * Math.exp(-distance / (Math.min(width, height) * 0.45));
-        x += (dx / distance) * push;
-        y += (dy / distance) * push;
-      }
 
       // The magnetic pull moves the whole mark, so it is applied as one offset to
       // every particle. Only the mark leans; the ambient sky behind it stays put.
@@ -299,19 +230,12 @@
     // rotation are refresh-rate independent and never accumulate frame drift.
     clock = now / 1000;
 
-    // The assemble/scatter transition and the impulse decay advance from real
-    // elapsed time, so a slow frame stretches them instead of skipping them.
     const delta = lastTick ? Math.min(0.1, (now - lastTick) / 1000) : 0;
     lastTick = now;
-    if (gather !== gatherTarget) {
-      const seconds = gatherTarget < gather ? SCATTER_SECONDS : ASSEMBLE_SECONDS;
-      const step = delta / seconds;
-      gather =
-        Math.abs(gatherTarget - gather) <= step
-          ? gatherTarget
-          : gather + Math.sign(gatherTarget - gather) * step;
-    }
-    if (impulse > 0) impulse = Math.max(0, impulse - delta / IMPULSE_SECONDS);
+
+    // One rotation drives the whole field, so the stars cannot drift away from the
+    // mark they belong to.
+    bodyRotationY = Math.sin(clock * 0.12) * MAX_ROT_Y * (1 - gather);
 
     // The pull eases with a frame-rate independent lerp rather than a spring, so a
     // dropped frame cannot overshoot or ring. 0.2 per 60fps frame matches the
@@ -371,93 +295,19 @@
   }
 
   /**
-   * A destination star's position in field coordinates, measured from the stage
-   * centre. It is derived from the live stage size, so the constellation keeps its
-   * spread from a phone through a wide desktop and the labels stay clear of both
-   * the header and the viewport edge.
+   * Native scroll is the only input: the mark is fully gathered at the top of the
+   * scene and fully dispersed by the time the sticky scene leaves. Reading the
+   * live geometry keeps direct hashes, resizes, quick reversals and back-to-top in
+   * sync.
    */
-  /** Break the mark apart, radiating the impulse from the activation point. */
-  function openMap(event?: MouseEvent) {
-    if (!motionEnabled || mapOpen) return;
-    releaseTether(0);
-    // A keyboard activation synthesizes a click at (0, 0); only a real pointer
-    // click carries a position, so only that one seeds the impulse.
-    if (event && event.detail > 0 && field) {
-      const rect = field.getBoundingClientRect();
-      impulseX = event.clientX - rect.left - width / 2;
-      impulseY = event.clientY - rect.top - height / 2;
-      impulse = 1;
-    }
-    mapOpen = true;
-    mapSettled = false;
-    gatherTarget = 0;
-    if (settleTimer) clearTimeout(settleTimer);
-    settleTimer = window.setTimeout(() => {
-      settleTimer = 0;
-      mapSettled = true;
-    }, SCATTER_SETTLE_MS);
-    start();
-  }
-
-  function closeMap() {
-    if (!mapOpen) return;
-    mapOpen = false;
-    mapSettled = false;
-    if (settleTimer) clearTimeout(settleTimer);
-    settleTimer = 0;
-    gatherTarget = 1;
-    start();
-  }
-
-  /** The mark is the control: activating it opens, activating it again closes. */
-  function toggleMap(event: MouseEvent) {
-    if (mapOpen) closeMap();
-    else openMap(event);
-  }
-
-  /**
-   * Clicking empty sky reforms the mark. The destination stars and the close
-   * control own their own clicks, so choosing a section never closes first.
-   */
-  function handleFieldClick(event: MouseEvent) {
-    if (!mapOpen) return;
-    const node = event.target;
-    if (node instanceof Element && node.closest("a, button")) return;
-    closeMap();
-  }
-
-  /**
-   * Choosing a destination hands over to the section. The hash is what moves the
-   * page — the star is an ordinary link — and the focus hand-off happens on
-   * `hashchange` rather than here, so the browser's own hash handling, scrolling
-   * included, is already done and cannot take focus back. `preventScroll` keeps
-   * the browser's own hash position, which `scroll-margin-top` has already
-   * cleared of the header.
-   */
-  function handleStarClick() {
-    closeMap();
-  }
-
-  /**
-   * Move focus to the section heading the page just navigated to. Running on
-   * `hashchange` rather than in a click handler makes the hand-off deterministic
-   * across engines, and it covers every route to a section: the constellation,
-   * the footer's static list, and a deep link.
-   */
-  function handleHashChange() {
-    const id = window.location.hash.slice(1);
-    if (!id) return;
-    const destination = destinations.find((entry) => entry.id === id);
-    if (!destination) return;
-    document.getElementById(destination.headingId)?.focus({ preventScroll: true });
-  }
-
-  function handleKeydown(event: KeyboardEvent) {
-    if (event.key !== "Escape" || !mapOpen) return;
-    closeMap();
-    // Focus returns to the control the visitor opened the map from, so Escape
-    // never drops focus onto the document body.
-    control?.focus();
+  function computeGather() {
+    if (!scene || !sticky) return;
+    const total = scene.offsetHeight - sticky.offsetHeight;
+    const scrolled = -scene.getBoundingClientRect().top;
+    const progress = total > 4 ? clamp01(scrolled / total) : 0;
+    const eased = progress * progress * (3 - 2 * progress);
+    const next = 1 - eased;
+    if (Math.abs(next - gather) > 0.0005) gather = next;
   }
 
   function releaseTether(now: number) {
@@ -470,27 +320,18 @@
   }
 
   /**
-   * A keyboard visitor has no pointer, so the pull is meaningless and would only
-   * shift the target they are tabbing to. The equivalent cue is the star's own
-   * hover/focus enlargement and focus ring.
-   */
-  function releaseOnFocus() {
-    releaseTether(0);
-  }
-
-  /**
-   * Magnetic pull. The mark leans toward the pointer while it is near the centre,
-   * which is the phase where the visitor is aiming at the mark rather than at a
-   * link. Pointer speed, leaving the outer radius, Escape, a click, scrolling and
-   * a blurred window all release it, and it never runs for touch, for a keyboard
-   * journey, or under reduced motion.
+   * Magnetic pull. The mark leans toward the pointer while it is near the centre
+   * and still assembled, which is the phase where the visitor is aiming at the
+   * mark rather than at content. Pointer speed, leaving the outer radius, scrolling
+   * and a blurred window all release it, and it never runs for touch or under
+   * reduced motion.
    */
   function handlePointerMove(event: PointerEvent) {
     if (
       event.pointerType !== "mouse" ||
       !motionEnabled ||
-      mapOpen ||
-      !fineHoverQuery?.matches
+      !fineHoverQuery?.matches ||
+      gather < TETHER_MIN_GATHER
     ) {
       releaseTether(event.timeStamp);
       return;
@@ -583,6 +424,7 @@
       collapsed = true;
       return;
     }
+    computeGather();
     start();
   }
 
@@ -593,18 +435,11 @@
     frame = 0;
     running = false;
     removeCanvases();
-    // Without a canvas there is nothing to scatter, so the map falls back to the
-    // plain list of links the server already shipped.
-    mapOpen = false;
-    mapSettled = false;
-    if (settleTimer) clearTimeout(settleTimer);
-    settleTimer = 0;
-    gatherTarget = 1;
-    impulse = 0;
     tetherOn = false;
     tetherTarget = { x: 0, y: 0 };
     tetherOffset = { x: 0, y: 0 };
     tetherDistance = 0;
+    bodyRotationY = 0;
     gather = 1;
   }
 
@@ -621,15 +456,23 @@
       else enableMotion();
     }
 
-    // Any of these means the visitor is no longer aiming at the mark, so the pull
-    // lets go. They only ever release it; none of them animates from scroll.
-    function releaseOnChange() {
+    /**
+     * Scroll drives the mark, so it is also what releases the pull: once the
+     * visitor is moving the page they are no longer aiming at the mark.
+     */
+    function handleScroll() {
       releaseTether(0);
+      if (scrollFrame) return;
+      scrollFrame = requestAnimationFrame(() => {
+        scrollFrame = 0;
+        computeGather();
+      });
     }
 
     const resizeObserver = new ResizeObserver(() => {
       if (!motionEnabled) return;
       resize();
+      computeGather();
       start();
     });
     resizeObserver.observe(field);
@@ -654,30 +497,26 @@
       }
     }
 
-    // The map is an overlay on a one-viewport opening, so it never follows the
-    // page's scroll position: only its own control, Escape, or empty sky closes
-    // it. Nothing here reads or writes scroll; the scroll listener exists only to
-    // let go of the magnetic pull once the hero starts leaving.
-    document.addEventListener("keydown", handleKeydown);
     document.addEventListener("visibilitychange", handleVisibility);
-    window.addEventListener("hashchange", handleHashChange);
     field.addEventListener("pointermove", handlePointerMove);
-    field.addEventListener("pointerleave", releaseOnChange);
-    window.addEventListener("scroll", releaseOnChange, { passive: true });
-    window.addEventListener("blur", releaseOnChange);
+    field.addEventListener("pointerleave", handleScroll);
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    window.addEventListener("hashchange", handleScroll);
+    window.addEventListener("blur", handleScroll);
     motionQuery.addEventListener("change", syncPreference);
     syncPreference();
+    // A deep link may land mid-scene, so read the live geometry once at mount.
+    computeGather();
 
     return () => {
       motionQuery.removeEventListener("change", syncPreference);
-      document.removeEventListener("keydown", handleKeydown);
       document.removeEventListener("visibilitychange", handleVisibility);
-      window.removeEventListener("hashchange", handleHashChange);
       field.removeEventListener("pointermove", handlePointerMove);
-      field.removeEventListener("pointerleave", releaseOnChange);
-      window.removeEventListener("scroll", releaseOnChange);
-      window.removeEventListener("blur", releaseOnChange);
-      if (settleTimer) clearTimeout(settleTimer);
+      field.removeEventListener("pointerleave", handleScroll);
+      window.removeEventListener("scroll", handleScroll);
+      window.removeEventListener("hashchange", handleScroll);
+      window.removeEventListener("blur", handleScroll);
+      if (scrollFrame) cancelAnimationFrame(scrollFrame);
       resizeObserver.disconnect();
       intersectionObserver.disconnect();
       if (frame) cancelAnimationFrame(frame);
@@ -690,7 +529,6 @@
   class="sculpture"
   data-motion={motionEnabled ? "on" : "off"}
   data-collapsed={collapsed ? "true" : "false"}
-  data-map={mapPhase}
   data-gather={gather.toFixed(3)}
   data-focal={Math.round(built?.focalLength ?? 0)}
   data-depth-bound={Math.round(built?.depthBound ?? 0)}
@@ -700,7 +538,7 @@
 >
   <div class="sculpture-scene" bind:this={scene}>
     <div class="sculpture-sticky" bind:this={sticky}>
-      <div class="sculpture-field" bind:this={field} onclick={handleFieldClick}>
+      <div class="sculpture-field" bind:this={field}>
         <!--
           The filled mark ships in the server HTML and remains the reduced-motion,
           no-JavaScript and error fallback. It is the same geometry the particle
@@ -711,60 +549,6 @@
             <path d={FLAB_PATH} fill="currentColor" fill-rule={FLAB_FILL_RULE} />
           </svg>
         </div>
-
-        <!--
-          The mark is the control. Closed, it is laid over the fitted letterform so
-          the mark itself is the target; open, it shrinks to a close affordance at
-          the foot of the stage, which keeps focus on a real element instead of
-          hiding the element the visitor just activated.
-        -->
-        {#if destinations.length && motionEnabled && !collapsed}
-          <button
-            class="sculpture-control"
-            bind:this={control}
-            type="button"
-            style={`--mark-width: ${(built?.markBox.width ?? 0).toFixed(1)}px; --mark-height: ${(built?.markBox.height ?? 0).toFixed(1)}px;`}
-            aria-label={mapOpen ? "Close the section map" : "Open the section map"}
-            aria-expanded={mapOpen}
-            onclick={toggleMap}
-            onfocus={releaseOnFocus}
-          >
-            <span class="sculpture-control-hint" aria-hidden="true">
-              <span class="sculpture-control-glyph">✦</span>
-              <span class="sculpture-control-text">
-                {mapOpen ? "Close" : "Section map"}
-              </span>
-            </span>
-          </button>
-        {/if}
-        <!--
-          The section map. These are real links rather than canvas hit areas, so
-          keyboard, screen readers, reduced motion and a missing bundle all reach
-          the same sections. With motion they take their constellation positions
-          once the mark breaks apart; without it they read as a plain list under
-          the static mark.
-        -->
-        {#if destinations.length}
-          <nav class="sculpture-map" aria-label="Portfolio sections">
-            <ul>
-              {#each destinations as destination, index (destination.id)}
-                {@const position = beaconPosition(index, width, height)}
-                <li
-                  style={`left: ${position.x.toFixed(1)}px; top: ${position.y.toFixed(1)}px;`}
-                >
-                  <a
-                    class="sculpture-star"
-                    href={`#${destination.id}`}
-                    onclick={handleStarClick}
-                  >
-                    <span class="sculpture-star-glyph" aria-hidden="true">✦</span>
-                    <span class="sculpture-star-label">{destination.label}</span>
-                  </a>
-                </li>
-              {/each}
-            </ul>
-          </nav>
-        {/if}
       </div>
     </div>
   </div>
@@ -851,240 +635,29 @@
   }
 
   /*
-    The opening is exactly one viewport and never moves. There is no scroll length
-    left to scrub, so the stage is a plain block rather than a sticky scene, and
-    no dead spacer can remain if the canvas never starts.
+    The scroll scene. The section is taller than the viewport and the stage sticks
+    inside it, so the visitor's own scroll is what breaks the mark apart and
+    reforms it. The extra length is the gesture, so it is only claimed once there
+    is a canvas to drive.
+
+    Reserve the sticky viewport pre-paint too, so the server-rendered SVG is
+    centred in the same initial full viewport and does not jump ~128px when the
+    component hydrates. Collapsed overrides below win over this.
   */
-  :global(html.motion) .sculpture-sticky,
-  .sculpture[data-motion="on"] .sculpture-sticky {
-    position: relative;
+  :global(html.motion) .sculpture-sticky {
+    position: sticky;
+    top: 0;
     height: 100vh;
     height: 100dvh;
     padding-block: 0;
   }
-
-  /*
-    The section map. Its links are always in the document; only their placement
-    changes. With motion they sit at their constellation offsets around the stage
-    centre, so the figure the canvas draws lines between is the figure the visitor
-    can actually reach.
-
-    Visual and interaction are deliberately separated: the anchor is a still hit
-    area of at least 44x44px with room around the glyph, and every animated
-    property lives on an inner element. A target that moves while you aim at it
-    makes the visitor guess, so nothing here translates.
-  */
-  .sculpture-map {
-    position: absolute;
-    inset: 0;
-    z-index: 4;
-    opacity: 0;
-    /* The layer spans the stage, so it must not swallow the click that closes the
-       map on empty sky; only the links take pointer events. */
-    pointer-events: none;
+  .sculpture[data-motion="on"] .sculpture-scene {
+    height: 225vh;
+    height: 225dvh;
   }
-  .sculpture-map ul {
-    position: absolute;
-    left: 50%;
-    top: 50%;
-    margin: 0;
-    padding: 0;
-    list-style: none;
-  }
-  .sculpture-map li {
-    position: absolute;
-    transform: translate(-50%, -50%);
-  }
-  .sculpture-star {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    min-width: 2.75rem;
-    min-height: 2.75rem;
-    /* 8-12px of padding around the glyph, so the target is not the glyph. */
-    padding: 0.5rem 0.75rem;
-    color: var(--muted-ink);
-    text-decoration: none;
-    white-space: nowrap;
-    cursor: pointer;
-    pointer-events: auto;
-  }
-  .sculpture-star-glyph {
-    font-size: 1.15rem;
-    line-height: 1;
-    color: var(--accent);
-  }
-  .sculpture-star-label {
-    font: 500 0.72rem/1 var(--font-mono);
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-  }
-  @media (prefers-reduced-motion: no-preference) {
-    .sculpture-map {
-      transition: opacity 420ms ease;
-    }
-    .sculpture-star,
-    .sculpture-star-glyph,
-    .sculpture-control,
-    .sculpture-control-glyph {
-      transition:
-        color 180ms ease,
-        transform 220ms ease,
-        background-color 180ms ease,
-        border-color 180ms ease;
-    }
-    /*
-      A slow breath marks the four destinations as stars rather than menu items.
-      It is opacity only, at 4.8s, so the target never shifts; hovering or focusing
-      pauses it so the star is exactly where it was when the visitor committed.
-    */
-    .sculpture[data-map="open"] .sculpture-star-glyph {
-      animation: star-breathe 4.8s ease-in-out infinite alternate;
-    }
-    .sculpture-star:hover .sculpture-star-glyph,
-    .sculpture-star:focus-visible .sculpture-star-glyph {
-      animation-play-state: paused;
-    }
-  }
-  .sculpture-star:hover,
-  .sculpture-star:focus-visible {
-    color: var(--ink);
-  }
-  /* Brighten and a 1.06 enlargement, on the inner glyph, never on the hit area. */
-  .sculpture-star:hover .sculpture-star-glyph,
-  .sculpture-star:focus-visible .sculpture-star-glyph {
-    color: var(--accent-ink);
-    transform: scale(1.06);
-  }
-  /*
-    Hidden while the map is closed, so the four links cannot be tabbed to while
-    they are invisible and the server-rendered list still shows when motion is
-    unavailable. While the scatter is still flying the stars fade in but take no
-    pointer events, so a moving target cannot be clicked by accident.
-  */
-  :global(html.motion) .sculpture:not([data-collapsed="true"])[data-map="closed"] .sculpture-map,
-  .sculpture[data-motion="on"]:not([data-collapsed="true"])[data-map="closed"] .sculpture-map {
-    visibility: hidden;
-  }
-  .sculpture[data-map="open"] .sculpture-map,
-  .sculpture[data-map="opening"] .sculpture-map {
-    opacity: 1;
-  }
-  .sculpture[data-map="opening"] .sculpture-map,
-  .sculpture[data-map="opening"] .sculpture-star {
-    pointer-events: none;
-  }
-  /* Without a canvas there is nothing to scatter, so the map is a plain list. */
-  .sculpture[data-collapsed="true"] .sculpture-map,
-  .sculpture[data-motion="off"] .sculpture-map {
-    position: static;
-    width: 100%;
-    opacity: 1;
-    pointer-events: auto;
-  }
-  .sculpture[data-collapsed="true"] .sculpture-map ul,
-  .sculpture[data-motion="off"] .sculpture-map ul {
-    position: static;
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    gap: 0.25rem 1.5rem;
-    margin-top: 1.5rem;
-  }
-  .sculpture[data-collapsed="true"] .sculpture-map li,
-  .sculpture[data-motion="off"] .sculpture-map li {
-    position: static;
-    transform: none;
-  }
-
-  /*
-    The mark is the control. Closed, it is laid over the fitted letterform so the
-    letterform itself is the target; open, it shrinks to a close affordance at the
-    foot of the stage, which keeps focus on a real element instead of hiding the
-    element the visitor just activated. Its hint sits below the mark rather than
-    inside it, so no text is ever drawn over the letterform.
-  */
-  .sculpture-control {
-    position: absolute;
-    left: 50%;
-    top: 50%;
-    z-index: 3;
-    width: var(--mark-width, 0px);
-    height: var(--mark-height, 0px);
-    transform: translate(-50%, -50%);
-    padding: 0;
-    border: 0;
-    border-radius: 0.5rem;
-    background: transparent;
-    color: var(--muted-ink);
-    cursor: pointer;
-  }
-  .sculpture-control-hint {
-    position: absolute;
-    left: 50%;
-    top: calc(100% + 0.5rem);
-    transform: translateX(-50%);
-    display: inline-flex;
-    align-items: center;
-    gap: 0.45rem;
-  }
-  .sculpture[data-map="open"] .sculpture-control {
-    top: auto;
-    bottom: clamp(1.5rem, 6vh, 3rem);
-    width: auto;
-    height: auto;
-    padding: 0.55rem 0.95rem;
-    border: 1px solid var(--rule);
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--surface) 82%, transparent);
-    color: var(--ink);
-    transform: translate(-50%, 0);
-  }
-  .sculpture[data-map="open"] .sculpture-control-hint {
-    position: static;
-    transform: none;
-  }
-  .sculpture-control-glyph {
-    font-size: 0.8rem;
-    line-height: 1;
-    color: var(--accent);
-  }
-  .sculpture-control-text {
-    font: 500 0.68rem/1 var(--font-mono);
-    letter-spacing: 0.16em;
-    text-transform: uppercase;
-  }
-  @media (prefers-reduced-motion: no-preference) {
-    .sculpture[data-map="closed"] .sculpture-control-glyph {
-      animation: star-breathe 2.6s ease-in-out infinite alternate;
-    }
-  }
-  .sculpture-control:hover,
-  .sculpture-control:focus-visible {
-    color: var(--ink);
-  }
-  .sculpture-control:hover .sculpture-control-glyph,
-  .sculpture-control:focus-visible .sculpture-control-glyph {
-    color: var(--accent-ink);
-    transform: scale(1.2);
-  }
-  @keyframes star-breathe {
-    from {
-      opacity: 0.6;
-    }
-    to {
-      opacity: 1;
-    }
-  }
-
-  /*
-    The stage belongs to the component, not to the page-reveal module: a ready
-    canvas keeps its own full-viewport layout even if that module is aborted and
-    drops `html.motion`. Pre-paint `html.motion` only reserves the initial height
-    so there is no jump before hydration.
-  */
-  :global(html.motion) .sculpture-sticky {
-    position: relative;
+  .sculpture[data-motion="on"] .sculpture-sticky {
+    position: sticky;
+    top: 0;
     height: 100vh;
     height: 100dvh;
     padding-block: 0;
@@ -1092,9 +665,13 @@
   /*
     Collapsed means there is no canvas to draw — no JavaScript, reduced motion,
     or an unavailable 2D context. It must win over BOTH the pre-paint reserve and
-    the ready-canvas rule, so a dead full-viewport spacer can never remain, even
-    if the page-reveal module loaded and left `html.motion` on.
+    the ready-canvas rule, so a dead sticky spacer can never remain, even if the
+    page-reveal module loaded and left `html.motion` on.
   */
+  :global(html.motion) .sculpture[data-collapsed="true"] .sculpture-scene,
+  .sculpture[data-motion="on"][data-collapsed="true"] .sculpture-scene {
+    height: auto;
+  }
   :global(html.motion) .sculpture[data-collapsed="true"] .sculpture-sticky,
   .sculpture[data-motion="on"][data-collapsed="true"] .sculpture-sticky {
     position: relative;

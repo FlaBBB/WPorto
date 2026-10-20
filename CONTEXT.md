@@ -37,14 +37,15 @@ _Avoid_: Progressive enhancement first
 The restrained experience that replaces or simplifies Experimental Showcase motion when a visitor requests reduced motion.
 _Avoid_: Full-motion fallback
 
-**Section Map**:
-The opening's navigation: the assembled mark is the control, and activating it scatters the mark into a constellation of destination stars, one per section. It is an overlay on a one-viewport opening rather than a scroll scene.
-_Avoid_: Star menu, navigation overlay, hero menu
+**Scroll Scene**:
+The opening's gesture: the stage sticks for the length of the scene, and the visitor's own scroll breaks the assembled mark into a star cloud and reforms it on the way back. There is no hold and no click — the mark starts breaking on the first scrolled pixel.
+_Avoid_: Hero animation, scroll effect, intro
 
-**Destination Star**:
-One section's entry in the Section Map. It is a real link to that section, not a canvas hit area, so it stays reachable by keyboard, screen readers, and a missing bundle.
-_Avoid_: Nav star, beacon button
+**Section Link**:
+One of the four entries in the header's section navigation. It is an anchor to that section in the one-page document, so it is a shortcut past the opening rather than the only route to a section.
+_Avoid_: Nav item, menu link
 
 **Magnetic Pull**:
-The restrained lean of the assembled mark toward a nearby fine pointer. It moves only the mark, never a Destination Star, and only while no link is under the pointer.
+The restrained lean of the assembled mark toward a nearby fine pointer. It moves only the mark, only while the mark is still substantially assembled, and only while no link is under the pointer.
 _Avoid_: Cursor gravity, cursor tether
+
