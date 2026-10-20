@@ -8,7 +8,8 @@
     "build": "astro build && node scripts/write-build-metadata.mjs",
     "preview": "astro preview --host 127.0.0.1",
     "check": "astro check",
-    "test": "playwright test"
+    "test": "playwright test",
+    "webkit:deps": "node scripts/ensure-webkit-deps.mjs"
   },
   "dependencies": {
     "@astrojs/svelte": "^9.0.1",

@@ -263,8 +263,27 @@ export function clamp01(value: number) {
   return Math.min(1, Math.max(0, value));
 }
 
-export function easeOutCubic(value: number) {
-  return 1 - (1 - value) ** 3;
+/**
+ * How much of a particle's journey is travelled at a constant speed rather than
+ * along the settle curve.
+ *
+ * Every ease-out curve has zero slope where it lands, and the last particle to
+ * start sits exactly there, so a pure ease-out leaves the whole cloud motionless
+ * for the first third of the scrub — a hold, which is the one thing this scene
+ * must not have. A linear share restores a non-zero response at full assembly
+ * while leaving the cubic in charge of the arrival.
+ */
+const GATHER_LINEAR_SHARE = 0.3;
+
+/**
+ * One particle's own progress from scattered to assembled, 0 to 1.
+ *
+ * It is a function of the scroll alone, so scrubbing back up runs the cloud
+ * backwards through exactly the poses it came through.
+ */
+export function easeGather(value: number) {
+  const cubic = 1 - (1 - value) ** 3;
+  return (1 - GATHER_LINEAR_SHARE) * cubic + GATHER_LINEAR_SHARE * value;
 }
 
 /**

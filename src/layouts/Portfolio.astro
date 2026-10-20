@@ -6,6 +6,7 @@
  * The site is one page, so the shell is written once and the page slots its
  * content in.
  */
+import LoadingScreen from "../components/LoadingScreen.astro";
 import SparseStars from "../components/SparseStars.svelte";
 import { FLAB_PATH, FLAB_FILL_RULE, FLAB_VIEWBOX } from "../lib/flabMark";
 import { description, ownerName, sections } from "../lib/portfolio";
@@ -19,11 +20,32 @@ const {
   metaDescription = description,
   /** The route this page is served at, for the canonical and og:url. */
   path,
+  /**
+   * `home` is the one-page Portfolio Site with its opening and scroll scene.
+   * `document` is a writing page: the same shell and section links, but no
+   * opening and no page-level scroll reservation.
+   */
+  variant = "home",
+  /** Open Graph type; a Writing note is an article, everything else a website. */
+  ogType = "website",
 } = Astro.props as {
   title: string;
   metaDescription?: string;
   path: string;
+  variant?: "home" | "document";
+  ogType?: "website" | "article";
 };
+
+const isHome = variant === "home";
+const writingCurrent = path === "/writing" || path.startsWith("/writing/");
+const navItems = sections.map(({ id, label }) => ({
+  id,
+  label,
+  // On the home page the links are anchors to its sections. Everywhere else
+  // they return to those anchors, except Writing, which has a page of its own.
+  href: isHome ? `#${id}` : id === "writing" ? "/writing" : `/#${id}`,
+  current: !isHome && id === "writing" && writingCurrent,
+}));
 
 const url = `https://flab.my.id${path}`;
 const year = new Date().getFullYear();
@@ -37,7 +59,7 @@ const year = new Date().getFullYear();
     <title>{title}</title>
     <meta name="description" content={metaDescription} />
     <meta name="theme-color" content="#17131e" />
-    <meta property="og:type" content="website" />
+    <meta property="og:type" content={ogType} />
     <meta property="og:title" content={title} />
     <meta property="og:description" content={metaDescription} />
     <meta property="og:url" content={url} />
@@ -58,7 +80,7 @@ const year = new Date().getFullYear();
       href="/fonts/schibsted-grotesk-var.woff2"
       crossorigin
     />
-    <script is:inline>
+    <script is:inline define:vars={{ home: isHome }}>
       (function () {
         var root = document.documentElement;
         var reduced = false;
@@ -68,28 +90,150 @@ const year = new Date().getFullYear();
           reduced = false;
         }
         if (!reduced) root.classList.add("motion");
+        /*
+          The Work section's editorial preview reserves its geometry before paint,
+          so the document is the same height whether or not the Work module has
+          hydrated: a deep link lands where it was aimed, and nothing below the
+          fold moves under the visitor.
+
+          If the module has not confirmed itself by the end of the hold, the
+          reservation is released and the section becomes the readable in-flow
+          layout. That changes the document's height, so a visitor who is already
+          in or past the section would have the page reformat under them; their
+          reading position is restored across the release. A visitor above the
+          section sees nothing move, because the change is below them.
+        */
+        if (!reduced && home) root.classList.add("work-preview");
         window.setTimeout(function () {
           if (!window.__afterHoursMotionReady) root.classList.remove("motion");
+          if (!home) return;
+          if (window.__workPreviewReady) return;
+          var anchor = readingAnchor();
+          root.classList.remove("work-preview");
+          if (!anchor || !anchor.node.isConnected) return;
+          /*
+            The correction is applied twice. The first pass runs immediately, in the
+            same task as the class change, so the frame the new layout is painted in
+            is already corrected and the visitor never sees an uncorrected frame. The
+            passes after it cover an engine that finishes that layout later than the
+            style change, which would otherwise leave the correction measured against
+            the old geometry. They run before their frame is painted, and they are
+            no-ops once the anchor is back where it was.
+          */
+          var apply = function () {
+            if (!anchor.node.isConnected) return;
+            var moved = anchor.node.getBoundingClientRect().top - anchor.top;
+            if (!moved) return;
+            try {
+              window.scrollTo({ top: window.scrollY + moved, behavior: "instant" });
+            } catch (error) {
+              window.scrollTo(0, window.scrollY + moved);
+            }
+          };
+          apply();
+          requestAnimationFrame(function () {
+            apply();
+            requestAnimationFrame(apply);
+          });
         }, 2000);
+
+        /*
+          The unit the visitor is reading, which is the thing whose place on the
+          screen has to survive the release.
+
+          Inside Work the release reflows the records themselves — the in-flow
+          study appears between a record's deck and its copy — so the unit is the
+          line of content the reading line has reached, not the record around it.
+          The section's own heading is deliberately not eligible: it sits in a
+          sticky column, so it is pinned in place and says nothing about how far the
+          visitor has read.
+
+          The point is sampled across the line rather than taken at the exact
+          centre, because the centre of this two-column section is its gutter, where
+          no element's box contains the point at all. Below Work the sections do not
+          reflow, so the section the line is in is enough. A visitor above Work sees
+          nothing move, because the whole change is below them.
+        */
+        function readingAnchor() {
+          var line = window.innerHeight * 0.35;
+          var fractions = [0.5, 0.35, 0.65, 0.25, 0.75, 0.15, 0.85];
+          for (var f = 0; f < fractions.length; f += 1) {
+            var x = Math.round(window.innerWidth * fractions[f]);
+            var node = document.elementFromPoint(x, Math.round(line));
+            if (!node || node === document.body || node === document.documentElement) continue;
+            // Descend to the innermost element that still contains the point, and
+            // when the point falls in a gap between children — a grid gutter, a
+            // margin — take the child nearest the line rather than stopping at the
+            // container. Stopping at the container would anchor on something whose
+            // top is far above the line, and correcting against that leaves the text
+            // the visitor is on wherever it fell.
+            for (;;) {
+              var deeper = null;
+              var nearest = Infinity;
+              for (var i = 0; i < node.children.length; i += 1) {
+                var child = node.children[i];
+                var box = child.getBoundingClientRect();
+                if (box.height <= 0 || box.left > x || box.right <= x) continue;
+                if (box.top <= line && box.bottom > line) {
+                  deeper = child;
+                  break;
+                }
+                var gap = box.top > line ? box.top - line : line - box.bottom;
+                if (gap < nearest) {
+                  nearest = gap;
+                  deeper = child;
+                }
+              }
+              if (!deeper) break;
+              node = deeper;
+            }
+            // The pinned column and the study are both things whose place on the
+            // screen does not mean "where the visitor is reading".
+            if (node.closest(".work-intro") || node.closest(".work-preview-stage")) continue;
+            // A container as tall as the viewport is a column or a section, not a
+            // line of content, so it cannot say where the visitor is either.
+            if (node.getBoundingClientRect().height >= window.innerHeight * 0.6) continue;
+            return { node: node, top: node.getBoundingClientRect().top };
+          }
+          var sections = document.querySelectorAll(
+            "#intro, #selected-evidence, #writing, #technical-profile, #learning-archive, #contact-path, .site-footer",
+          );
+          for (var s = 0; s < sections.length; s += 1) {
+            var sectionBox = sections[s].getBoundingClientRect();
+            if (sectionBox.top <= line && sectionBox.bottom > line) {
+              return { node: sections[s], top: sectionBox.top };
+            }
+          }
+          return null;
+        }
       })();
     </script>
   </head>
   <body>
+    {isHome && <LoadingScreen />}
+
     <header class="site-header">
-      <a class="flab-logo" href="#identity" aria-label="flab — back to the top">
+      <a
+        class="flab-logo"
+        href={isHome ? "#identity" : "/"}
+        aria-label={isHome ? "flab — back to the top" : "flab — back to the Portfolio Site"}
+      >
         <svg viewBox={`0 0 ${FLAB_VIEWBOX.width} ${FLAB_VIEWBOX.height}`} aria-hidden="true">
           <path d={FLAB_PATH} fill="currentColor" fill-rule={FLAB_FILL_RULE} />
         </svg>
       </a>
       {/*
-        The four sections are one page now, so these are anchors rather than routes:
+        The sections are one page now, so these are anchors rather than routes:
         they are a shortcut past the opening to a section the visitor has already
-        decided they want, not the only way to reach it.
+        decided they want, not the only way to reach it. On a writing page they
+        return to the home page's anchors, and Writing points at its own index.
       */}
       <nav class="site-nav" aria-label="Portfolio sections">
         <ul>
-          {sections.map(({ id, label }) => (
-            <li><a href={`#${id}`}>{label}</a></li>
+          {navItems.map(({ label, href, current }) => (
+            <li>
+              <a href={href} aria-current={current ? "page" : undefined}>{label}</a>
+            </li>
           ))}
         </ul>
       </nav>
@@ -111,50 +255,24 @@ const year = new Date().getFullYear();
           The right group is the link back to the opening itself, so there is no
           third visible "Back to top" group. Its accessible name keeps the visible
           "Still learning." label (Label in Name) while naming the destination.
+          On a document page the destination is the Portfolio Site's opening.
         -->
-        <a class="footer-top" href="#identity" aria-label="Back to the opening — Still learning." title="Back to the opening">
+        <a
+          class="footer-top"
+          href={isHome ? "#identity" : "/"}
+          aria-label={isHome ? "Back to the opening — Still learning." : "Back to the Portfolio Site — Still learning."}
+          title={isHome ? "Back to the opening" : "Back to the Portfolio Site"}
+        >
           <span class="footer-note">Still learning.</span>
           <span class="footer-dash" aria-hidden="true"></span>
         </a>
       </div>
-      <!--
-        The header's section links are the shortcut past the opening; this is the
-        same four destinations for a visitor who has already scrolled to the foot
-        of the page and would otherwise have to scroll back to the top for them.
-      -->
-      <nav class="footer-nav" aria-label="Portfolio sections">
-        <ul>
-          {sections.map(({ id, label }) => (
-            <li><a href={`#${id}`}>{label}</a></li>
-          ))}
-        </ul>
-      </nav>
     </footer>
 
     <script>
       import { initPageMotion } from "../lib/pageMotion";
 
       initPageMotion();
-
-      /*
-        The header is transparent over the opening, so the star field reads through
-        it with no container edge over the sky. Once the opening has scrolled away
-        it sits over content instead, where an unbacked bar would leave the wordmark
-        and the section links floating over body text.
-      */
-      const header = document.querySelector(".site-header");
-      const opening = document.getElementById("identity");
-      if (header && opening) {
-        const observer = new IntersectionObserver(
-          (entries) => {
-            const [entry] = entries;
-            if (!entry) return;
-            header.toggleAttribute("data-scrolled", !entry.isIntersecting);
-          },
-          { threshold: 0 },
-        );
-        observer.observe(opening);
-      }
     </script>
   </body>
 </html>

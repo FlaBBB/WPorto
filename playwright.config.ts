@@ -4,6 +4,9 @@ const previewBaseUrl = process.env.PLAYWRIGHT_BASE_URL;
 
 export default defineConfig({
   testDir: "./tests",
+  // Supplies the system libraries the WebKit engine expects but this host does
+  // not ship; a no-op where the engine already resolves them.
+  globalSetup: "./scripts/ensure-webkit-deps.mjs",
   workers: process.env.CI ? 2 : undefined,
   use: {
     baseURL: previewBaseUrl ?? "http://127.0.0.1:4321",

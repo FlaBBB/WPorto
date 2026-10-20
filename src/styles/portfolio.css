@@ -13,6 +13,9 @@
   /* Footer: near-black plum with a thin violet rule. */
   --footer-bg: #141019;
   --footer-rule: color-mix(in srgb, var(--accent) 62%, transparent);
+  /* The fixed header's height, as the offset an anchor jump has to clear. It is
+     a variable because the header wraps to two rows on the narrowest phones. */
+  --header-offset: 6rem;
   --gutter: clamp(1.25rem, 5vw, 5rem);
   /* Generous, substantial space for every body section. */
   --section-space: clamp(4.5rem, 12vh, 8rem);
@@ -26,7 +29,7 @@
 html {
   background: var(--background);
   scroll-behavior: smooth;
-  scroll-padding-top: 6rem;
+  scroll-padding-top: var(--header-offset);
 }
 body {
   margin: 0;
@@ -87,17 +90,11 @@ main:focus {
 
 /* Header */
 /*
-  The opening's header is fixed rather than sticky: the opening is one full
-  viewport, so the header overlays the stage instead of pushing it down. It
-  carries no background and no blur, so the star field reads straight through it
-  and no container edge is ever drawn over the sky. The bar itself ignores
-  pointer events, and the wordmark takes them back, so the rest of the opening
-  stays clickable.
-
-  A section page scrolls, so its header sticks instead: it takes its own space in
-  the flow and then holds at the top, which keeps the wordmark and the section
-  links legible over moving content without a spacer or a padding guess, and
-  without a bar ever being drawn over the opening's sky.
+  The fixed header overlays the opening without pushing it down. Keep its
+  semi-transparent backing and blur in every section, including the opening:
+  removing the lane border must not leave the wordmark and links unbacked.
+  The bar itself ignores pointer events; its children take them back so the
+  surrounding stage stays clickable.
 */
 .site-header {
   position: fixed;
@@ -109,20 +106,12 @@ main:focus {
   justify-content: space-between;
   gap: 0.25rem var(--gutter);
   padding: 1.1rem var(--gutter);
+  background: color-mix(in srgb, var(--background) 88%, transparent);
+  backdrop-filter: blur(10px);
   pointer-events: none;
 }
 .site-header > * {
   pointer-events: auto;
-}
-/*
-  Over the opening the bar is unbacked, so the sky reads through it. Once the
-  opening has scrolled away it sits over content instead, where an unbacked bar
-  would leave the wordmark and the section links floating over body text.
-*/
-.site-header[data-scrolled] {
-  background: color-mix(in srgb, var(--background) 88%, transparent);
-  backdrop-filter: blur(10px);
-  border-bottom: 1px solid color-mix(in srgb, var(--accent) 26%, transparent);
 }
 .flab-logo {
   display: inline-flex;
@@ -183,7 +172,7 @@ section {
     header's own section links are the main one — must land the section's heading
     clear of it rather than underneath the bar.
   */
-  scroll-margin-top: 6rem;
+  scroll-margin-top: var(--header-offset);
 }
 .page-body {
   position: relative;
@@ -234,8 +223,18 @@ section {
   display: grid;
   gap: 1rem;
 }
+.intro-line {
+  display: block;
+  overflow: clip;
+  /* Leave room for descenders and punctuation at the settled baseline. */
+  padding-block: 0.06em 0.16em;
+  margin-block: -0.06em -0.16em;
+}
+.intro-line > span {
+  display: block;
+}
 h1 {
-  font-size: clamp(2.5rem, 5.5vw, 4.5rem);
+  font-size: clamp(2.25rem, 5.5vw, 4.5rem);
   font-weight: 700;
   line-height: 0.98;
   letter-spacing: -0.05em;
@@ -276,10 +275,10 @@ h1 {
   text-decoration: underline;
 }
 
-/* Work index: narrow editorial intro beside stacked projects. */
+/* Editorial Preview: the left source study follows the right reading index. */
 .work-layout {
   display: grid;
-  grid-template-columns: minmax(0, 0.72fr) minmax(0, 1.28fr);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 2.5rem 4rem;
   align-items: start;
 }
@@ -287,10 +286,73 @@ h1 {
   position: sticky;
   top: 6.5rem;
   display: grid;
+  gap: 1.5rem;
+}
+.work-heading {
+  display: grid;
   gap: 0.85rem;
 }
+.work-heading .section-title {
+  max-width: 11ch;
+}
 .work-intro .section-intro {
-  max-width: 30ch;
+  max-width: 38ch;
+}
+.work-preview-stage,
+.work-preview-note {
+  display: none;
+}
+.work-preview-stage {
+  position: relative;
+  /*
+     The pinned column is one viewport minus the space above it, so the study's
+     height is what the viewport leaves once the header offset, the heading and
+     the note below it are accounted for. That reserve is 26rem: 6.5rem of header
+     offset plus the widest heading and its note, which is 18.625rem at the
+     widest supported measure. Reserving less pushes the note past the fold at the
+     heights this layout is allowed to run at.
+
+     The stage is also the study's size container. Its height is the height the
+     study has to live in, so the study can tighten its own vertical rhythm from
+     that number instead of guessing from the viewport width.
+  */
+  height: clamp(19rem, calc(100dvh - 26rem), 28rem);
+  max-width: 42rem;
+  overflow: hidden;
+  container: study / size;
+}
+.work-preview-panel {
+  position: absolute;
+  inset: 0;
+}
+/* In-flow studies sit in a reading column, so their plate stays quieter. */
+.work-inline-preview .project-preview {
+  --plate-opacity: 0.3;
+}
+.work-inline-preview {
+  margin-block: 0.25rem;
+}
+/* Short viewports use in-flow media too: the sticky heading and study must
+   never need more room than the viewport can provide. No-JS/reduced motion
+   retain a complete inline preview for every project.
+
+   The gate is `work-preview` alone, plus the motion preference. It deliberately
+   does not read `html.motion`: that class is the page-reveal module's, so gating
+   Work's geometry on it let an unrelated module's timing reformat this section —
+   a slow page module dropping the class would collapse the stage and move the
+   whole page, and then re-pin it when the module arrived. `work-preview` is
+   reserved before paint and released only by Work's own hold, so Work's layout
+   follows Work. Reduced motion is read from the media query, which is what the
+   preference actually is; a live change to it still falls back to the readable
+   in-flow studies. */
+@media (min-width: 901px) and (min-height: 740px) and (prefers-reduced-motion: no-preference) {
+  html.work-preview .work-preview-stage,
+  html.work-preview .work-preview-note {
+    display: block;
+  }
+  html.work-preview .work-inline-preview {
+    display: none;
+  }
 }
 .work-index {
   list-style: none;
@@ -302,16 +364,34 @@ h1 {
   display: grid;
   grid-template-columns: 3.5rem 1fr;
   gap: 1rem 1.5rem;
+  min-height: 34rem;
   padding: 2.25rem 0;
+}
+.work-index > li[data-active] .reveal-rule {
+  background: color-mix(in srgb, var(--accent) 60%, var(--rule));
 }
 .project-index {
   color: var(--muted-ink);
   font: 500 0.875rem/1.6 var(--font-mono);
 }
+.work-index > li[data-active] .project-index {
+  color: var(--accent);
+}
 .project-body {
   display: grid;
   gap: 1rem;
   min-width: 0;
+  /*
+    The record is taller than its content — the article reserves a minimum height
+    so the reading index has a rhythm — so the leftover space lands inside this
+    grid. With the default `align-content`, the grid's own rows absorb that space
+    and stretch, and the flex items inside a stretched row (the technology pills)
+    inherit the extra height: their text then sits at the top of a taller box
+    instead of centred in the pill. Packing the rows at their intrinsic size keeps
+    every pill exactly as tall as its own text, and leaves the spare height at the
+    end of the record where it belongs.
+  */
+  align-content: start;
 }
 .project-body h3 {
   font-size: clamp(1.75rem, 3.6vw, 2.75rem);
@@ -357,6 +437,221 @@ h1 {
 }
 .project-link:hover {
   text-decoration: underline;
+}
+.project-sources {
+  display: grid;
+  justify-items: start;
+  gap: 0.1rem;
+}
+.preview-reference {
+  display: inline-block;
+  min-height: 2.8125rem;
+  max-width: 100%;
+  padding-block: 0.75rem;
+  color: var(--muted-ink);
+  font: 400 0.6875rem/1.5 var(--font-mono);
+  overflow-wrap: anywhere;
+}
+
+/* Writing: the newest entries, with a plate that changes as the feed is read. */
+#writing {
+  padding-block: calc(var(--section-space) * 1.15);
+  background: radial-gradient(
+    70rem 46rem at 22% 38%,
+    color-mix(in srgb, var(--accent) 5%, transparent),
+    transparent 68%
+  );
+}
+.writing-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  justify-content: space-between;
+  gap: 1.5rem 3rem;
+  margin-bottom: clamp(2.5rem, 5vw, 4rem);
+}
+.writing-heading {
+  max-width: 52rem;
+}
+.writing-heading .section-heading {
+  margin-bottom: 0;
+}
+.writing-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-height: 2.8125rem;
+  margin-bottom: 0.35rem;
+  color: var(--accent-ink);
+  font: 500 0.75rem/1 var(--font-mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  text-decoration: none;
+}
+.writing-all:hover {
+  text-decoration: underline;
+}
+.writing-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 2.5rem 4.5rem;
+  align-items: start;
+}
+
+/* The plate: one image per entry, stacked, crossfading on the active one. */
+/*
+  A single entry is a feature rather than a feed: the plate and the row sit
+  level, and the plate is shallower, so the section does not open with a tall
+  image beside one short line. Two or more entries are a feed, and the plate
+  stays pinned while the rows pass it.
+*/
+.writing-grid[data-count="1"] {
+  align-items: center;
+}
+.writing-grid[data-count="1"] .writing-plate-frame {
+  position: relative;
+  top: auto;
+}
+.writing-plate-frame {
+  position: sticky;
+  top: 7.5rem;
+  max-width: 100%;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--accent) 20%, var(--rule));
+  background: var(--surface);
+  perspective: 1200px;
+  will-change: transform;
+}
+/* The image area takes the plate's own proportions, so a wide screenshot is
+   not boxed into a portrait slot with bars above and below it. */
+.writing-plates {
+  position: relative;
+  aspect-ratio: var(--plate-ratio, 4 / 5);
+  /* A wide plate should not grow taller than the reading column beside it. */
+  max-height: 26rem;
+  overflow: hidden;
+}
+.writing-plate {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transform-origin: center;
+}
+.writing-plate[data-active] {
+  opacity: 1;
+}
+/*
+  A plate is often a screenshot, so it is fitted rather than cropped: cutting the
+  sides off a scoreboard would hide the very thing it was chosen for.
+*/
+.writing-plate img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter: grayscale(0.2) contrast(1.02) brightness(0.9);
+}
+/* Duotone toward the page's inks. */
+.writing-plate::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    160deg,
+    color-mix(in srgb, var(--accent) 26%, transparent),
+    color-mix(in srgb, var(--background) 78%, transparent) 62%
+  );
+  mix-blend-mode: color;
+}
+
+/* The feed: the content, and the thing that drives the plate. */
+.writing-feed {
+  display: grid;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--rule);
+}
+.writing-feed > li {
+  border-bottom: 1px solid var(--rule);
+}
+.writing-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 2.25rem minmax(0, 1fr) 1.25rem;
+  gap: 0.75rem 1.25rem;
+  align-items: start;
+  padding: 1.6rem 0;
+  text-decoration: none;
+}
+.writing-row::before {
+  content: "";
+  position: absolute;
+  inset: -1px 0 auto;
+  height: 1px;
+  background: var(--accent);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.55s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.writing-row[data-active]::before {
+  transform: scaleX(1);
+}
+.writing-row-index {
+  padding-top: 0.15rem;
+  color: var(--muted-ink);
+  font: 500 0.6875rem/1.5 var(--font-mono);
+  transition: color 0.3s ease;
+}
+.writing-row[data-active] .writing-row-index {
+  color: var(--accent);
+}
+.writing-row-body {
+  display: grid;
+  gap: 0.4rem;
+  min-width: 0;
+}
+.writing-row-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  color: var(--muted-ink);
+  font: 500 0.625rem/1.4 var(--font-mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  transition: color 0.3s ease;
+}
+.writing-row[data-active] .writing-row-meta {
+  color: var(--accent);
+}
+.writing-row-title {
+  font-size: clamp(1.35rem, 2.2vw, 1.9rem);
+  font-weight: 600;
+  line-height: 1.1;
+  letter-spacing: -0.035em;
+  text-wrap: balance;
+  transition:
+    color 0.3s ease,
+    transform 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.writing-row[data-active] .writing-row-title {
+  color: var(--accent-ink);
+  transform: translateX(0.2rem);
+}
+.writing-row-deck {
+  max-width: 46ch;
+  color: var(--muted-ink);
+  font-size: 0.9375rem;
+  line-height: 1.55;
+}
+.writing-row-arrow {
+  padding-top: 0.1rem;
+  color: var(--muted-ink);
+  transition:
+    color 0.3s ease,
+    transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.writing-row[data-active] .writing-row-arrow {
+  color: var(--accent-ink);
+  transform: translate(3px, -3px);
 }
 
 /* Evidence ledger */
@@ -485,10 +780,69 @@ dd {
 }
 
 /* Contact: an open violet band with plum ink and adjacent paths. */
+/*
+  The section supplies the focus position; its full-bleed surface owns the real
+  box height. Expansion adds vertical space in normal flow instead of uncovering
+  a clipped reservation or scaling descendants. The footer follows the changing
+  bottom edge directly, with no dark gap or overlapping neighbor.
+
+  Once the whole compact desktop band is visible and its midpoint reaches the
+  viewport's 45–65% focus zone, a 400ms animation adds 224px of height. The 74vh
+  minimum also lets the compact midpoint reach that zone before the page ends on
+  common laptop screens. Scroll does not scrub the animation. The compact box
+  contains all text, paths and focus outlines; mobile, touch, reduced motion and
+  an unavailable module keep the static complete layout.
+
+  A downward approach opens upward with the bottom edge held by scroll following
+  the whole height change. An upward approach opens downward with the top edge
+  held naturally. Closing reverses around the same edge. Temporarily disable
+  native scroll anchoring so it cannot add another correction to either mode.
+*/
+html[data-contact-resizing] {
+  overflow-anchor: none;
+}
 #contact-path {
+  padding: 0;
+}
+.contact-surface {
+  position: relative;
+  /*
+    The band paints its own background, so it has to be the stacking context its
+    sparse stars sit in: they are painted at z-index -1, which is above this
+    element's own background but below its content.
+  */
+  isolation: isolate;
+  padding-block: calc(var(--section-space) * 1.2);
+  padding-inline: var(--gutter);
   background: var(--contact-band);
   color: var(--contact-ink);
-  padding-block: calc(var(--section-space) * 1.2);
+  --contact-expansion: 0px;
+}
+@media (min-width: 1101px) {
+  .contact-surface {
+    display: grid;
+    align-items: center;
+    min-height: 74vh;
+    padding-block: clamp(8rem, 18vh, 12rem);
+  }
+  .contact-layout {
+    width: 100%;
+  }
+}
+/*
+  Only a mouse-capable desktop takes the managed sizing. The same space drives
+  padding and minimum height, so both endpoints grow by the same amount even when
+  the content determines the height. Native media rules restore static sizing
+  immediately if motion or a fine pointer becomes unavailable, ahead of JS teardown.
+*/
+@media (min-width: 1101px) and (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+  .contact-surface {
+    --contact-expansion: 112px;
+  }
+  .contact-surface[data-contact-scroll] {
+    min-height: calc(74vh - var(--contact-expansion) * 2 + var(--contact-space) * 2);
+    padding-block: calc(clamp(8rem, 18vh, 12rem) - var(--contact-expansion) + var(--contact-space));
+  }
 }
 .contact-layout {
   display: grid;
@@ -626,35 +980,475 @@ dd {
   border-radius: 1px;
   background: var(--accent);
 }
-/*
-  The foot-of-page route to the four sections. It sits outside `.footer-inner` so
-  the footer keeps its two-group shape, and it matches the inner layout's
-  constrained measure.
-*/
-.footer-nav {
-  max-width: 108rem;
-  margin: 0.75rem auto 0;
-  padding-inline: var(--gutter);
-  border-top: 1px solid color-mix(in srgb, var(--rule) 70%, transparent);
+
+/* Writing index and article pages: quiet editorial documents around the
+   animated home section. */
+.writing-page {
+  position: relative;
+  isolation: isolate;
+  padding: clamp(7.5rem, 14vh, 11rem) var(--gutter) calc(var(--section-space) * 1.2);
 }
-.footer-nav ul {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.25rem 1.75rem;
+.writing-page-inner {
+  max-width: 64rem;
+  margin-inline: auto;
+}
+.writing-index-hero {
+  display: grid;
+  gap: 1rem;
+  padding-bottom: clamp(2.5rem, 6vw, 4.5rem);
+  border-bottom: 1px solid var(--rule);
+}
+.writing-index-hero .eyebrow,
+.article-hero .eyebrow {
+  color: var(--accent);
+}
+.writing-index-hero h1 {
+  max-width: 12ch;
+  font-size: clamp(2.75rem, 7vw, 5.5rem);
+  font-weight: 700;
+  line-height: 0.98;
+  letter-spacing: -0.05em;
+}
+.writing-index-intro {
+  max-width: 52ch;
+  color: var(--muted-ink);
+  font-size: clamp(1rem, 1.4vw, 1.125rem);
+}
+.writing-index-count {
+  color: var(--muted-ink);
+  font: 500 0.6875rem/1.5 var(--font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.writing-index-list {
+  /* A nested section: the page already applies the gutter, so the global
+     section padding must not inset the list a second time. */
+  padding: 0.5rem 0 0;
+}
+.writing-index-list ol {
   padding: 0;
   list-style: none;
 }
-.footer-nav a {
+.writing-index-list li {
+  border-bottom: 1px solid var(--rule);
+}
+.writing-index-list li:first-child {
+  border-top: 1px solid var(--rule);
+}
+.writing-index-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 3rem minmax(0, 1fr) auto 1.5rem;
+  gap: 1rem 2rem;
+  align-items: start;
+  padding: 2rem 0;
+  text-decoration: none;
+  transition: border-color 0.3s ease;
+}
+.writing-index-row:hover {
+  border-color: color-mix(in srgb, var(--accent) 60%, var(--rule));
+}
+.writing-index-number {
+  padding-top: 0.35rem;
+  color: var(--muted-ink);
+  font: 500 0.75rem/1.5 var(--font-mono);
+  transition: color 0.3s ease;
+}
+.writing-index-row:hover .writing-index-number {
+  color: var(--accent);
+}
+.writing-index-body {
+  display: grid;
+  gap: 0.5rem;
+  min-width: 0;
+}
+.writing-index-title {
+  font-size: clamp(1.6rem, 3.2vw, 2.6rem);
+  font-weight: 600;
+  line-height: 1.05;
+  letter-spacing: -0.04em;
+  transition:
+    color 0.3s ease,
+    transform 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.writing-index-row:hover .writing-index-title {
+  color: var(--accent-ink);
+  transform: translateX(0.25rem);
+}
+.writing-index-deck {
+  max-width: 56ch;
+  color: var(--muted-ink);
+  font-size: 0.9375rem;
+  line-height: 1.55;
+}
+.writing-index-meta {
+  display: grid;
+  gap: 0.15rem;
+  padding-top: 0.5rem;
+  color: var(--muted-ink);
+  font: 400 0.625rem/1.6 var(--font-mono);
+  letter-spacing: 0.06em;
+  text-align: right;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.writing-index-arrow {
+  padding-top: 0.25rem;
+  color: var(--muted-ink);
+  transition:
+    color 0.3s ease,
+    transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.writing-index-row:hover .writing-index-arrow {
+  color: var(--accent-ink);
+  transform: translate(4px, -4px);
+}
+
+.writing-index-profile {
+  padding-top: 2rem;
+  color: var(--muted-ink);
+  font: 500 0.75rem/1.5 var(--font-mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.writing-index-profile a {
   display: inline-flex;
   align-items: center;
-  min-height: 2.75rem;
-  color: var(--muted-ink);
+  gap: 0.35rem;
+  min-height: 2.8125rem;
+  color: var(--accent-ink);
   text-decoration: none;
 }
-.footer-nav a:hover {
-  color: var(--ink);
+.writing-index-profile a:hover {
   text-decoration: underline;
-  text-underline-offset: 0.25em;
+}
+
+/* The Writing index: the published writeup, then its contents. */
+.writing-index-feature {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  gap: clamp(1.5rem, 3vw, 2.75rem);
+  align-items: center;
+  padding: clamp(1.75rem, 4vw, 2.75rem) 0;
+  border-bottom: 1px solid var(--rule);
+  text-decoration: none;
+}
+.writing-index-feature-body {
+  display: grid;
+  gap: 0.85rem;
+  min-width: 0;
+}
+/* The writeup's own facts: on the index they are one inline line under the deck. */
+.writing-result {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.55rem;
+  color: var(--muted-ink);
+  font: 500 0.625rem/1.5 var(--font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.writing-result > [aria-hidden] {
+  color: var(--accent);
+}
+.writing-feature-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--accent);
+  font: 500 0.6875rem/1.5 var(--font-mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.writing-feature-title {
+  font-size: clamp(1.75rem, 3vw, 2.5rem);
+  font-weight: 600;
+  line-height: 1.05;
+  letter-spacing: -0.04em;
+  text-wrap: balance;
+  transition: color 0.3s ease;
+}
+.writing-feature-deck {
+  max-width: 52ch;
+  color: var(--muted-ink);
+  font-size: clamp(0.9375rem, 1.2vw, 1.0625rem);
+  line-height: 1.6;
+}
+.writing-index-thumb {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  aspect-ratio: 4 / 3;
+  border: 1px solid color-mix(in srgb, var(--accent) 20%, var(--rule));
+  background: var(--surface);
+}
+.writing-index-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter: grayscale(0.3) brightness(0.92);
+  transition: transform 0.7s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.writing-index-feature:hover .writing-index-thumb img {
+  transform: scale(1.03);
+}
+.writing-index-thumb::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    160deg,
+    color-mix(in srgb, var(--accent) 24%, transparent),
+    color-mix(in srgb, var(--background) 70%, transparent) 65%
+  );
+  mix-blend-mode: color;
+}
+.writing-index-feature:hover .writing-feature-title {
+  color: var(--accent-ink);
+}
+.writing-index-contents {
+  margin-top: clamp(2.5rem, 5vw, 3.5rem);
+}
+.writing-index-contents h2 {
+  margin-bottom: 0.75rem;
+  color: var(--muted-ink);
+  font: 500 0.6875rem/1.5 var(--font-mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+/* The writeup page: a quiet document around the challenge record. */
+.article-page {
+  position: relative;
+  isolation: isolate;
+  padding: clamp(7.5rem, 14vh, 11rem) var(--gutter) calc(var(--section-space) * 1.2);
+}
+.article-shell {
+  max-width: 47rem;
+  margin-inline: auto;
+}
+.article-breadcrumb {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  color: var(--muted-ink);
+  font: 500 0.6875rem/1.5 var(--font-mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.article-breadcrumb a {
+  color: var(--accent-ink);
+  text-decoration: none;
+}
+.article-breadcrumb a:hover {
+  text-decoration: underline;
+}
+.article-hero {
+  display: grid;
+  gap: 1rem;
+  padding-block: 2rem 2.5rem;
+  border-bottom: 1px solid var(--rule);
+}
+.article-hero .eyebrow {
+  color: var(--accent);
+}
+.article-hero h1 {
+  font-size: clamp(2.5rem, 6vw, 4.5rem);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.05em;
+  text-wrap: balance;
+}
+.article-deck {
+  max-width: 48ch;
+  color: var(--muted-ink);
+  font-size: clamp(1.0625rem, 1.6vw, 1.3125rem);
+  line-height: 1.5;
+}
+.challenge-meta {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1.25rem;
+  padding-top: 0.75rem;
+}
+.challenge-meta div {
+  display: grid;
+  gap: 0.3rem;
+  align-content: start;
+}
+.challenge-meta dt {
+  color: var(--muted-ink);
+  font: 500 0.625rem/1.5 var(--font-mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.challenge-meta dd {
+  font-size: 0.9375rem;
+  line-height: 1.45;
+}
+/*
+  Figures. A writeup's images are evidence, so they are never duotoned or
+  cropped: what the tool printed is what the reader sees. The frame is what makes
+  a light image belong on a dark page — a matte of surface and a hairline rule
+  around it, the way a print is mounted rather than pasted on.
+
+  `data-tone` is set from the image itself: a light plate gets an inner hairline
+  and a softer lift, so a white screenshot does not glare against the plum.
+*/
+.article-figure {
+  display: grid;
+  gap: 0.75rem;
+  margin-block: 0.5rem;
+  padding: 0.5rem;
+  border: 1px solid var(--rule);
+  background: var(--surface);
+  box-shadow: 0 24px 48px -32px rgb(0 0 0 / 0.8);
+}
+.article-figure img {
+  display: block;
+  width: 100%;
+  height: auto;
+  background: var(--background);
+}
+.article-figure figcaption {
+  padding: 0 0.25rem 0.25rem;
+  color: var(--muted-ink);
+  font: 400 0.6875rem/1.6 var(--font-mono);
+  letter-spacing: 0.02em;
+}
+.article-cover {
+  margin-block: 0 0.5rem;
+}
+/*
+  A screenshot needs more width than prose does. On roomy screens the cover
+  borrows the page gutter back, up to a readable maximum, so its interface text
+  stays legible; below that it stays inside the column.
+*/
+@media (min-width: 1200px) {
+  .article-cover {
+    width: min(100% + 12rem, 74rem);
+    margin-inline: max(-6rem, calc((100% - 74rem) / 2));
+    justify-self: center;
+  }
+}
+/*
+  The cover keeps its own proportions. It is a screenshot of the event, so
+  cropping it to a house ratio would cut the evidence it was chosen to show.
+*/
+.article-cover img {
+  height: auto;
+}
+/* A light image: the hairline moves inside, where it separates the white from
+   the matte instead of outlining it, and the lift softens. */
+.article-figure[data-tone="light"] {
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--rule));
+  box-shadow: 0 30px 60px -34px rgb(0 0 0 / 0.55);
+}
+.article-figure[data-tone="light"] img {
+  outline: 1px solid color-mix(in srgb, var(--background) 22%, transparent);
+  outline-offset: -1px;
+}
+/* A challenge's figures sit in its reading column, slightly inset from the
+   prose so they read as attachments rather than as another paragraph. */
+.challenge .article-figure {
+  margin-block: 0.25rem 0.5rem;
+}
+
+.article-body {
+  display: grid;
+  gap: 1.35rem;
+  padding-block: clamp(2.5rem, 6vw, 3.5rem);
+  color: color-mix(in srgb, var(--ink) 92%, var(--muted-ink));
+  font-size: clamp(1.0625rem, 1.2vw, 1.1875rem);
+  line-height: 1.75;
+}
+.article-body > p {
+  max-width: 66ch;
+}
+.article-body h2 {
+  margin-top: 1.5rem;
+  color: var(--ink);
+  font-size: clamp(1.5rem, 2.6vw, 2rem);
+  font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: -0.03em;
+}
+.challenge-list {
+  display: grid;
+  padding: 0;
+  list-style: none;
+}
+.challenge {
+  display: grid;
+  gap: 0.85rem;
+  padding-block: 1.75rem;
+  border-top: 1px solid var(--rule);
+  scroll-margin-top: calc(var(--header-offset) + 1rem);
+}
+.challenge:last-child {
+  border-bottom: 1px solid var(--rule);
+}
+.challenge-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem 1rem;
+}
+.challenge-index {
+  color: var(--accent);
+  font: 500 0.75rem/1.5 var(--font-mono);
+}
+.challenge-head h3 {
+  flex: 1 1 auto;
+  font-size: clamp(1.35rem, 2.4vw, 1.75rem);
+  font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: -0.03em;
+}
+.challenge-points {
+  color: var(--muted-ink);
+  font: 400 0.6875rem/1.5 var(--font-mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.challenge-deck {
+  max-width: 60ch;
+  color: var(--ink);
+  font-size: 1rem;
+  line-height: 1.6;
+}
+.challenge-approach {
+  max-width: 66ch;
+  color: var(--muted-ink);
+  font-size: 0.9375rem;
+  line-height: 1.7;
+}
+.article-footer {
+  display: grid;
+  justify-items: start;
+  gap: 0.5rem;
+  padding-top: 2rem;
+  border-top: 1px solid var(--rule);
+}
+.article-source {
+  color: var(--muted-ink);
+  font-size: 0.9375rem;
+}
+.reading-progress {
+  position: fixed;
+  inset: 0 0 auto;
+  z-index: 20;
+  height: 2px;
+  pointer-events: none;
+}
+.reading-progress span {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent-strong), var(--accent));
+  transform: scaleX(0);
+  transform-origin: left;
 }
 
 @media (min-width: 1700px) {
@@ -667,7 +1461,7 @@ dd {
   #technical-profile > .evidence-ledger,
   #learning-archive > .section-heading,
   #learning-archive > .archive-layout,
-  #contact-path > .contact-layout {
+  #contact-path .contact-layout {
     max-width: 108rem;
     margin-inline: auto;
   }
@@ -686,7 +1480,8 @@ dd {
 @media (max-width: 900px) {
   .work-layout,
   .intro-layout,
-  .archive-layout {
+  .archive-layout,
+  .writing-grid {
     grid-template-columns: 1fr;
   }
   .intro-layout {
@@ -705,6 +1500,18 @@ dd {
   .work-intro .section-intro {
     max-width: 48ch;
   }
+  .writing-plate-frame {
+    position: static;
+  }
+  .writing-plates {
+    max-height: none;
+  }
+  .writing-head {
+    align-items: start;
+  }
+  .writing-all {
+    margin-bottom: 0;
+  }
   .ledger-details {
     grid-template-columns: 1fr;
   }
@@ -716,7 +1523,7 @@ dd {
 @media (max-width: 640px) {
   .site-header {
     padding-inline: var(--gutter);
-    /* Narrower header gap: at 320px the logo plus four nowrap labels only
+    /* Narrower header gap: at 320px the logo plus five nowrap labels only
        fit once this shrinks. Wider system fonts (e.g. DejaVu Sans on
        Linux CI) need the extra room. */
     gap: 1rem;
@@ -727,11 +1534,21 @@ dd {
   .flab-logo svg {
     width: 3rem;
   }
-  nav ul {
-    gap: 0.9rem;
+  /* These must be scoped to the nav's own class: a bare `nav a` loses to
+     `.site-nav a` and would silently do nothing. */
+  .site-nav ul {
+    gap: 0.5rem;
   }
-  nav a {
-    font-size: 0.875rem;
+  .site-nav a {
+    font-size: 0.625rem;
+    letter-spacing: 0.06em;
+  }
+  /* Below this width the wordmark and the five labels cannot share a row, so the
+     header wraps; the anchor offset has to clear both rows. */
+  @media (max-width: 359px) {
+    :root {
+      --header-offset: 9rem;
+    }
   }
   .ledger-disclosure {
     grid-template-columns: 1.5rem 1fr;
@@ -768,6 +1585,54 @@ dd {
     width: 1.5rem;
     height: 1.5rem;
   }
+  .writing-row {
+    grid-template-columns: 1.75rem minmax(0, 1fr) 1.25rem;
+    gap: 0.5rem 0.9rem;
+    padding: 1.3rem 0;
+  }
+  .writing-row-title {
+    font-size: 1.25rem;
+  }
+  .writing-row-deck {
+    font-size: 0.875rem;
+  }
+  .writing-index-row {
+    grid-template-columns: 2rem minmax(0, 1fr) 1.25rem;
+    gap: 0.35rem 0.9rem;
+    padding: 1.4rem 0;
+  }
+  .writing-index-number {
+    grid-column: 1;
+    grid-row: 1 / span 2;
+  }
+  .writing-index-body {
+    grid-column: 2;
+    grid-row: 1;
+  }
+  .writing-index-meta {
+    display: flex;
+    grid-column: 2;
+    grid-row: 2;
+    gap: 0.5rem;
+    padding-top: 0;
+    text-align: left;
+  }
+  .writing-index-arrow {
+    grid-column: 3;
+    grid-row: 1;
+  }
+  .writing-index-feature {
+    grid-template-columns: 1fr;
+  }
+  .writing-index-title {
+    font-size: 1.45rem;
+  }
+  .writing-index-deck {
+    font-size: 0.875rem;
+  }
+  .challenge-meta {
+    grid-template-columns: 1fr;
+  }
   .site-footer {
     min-height: 0;
     padding-block: 1.5rem;
@@ -803,20 +1668,22 @@ dd {
 
   Each page arrives the way it reads. Work's index assembles from the left. The
   ledger is recorded rather than travelled, so it only fades. The archive's
-  statement lies flat like a page settling. The contact paths converge from three
-  directions.
+  statement lies flat like a page settling. Contact has no text entrance: desktop
+  focus comes from the band's threshold-triggered height expansion; mobile
+  leaves it static.
 */
 .motion [data-reveal][data-enter="right"] {
   transform: translateX(-1.25rem);
-}
-.motion [data-reveal][data-enter="left"] {
-  transform: translateX(1.25rem);
 }
 .motion [data-reveal][data-enter="settle"] {
   transform: translateY(0.875rem) rotate(-1.2deg);
 }
 .motion [data-reveal][data-enter="fade"] {
   transform: none;
+}
+.motion [data-reveal][data-enter="line"] {
+  opacity: 1;
+  transform: translateY(1.1em);
 }
 .motion [data-rule] {
   transform: scaleX(0);
@@ -847,5 +1714,14 @@ dd {
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
+  }
+  .writing-row::before,
+  .writing-row-title,
+  .writing-row-meta,
+  .writing-row-arrow,
+  .writing-feature-title,
+  .writing-index-title,
+  .writing-index-arrow {
+    transition: none;
   }
 }

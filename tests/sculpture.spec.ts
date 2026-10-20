@@ -88,7 +88,6 @@ type Metrics = {
   gather: number;
   motion: string;
   collapsed: string;
-  tether: number;
 };
 
 const metrics = (page: Page): Promise<Metrics> =>
@@ -111,7 +110,6 @@ const metrics = (page: Page): Promise<Metrics> =>
       gather: Number(sculpture.dataset.gather),
       motion: sculpture.dataset.motion ?? "",
       collapsed: sculpture.dataset.collapsed ?? "",
-      tether: Number(sculpture.dataset.tether ?? 0),
     };
   });
 
@@ -154,21 +152,27 @@ const sampleMidScatter = async (page: Page) => {
   return main(page);
 };
 
-/** The live magnetic pull, in whole px, as the component publishes it. */
-const pull = (page: Page) =>
-  page
-    .locator(".sculpture")
-    .evaluate((el) => Number((el as HTMLElement).dataset.tether));
-
 /**
- * Move in small steps with a pause between them. A single synthetic jump reads as
- * an extreme pointer speed, which correctly releases the pull.
+ * Cross the mark with the pointer in paced steps.
+ *
+ * The pointer has to travel the way a visitor's does — a single synthetic jump is
+ * an extreme speed no hand produces, and it is the paced traversal that would give a
+ * pointer-following mark every chance to respond — but each move also forces a full
+ * repaint of the sculpture's canvas, which on a software-rendered engine at a 2x
+ * device pixel ratio costs about half a second. So the crossing is a handful of
+ * substantial steps rather than a long run of tiny ones: still a paced traversal at
+ * roughly 390px/s, well under any plausible speed threshold, and about a third of
+ * the wall time.
  */
+const CROSS_STEP_PX = 35;
+const CROSS_STEP_MS = 90;
+
 const slowMove = async (page: Page, fromX: number, toX: number, y: number) => {
   const direction = Math.sign(toX - fromX) || 1;
-  for (let x = fromX; direction > 0 ? x <= toX : x >= toX; x += direction * 15) {
+  const step = direction * CROSS_STEP_PX;
+  for (let x = fromX; direction > 0 ? x <= toX : x >= toX; x += step) {
     await page.mouse.move(x, y);
-    await page.waitForTimeout(45);
+    await page.waitForTimeout(CROSS_STEP_MS);
   }
 };
 
@@ -287,6 +291,55 @@ test.describe("After Hours opening scene", () => {
     expect((await metrics(page)).gather).toBe(1);
   });
 
+  test("starts breaking the mark on the first scrolled pixel, with no hold", async ({
+    page,
+  }) => {
+    await hydrate(page);
+    expect((await metrics(page)).gather).toBe(1);
+
+    // The gesture is continuous with the page: there is no hold the visitor has to
+    // sit through before the mark responds. The pose the component publishes is
+    // read back for every pixel of the first stretch of scroll. A mapping that
+    // eases the scroll, or a per-particle curve that flattens where the last
+    // particle starts, reproduces the same published pose across a run of pixels —
+    // which is exactly the hold this scene exists to avoid — so a repeated pose
+    // fails here.
+    const poses = await page.evaluate(async () => {
+      const el = document.querySelector<HTMLElement>(".sculpture")!;
+      document.documentElement.style.scrollBehavior = "auto";
+      const frame = () =>
+        new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      const read: string[] = [];
+      for (let y = 0; y <= 40; y += 1) {
+        window.scrollTo({ top: y, behavior: "instant" });
+        await frame();
+        await frame();
+        read.push(el.dataset.gather ?? "");
+      }
+      window.scrollTo({ top: 0, behavior: "instant" });
+      await frame();
+      await frame();
+      return read;
+    });
+
+    // At rest the mark is fully assembled...
+    expect(poses[0]).toBe("1.000");
+    // ...and the very first scrolled pixel is already a different pose.
+    expect(poses[1], `pixels: ${poses.slice(0, 8).join(",")}`).not.toBe("1.000");
+    // The response is real, not a rounding artifact: the first few pixels have
+    // measurably broken the mark, where a held scene would still read as whole.
+    expect(Number(poses[3])).toBeLessThan(0.999);
+    // ...and it only ever falls while the visitor scrolls forward.
+    for (let index = 1; index < poses.length; index += 1) {
+      expect(Number(poses[index]), `pixel ${index}`).toBeLessThanOrEqual(
+        Number(poses[index - 1]),
+      );
+    }
+
+    // Reversing returns the mark to the assembled pose exactly.
+    expect((await metrics(page)).gather).toBe(1);
+  });
+
   test("scatters through the scene and reforms, leaving no letter silhouette", async ({
     page,
   }) => {
@@ -396,48 +449,38 @@ test.describe("After Hours opening scene", () => {
     expectStableMark(firstMain, secondMain);
   });
 
-  test("pulls the mark toward a fine pointer near the centre, and lets go", async ({
+  test("keeps the painted mark where it is while the pointer travels across it", async ({
     page,
   }) => {
-    // Deliberately slow: the pull only responds to a pointer that is not being
-    // thrown across the screen, so the test has to move in small, paced steps.
-    test.slow();
-    // The pull is the assembled mark leaning toward the pointer, so it only
-    // exists near the top of the page where the mark is still whole.
+    // The opening mark is driven by native scroll and nothing else. It has no
+    // hover or pointer-follow behaviour, so a pointer travelling over it must
+    // leave the painted letterform exactly where it was.
+    //
+    // This is asserted on the painted canvas rather than on any published value:
+    // a mark that leaned toward the pointer would move its own ink, and a
+    // re-introduced pull has to fail here whatever internal form it takes. The
+    // measurement is the same aligned-profile comparison used for the mark's
+    // stability over time, so it tolerates the glyph rotation that runs on its own
+    // clock while catching a translation of the whole letterform.
     await hydrate(page);
     const centre = await page.locator(".sculpture-field").evaluate((el) => {
       const box = el.getBoundingClientRect();
       return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
     });
 
-    expect(await pull(page)).toBe(0);
-    await slowMove(page, centre.x - 150, centre.x + 60, centre.y);
-    await expect.poll(() => pull(page), { timeout: 5000 }).toBeGreaterThan(8);
-    // Capped, so the mark can never end up glued to the pointer.
-    expect(await pull(page)).toBeLessThanOrEqual(22);
+    // Park the pointer well away from the mark and take the pose to compare with.
+    await page.mouse.move(2, 2);
+    await page.waitForTimeout(120);
+    const parked = await main(page);
 
-    // Leaving the outer radius lets go.
-    await slowMove(page, centre.x + 60, centre.x + 240, centre.y);
-    await expect.poll(() => pull(page), { timeout: 5000 }).toBe(0);
-  });
-
-  test("never pulls for a pointer that cannot hover", async ({ browser }) => {
-    test.slow();
-    // A touch device has no pointer to aim with, so the pull must not exist at
-    // all rather than merely being hard to trigger.
-    const context = await browser.newContext({
-      viewport: { width: 1280, height: 800 },
-      hasTouch: true,
-    });
-    const page = await context.newPage();
-    await hydrate(page);
-    const centre = await page.locator(".sculpture-field").evaluate((el) => {
-      const box = el.getBoundingClientRect();
-      return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
-    });
+    // Now cross the mark slowly, through its centre, which is the movement a pull
+    // would answer.
     await slowMove(page, centre.x - 150, centre.x + 60, centre.y);
-    expect(await pull(page)).toBe(0);
-    await context.close();
+    const crossed = await main(page);
+
+    expectStableMark(parked, crossed);
+    // The mark is still the mark: the pull did not drag it off its own geometry.
+    expect((await metrics(page)).gather).toBe(1);
   });
 
   test("survives a resize in both poses without losing the stage", async ({
@@ -606,10 +649,10 @@ test.describe("After Hours sculpture fallbacks", () => {
     await expect(page.locator(".sculpture-canvas")).toHaveCount(0);
     await expect(page.locator("html")).not.toHaveClass(/\bmotion\b/);
 
-    // Without a canvas there is nothing to scatter, so the four sections must
+    // Without a canvas there is nothing to scatter, so the five sections must
     // still be ordinary, reachable links — now the header's section list.
     const links = page.locator(".site-nav a");
-    await expect(links).toHaveCount(4);
+    await expect(links).toHaveCount(5);
     await expect(links.first()).toHaveCSS("visibility", "visible");
     // No control is rendered, because there is nothing to open.
     await expect(page.locator(".sculpture-control")).toHaveCount(0);
@@ -621,7 +664,7 @@ test.describe("After Hours sculpture fallbacks", () => {
     expect(view.stickyTop).toBeGreaterThanOrEqual(0);
 
     // The last link still lands the visitor on its section.
-    await links.nth(3).click();
+    await links.nth(4).click();
     await expect(page).toHaveURL(/#contact-path$/);
     await expect(page.locator("#contact-path-heading")).toBeInViewport();
   });
@@ -647,6 +690,7 @@ test.describe("After Hours sculpture fallbacks", () => {
         .evaluateAll((els) => els.map((el) => el.getAttribute("href"))),
     ).toEqual([
       "#selected-evidence",
+      "#writing",
       "#technical-profile",
       "#learning-archive",
       "#contact-path",

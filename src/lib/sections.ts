@@ -16,6 +16,7 @@ export type Section = {
 
 export const SECTIONS: Section[] = [
   { id: "selected-evidence", label: "Work" },
+  { id: "writing", label: "Writing" },
   { id: "technical-profile", label: "Profile" },
   { id: "learning-archive", label: "Archive" },
   { id: "contact-path", label: "Contact" },

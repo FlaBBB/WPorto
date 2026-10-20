@@ -10,14 +10,21 @@ import EvidenceLedger from "../components/EvidenceLedger.svelte";
 import FlabSculpture from "../components/FlabSculpture.svelte";
 import SectionHeading from "../components/SectionHeading.svelte";
 import SparseStars from "../components/SparseStars.svelte";
+import WorkShowcase from "../components/WorkShowcase.svelte";
+import WritingShowcase from "../components/WritingShowcase.svelte";
 import Portfolio from "../layouts/Portfolio.astro";
 import {
   email,
   githubProfile,
   linkedInProfile,
+  ownerName,
   profileRecords,
   projects,
 } from "../lib/portfolio";
+import { WRITING } from "../lib/writing";
+
+const nameBreak = ownerName.lastIndexOf(" ");
+const nameLines = [ownerName.slice(0, nameBreak), ownerName.slice(nameBreak + 1)];
 
 // Recognizable contact marks. They are decorative (aria-hidden); the adjacent
 // text labels carry the accessible name.
@@ -42,8 +49,16 @@ const LINKEDIN_ICON =
       <SparseStars seed={1} client:load />
       <div class="intro-layout">
         <div class="intro-lead">
-          <h1 id="intro-heading">Fikri Muhammad Abdillah<span class="intro-dot" aria-hidden="true">.</span></h1>
-          <p class="intro-secondary">Web applications. Realtime systems.</p>
+          <h1 id="intro-heading">
+            {nameLines.map((line, index) => (
+              <span class="intro-line">
+                <span data-reveal data-enter="line" data-enter-delay={index * 0.08}>
+                  {line}{index === 1 && <span class="intro-dot" aria-hidden="true">.</span>}
+                </span>{index === 0 && " "}
+              </span>
+            ))}
+          </h1>
+          <p class="intro-secondary" data-reveal data-enter-delay="0.16">Web applications. Realtime systems.</p>
         </div>
         <div class="intro-body">
           <p class="intro-note" data-reveal>
@@ -65,44 +80,19 @@ const LINKEDIN_ICON =
 
     <section id="selected-evidence" aria-labelledby="selected-evidence-heading">
       <SparseStars seed={2} client:load />
-      <div class="work-layout">
-        <div class="work-intro">
-          <SectionHeading
-            index="01"
-            label="Work"
-            headingId="selected-evidence-heading"
-            title="Look inside the work."
-            intro="Three public repositories. Different systems, with the source material open to inspection."
-          />
-        </div>
-        <ol class="work-index">
-          {projects.map((project) => (
-            <li data-reveal data-enter="right">
-              <span class="reveal-rule" data-rule aria-hidden="true"></span>
-              <article aria-labelledby={`${project.id}-heading`}>
-                <p class="project-index" aria-hidden="true">{project.index}</p>
-                <div class="project-body">
-                  <h3 id={`${project.id}-heading`}>{project.name}</h3>
-                  <p class="project-deck">{project.deck}</p>
-                  <div class="project-structure" aria-label={project.structureLabel}>
-                    {project.structure.map((item) => <span>{item}</span>)}
-                  </div>
-                  <p class="project-copy">{project.copy}</p>
-                  <p class="scope-note">{project.scopeNote}</p>
-                  <a class="project-link" href={project.href}>Source: {project.name} <span aria-hidden="true">↗</span></a>
-                </div>
-              </article>
-            </li>
-          ))}
-        </ol>
-      </div>
+      <WorkShowcase projects={projects} client:load />
+    </section>
+
+    <section id="writing" aria-labelledby="writing-heading">
+      <SparseStars seed={7} client:load />
+      <WritingShowcase entries={WRITING} client:load />
     </section>
 
     <section id="technical-profile" aria-labelledby="technical-profile-heading">
       <SparseStars seed={3} client:load />
       <div class="section-heading">
         <SectionHeading
-          index="02"
+          index="03"
           label="Profile"
           headingId="technical-profile-heading"
           title="Evidence over claims."
@@ -116,7 +106,7 @@ const LINKEDIN_ICON =
       <SparseStars seed={4} client:load />
       <div class="section-heading">
         <SectionHeading
-          index="03"
+          index="04"
           label="Archive"
           headingId="learning-archive-heading"
           title="Still learning. Keeping the notes."
@@ -145,51 +135,67 @@ const LINKEDIN_ICON =
       </div>
     </section>
 
+    <!--
+      On desktop, the whole compact band must be visible and its midpoint must
+      enter the viewport's 45–65% focus zone. That triggers an automatic 400ms
+      expansion, not a scroll scrub. It stays open toward the footer and contracts
+      when scrolling back below the focus zone. The footer follows the bottom edge
+      in normal flow. Entering from above opens upward with the bottom edge held;
+      entering from below opens downward with the top edge held. Closing reverses
+      around that same edge. Content keeps its natural size, mobile stays static,
+      and mouse hover is not a trigger.
+
+      Separate content reveals are deliberately absent: the band provides the focus,
+      and a fade-up underneath it would be another gesture on the same content.
+    -->
     <section id="contact-path" aria-labelledby="contact-path-heading">
-      <SparseStars seed={5} tone="plum" client:load />
-      <div class="contact-layout">
-        <div class="contact-intro-block">
-          <SectionHeading
-            index="04"
-            label="Contact"
-            headingId="contact-path-heading"
-            title="Let’s talk."
-            intro="Explore the source, connect on LinkedIn, or send a note directly."
-            introClass="contact-intro"
-          />
+      <div class="contact-surface">
+        <SparseStars seed={5} tone="plum" client:load />
+        <div class="contact-layout">
+          <div class="contact-intro-block">
+            <SectionHeading
+              index="05"
+              label="Contact"
+              headingId="contact-path-heading"
+              title="Let’s talk."
+              intro="Explore the source, connect on LinkedIn, or send a note directly."
+              introClass="contact-intro"
+              reveal={false}
+            />
+          </div>
+          <ul class="contact-paths">
+            <li>
+              <a href={githubProfile}>
+                <span class="contact-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="currentColor"><path d={GITHUB_ICON} /></svg>
+                </span>
+                <span class="contact-label"><strong>GitHub</strong><span>Inspect public work</span></span>
+                <span class="contact-arrow" aria-hidden="true">↗</span>
+              </a>
+            </li>
+            <li>
+              <a href={linkedInProfile}>
+                <span class="contact-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="currentColor"><path d={LINKEDIN_ICON} /></svg>
+                </span>
+                <span class="contact-label"><strong>LinkedIn</strong><span>Professional profile</span></span>
+                <span class="contact-arrow" aria-hidden="true">↗</span>
+              </a>
+            </li>
+            <li>
+              <!--email_off--><a href={`mailto:${email}`}>
+                <span class="contact-icon contact-icon-envelope" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="2.5" y="4.5" width="19" height="15" rx="2" />
+                    <path d="m3.5 6.5 8.5 6.5 8.5-6.5" />
+                  </svg>
+                </span>
+                <span class="contact-label"><strong>Email</strong><span>Start a conversation</span></span>
+                <span class="contact-arrow" aria-hidden="true">↗</span>
+              </a><!--/email_off-->
+            </li>
+          </ul>
         </div>
-        <ul class="contact-paths">
-          <li data-reveal data-enter="right">
-            <a href={githubProfile}>
-              <span class="contact-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="currentColor"><path d={GITHUB_ICON} /></svg>
-              </span>
-              <span class="contact-label"><strong>GitHub</strong><span>Inspect public work</span></span>
-              <span class="contact-arrow" aria-hidden="true">↗</span>
-            </a>
-          </li>
-          <li data-reveal data-enter="left" data-enter-delay="0.1">
-            <a href={linkedInProfile}>
-              <span class="contact-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="currentColor"><path d={LINKEDIN_ICON} /></svg>
-              </span>
-              <span class="contact-label"><strong>LinkedIn</strong><span>Professional profile</span></span>
-              <span class="contact-arrow" aria-hidden="true">↗</span>
-            </a>
-          </li>
-          <li data-reveal data-enter="up" data-enter-delay="0.2">
-            <!--email_off--><a href={`mailto:${email}`}>
-              <span class="contact-icon contact-icon-envelope" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
-                  <rect x="2.5" y="4.5" width="19" height="15" rx="2" />
-                  <path d="m3.5 6.5 8.5 6.5 8.5-6.5" />
-                </svg>
-              </span>
-              <span class="contact-label"><strong>Email</strong><span>Start a conversation</span></span>
-              <span class="contact-arrow" aria-hidden="true">↗</span>
-            </a><!--/email_off-->
-          </li>
-        </ul>
       </div>
     </section>
   </div>
