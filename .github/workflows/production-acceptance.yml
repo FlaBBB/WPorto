@@ -11,7 +11,7 @@ permissions:
 jobs:
   test-production:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - name: Check out production commit
         uses: actions/checkout@v6
@@ -43,6 +43,15 @@ jobs:
           done
           echo "Canonical production did not serve the expected Portfolio Site: $PRODUCTION_URL" >&2
           exit 1
+
+      # The engines are ~600MB, and downloading them on every run can push the job
+      # past its cap while the suite is still running. The key follows the lock
+      # file, so a Playwright bump re-downloads and every other run reuses them.
+      - name: Cache browser engines
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
 
       - name: Install browser engines
         run: npx playwright install --with-deps chromium firefox webkit
