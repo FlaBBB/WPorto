@@ -480,24 +480,13 @@ for (const width of [1440, 1101, 1100, 700, 390, 320]) {
   }) => {
     await page.setViewportSize({ width, height: 1000 });
     await page.goto("/");
-    // Bring the contact band into view with native smooth scrolling disabled so
-    // its reveal targets actually enter the viewport and settle before measuring.
+    // Both hover sizes expose the complete content; scrolling only brings it
+    // into view and does not need to complete a reveal first.
     await page.evaluate(() => {
       document.documentElement.style.scrollBehavior = "auto";
       window.scrollTo(0, document.documentElement.scrollHeight);
     });
-    // Settle the reveal so a translateY does not offset the measurement.
-    await expect
-      .poll(async () =>
-        page
-          .locator("#contact-path [data-reveal]")
-          .evaluateAll((els) =>
-            els.every(
-              (el) => Number(getComputedStyle(el).opacity) >= 0.999,
-            ),
-          ),
-      )
-      .toBe(true);
+    await expect(page.locator(".contact-surface")).toHaveCSS("clip-path", "none");
 
     const rows = page.locator(".contact-paths li");
     await expect(rows).toHaveCount(3);
@@ -559,14 +548,28 @@ test("keeps a visible focus ring on the violet contact band", async ({
         return 0.2126 * r + 0.7152 * g + 0.0722 * b;
       };
       const style = getComputedStyle(el);
-      // The band's own background is the surface the ring must read against.
-      const band = document.querySelector("#contact-path")!;
-      const surface = luminance(getComputedStyle(band).backgroundColor);
+      /*
+        The ring has to read against the surface actually painted behind it. That
+        is the violet band inside the section, not the section itself: the section
+        is deliberately transparent, because its own box is what the scroll-driven
+        scale measures. Sampling the section would compare the ring with the page
+        background and would pass on a band that was never painted.
+      */
+      let painted: Element | null = el;
+      while (
+        painted &&
+        getComputedStyle(painted).backgroundColor === "rgba(0, 0, 0, 0)"
+      ) {
+        painted = painted.parentElement;
+      }
+      const surfaceColor = getComputedStyle(painted!).backgroundColor;
+      const surface = luminance(surfaceColor);
       const outline = luminance(style.outlineColor);
       return {
         style: style.outlineStyle,
         width: style.outlineWidth,
         color: style.outlineColor,
+        surfaceColor,
         ratio:
           (Math.max(outline, surface) + 0.05) /
           (Math.min(outline, surface) + 0.05),
@@ -644,6 +647,579 @@ test("centers each technology pill's label in its own pill", async ({ page }) =>
       expect(pill.inkOffset, `${width}px ${pill.label}`).toBeLessThan(3);
     }
   }
+});
+
+test.describe("Contact's directional focus expansion", () => {
+  /**
+   * Everything the contract is stated over, in one round trip.
+   *
+   * Document-relative positions are used for the geometry that must not move, so the
+   * comparison is between layouts rather than between scroll positions.
+   */
+  const bandState = (page: Page) =>
+    page.evaluate(() => {
+      const section = document.querySelector("#contact-path")!;
+      const surface = document.querySelector<HTMLElement>(".contact-surface")!;
+      const footer = document.querySelector(".site-footer")!;
+      const heading = document.querySelector("#contact-path-heading")!;
+      const style = getComputedStyle(surface);
+      const sectionBox = section.getBoundingClientRect();
+      const surfaceBox = surface.getBoundingClientRect();
+      const footerBox = footer.getBoundingClientRect();
+      const headingBox = heading.getBoundingClientRect();
+      return {
+        clipPath: style.clipPath,
+        transform: style.transform,
+        sectionTop: sectionBox.top,
+        sectionBottom: sectionBox.bottom,
+        midpoint: sectionBox.top + sectionBox.height / 2,
+        scrollY: window.scrollY,
+        sectionDocTop: sectionBox.top + window.scrollY,
+        sectionWidth: sectionBox.width,
+        sectionHeight: sectionBox.height,
+        surfaceWidth: surfaceBox.width,
+        surfaceHeight: surfaceBox.height,
+        docHeight: document.documentElement.scrollHeight,
+        footerDocTop: footerBox.top + window.scrollY,
+        footerGap: footerBox.top - surfaceBox.bottom,
+        headerBottom: document.querySelector(".site-header")!.getBoundingClientRect().bottom,
+        headingWidth: headingBox.width,
+        headingHeight: headingBox.height,
+        headingTop: headingBox.top,
+        headingFontSize: Number.parseFloat(getComputedStyle(heading).fontSize),
+        viewport: window.innerHeight,
+        links: [
+          ...document.querySelectorAll<HTMLElement>("#contact-path a"),
+        ].map((link) => {
+          const box = link.getBoundingClientRect();
+          const linkStyle = getComputedStyle(link);
+          return {
+            width: box.width,
+            height: box.height,
+            left: box.left,
+            right: box.right,
+            display: linkStyle.display,
+            visibility: linkStyle.visibility,
+            pointerEvents: linkStyle.pointerEvents,
+          };
+        }),
+      };
+    });
+
+  /** Deliver native scroll before advancing the controller's frozen frame. */
+  const scrollSectionTop = async (page: Page, top: number) => {
+    const delivery = await page.evaluateHandle((offset) => {
+      document.documentElement.style.scrollBehavior = "auto";
+      const section = document.querySelector("#contact-path")!;
+      let resolve!: () => void;
+      const scrolled = new Promise<void>((done) => { resolve = done; });
+      const finish = () => {
+        window.removeEventListener("scroll", finish);
+        resolve();
+      };
+      window.addEventListener("scroll", finish, { once: true });
+      const before = window.scrollY;
+      window.scrollTo(
+        0,
+        section.getBoundingClientRect().top + window.scrollY - offset,
+      );
+      if (window.scrollY === before) finish();
+      return { scrolled };
+    }, top);
+    try {
+      await delivery.evaluate(({ scrolled }) => scrolled);
+    } finally {
+      await delivery.dispose();
+    }
+  };
+
+  /** Enter the real painted box, without locator scrolling changing the fixture. */
+  const enterBand = async (page: Page) => {
+    const state = await bandState(page);
+    await page.mouse.move(
+      state.surfaceWidth / 2,
+      Math.max(state.headerBottom + 20, Math.min(state.viewport - 120, state.sectionTop + state.surfaceHeight / 2)),
+    );
+  };
+
+  const heightOf = async (page: Page) => (await bandState(page)).surfaceHeight;
+
+  const expectHeight = (page: Page, height: number) =>
+    expect.poll(async () => {
+      await page.clock.fastForward(80);
+      return await heightOf(page);
+    }, { intervals: [32] }).toBeCloseTo(height, 3);
+
+  /** Keep frames under test control, after both modules have arrived. */
+  const freezeContact = async (page: Page) => {
+    await page.mouse.move(0, 0);
+    await freezeForHydration(page);
+    await expect
+      .poll(
+        () => page.evaluate(() =>
+          Boolean(window.__afterHoursMotionReady && window.__workPreviewReady),
+        ),
+        {
+          timeout: 20_000,
+          message: "the islands hydrated before Contact's clock advances",
+        },
+      )
+      .toBe(true);
+    await page.clock.fastForward(2_500);
+  };
+
+  /** Position the entry boundary using the compact box, not an animated height. */
+  const scrollVisible = (page: Page, compact: number, fraction: number) =>
+    scrollSectionTop(page, page.viewportSize()!.height - compact * fraction);
+
+  /** Position the compact focus box against the edge held during this visit. */
+  const scrollCenter = async (page: Page, fraction: number, compact?: number, edge: "top" | "bottom" = "bottom") => {
+    const height = await heightOf(page);
+    const compactHeight = compact ?? height;
+    const extra = edge === "bottom" ? height - compactHeight : 0;
+    await scrollSectionTop(page, page.viewportSize()!.height * fraction - compactHeight / 2 - extra);
+  };
+
+  /** An automatic transition must paint intermediate sizes without more scroll. */
+  const expectIntermediate = async (page: Page, from: number, to: number, anchor?: { edge: "sectionTop" | "sectionBottom"; position: number }) => {
+    let height = from;
+    await expect.poll(async () => {
+      await page.clock.fastForward(32);
+      const state = await bandState(page);
+      height = state.surfaceHeight;
+      expect(state.footerGap, "the footer follows every intermediate size").toBeCloseTo(0, 1);
+      expect(state.sectionHeight, "no reserved outer height").toBeCloseTo(height, 1);
+      expect(state.clipPath, "this changes size, not clipping").toBe("none");
+      if (anchor) {
+        expect(Math.abs(state[anchor.edge] - anchor.position), "the opposite edge stays in place throughout the transition").toBeLessThan(0.6);
+      }
+      return height > Math.min(from, to) && height < Math.max(from, to);
+    }, { intervals: [32] }).toBe(true);
+    return height;
+  };
+
+  for (const [width, height, entry] of [
+    [1440, 900, "above"],
+    [1366, 768, "above"],
+    [1440, 900, "below"],
+    [1366, 768, "below"],
+  ] as const) {
+    test(`waits for full visibility and focus, then opens from ${entry} and reverses on closing at ${width}x${height}`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width, height });
+      try {
+        await freezeContact(page);
+        const initial = await bandState(page);
+        await scrollSectionTop(page, height - 40);
+        await page.clock.fastForward(800);
+        expect(await heightOf(page), "partial scroll entry cannot expand it").toBe(initial.surfaceHeight);
+        for (const fraction of [0.85, 0.995]) {
+          await scrollVisible(page, initial.surfaceHeight, fraction);
+          await page.clock.fastForward(800);
+          const partial = await bandState(page);
+          expect(partial.sectionBottom, "some of the compact box is still outside the viewport").toBeGreaterThan(height);
+          expect(partial.surfaceHeight, `${fraction * 100}% visibility cannot trigger expansion`).toBe(initial.surfaceHeight);
+        }
+        await scrollCenter(page, 0.68);
+        await page.clock.fastForward(800);
+        const visible = await bandState(page);
+        expect(visible.sectionTop).toBeGreaterThanOrEqual(visible.headerBottom);
+        expect(visible.sectionBottom, "100% visible, but not yet centered").toBeLessThanOrEqual(height);
+        expect(visible.surfaceHeight, "full visibility alone is not the focus trigger").toBe(initial.surfaceHeight);
+        await scrollCenter(page, 0.655);
+        await page.clock.fastForward(800);
+        const compact = await bandState(page);
+        expect(compact.surfaceHeight, "the midpoint has not reached the 65% focus boundary").toBe(initial.surfaceHeight);
+        expect((compact.sectionTop + compact.sectionHeight / 2) / height).toBeGreaterThan(0.65);
+        expect(compact.footerGap).toBeCloseTo(0, 1);
+        expect(compact.clipPath).toBe("none");
+        expect(compact.links).toHaveLength(3);
+        for (const link of compact.links) {
+          expect(link.height).toBeGreaterThanOrEqual(44);
+          expect(link.visibility).not.toBe("hidden");
+          expect(link.display).not.toBe("none");
+          expect(link.pointerEvents).not.toBe("none");
+        }
+
+        // Pointer entry, of any kind, no longer chooses the size.
+        await enterBand(page);
+        for (const pointerType of ["mouse", "touch", "pen"]) {
+          await page.locator("#contact-path").dispatchEvent("pointerenter", { pointerType });
+          await page.clock.fastForward(600);
+          expect(await heightOf(page), pointerType).toBe(compact.surfaceHeight);
+        }
+        await page.mouse.move(0, 0);
+        let lowerScrollY = 0;
+        if (entry === "below") {
+          // Native scroll can reverse before the next controller frame. Move
+          // below the final entry point with JS frames still paused, then come
+          // back up; only that final approach may choose the expanding edge.
+          await scrollCenter(page, 0.642);
+          lowerScrollY = (await bandState(page)).scrollY;
+        }
+        await scrollCenter(page, 0.648);
+        const triggered = await bandState(page);
+        if (entry === "below") expect(triggered.scrollY).toBeLessThan(lowerScrollY);
+        else expect(triggered.scrollY).toBeGreaterThan(compact.scrollY);
+        expect(triggered.sectionTop).toBeGreaterThanOrEqual(triggered.headerBottom);
+        expect(triggered.sectionTop + compact.surfaceHeight).toBeLessThanOrEqual(height);
+        const midpoint = (triggered.sectionTop + compact.surfaceHeight / 2) / height;
+        expect(midpoint, "the compact midpoint really entered the focus zone").toBeGreaterThanOrEqual(0.45);
+        expect(midpoint).toBeLessThanOrEqual(0.65);
+        const edge = entry === "above" ? "sectionBottom" : "sectionTop";
+        await expectIntermediate(page, compact.surfaceHeight, compact.surfaceHeight + 224, { edge, position: triggered[edge] });
+        // No second scroll, mouse movement or changing progress value: elapsed
+        // time alone must carry the first triggered animation to its full height.
+        await expectHeight(page, compact.surfaceHeight + 224);
+        const expanded = await bandState(page);
+        const growth = expanded.surfaceHeight - compact.surfaceHeight;
+        expect(Math.abs(triggered.sectionTop - expanded.sectionTop - (entry === "above" ? growth : 0)), "all upward growth comes from the top edge").toBeLessThan(0.6);
+        expect(Math.abs(expanded.sectionBottom - triggered.sectionBottom - (entry === "below" ? growth : 0)), "all downward growth comes from the bottom edge").toBeLessThan(0.6);
+        expect(Math.abs(expanded.headingTop - triggered.headingTop - (entry === "above" ? -growth / 2 : growth / 2)), "content stays naturally centered without scaling").toBeLessThan(0.6);
+        expect(expanded.surfaceHeight, "a clearly taller focus band").toBeGreaterThanOrEqual(height * 0.7);
+        expect(expanded.sectionHeight, "the section grows, not a reserved clip").toBe(expanded.surfaceHeight);
+        expect(expanded.footerGap).toBeCloseTo(0, 1);
+        expect(expanded.footerDocTop - compact.footerDocTop).toBeCloseTo(growth, 1);
+        expect(Math.abs(expanded.docHeight - compact.docHeight - growth)).toBeLessThanOrEqual(1);
+        expect(expanded.sectionDocTop, "no overlap with the section above").toBeCloseTo(compact.sectionDocTop, 1);
+        expect(expanded.surfaceWidth).toBe(compact.surfaceWidth);
+        expect(expanded.surfaceWidth).toBeCloseTo(expanded.sectionWidth, 1);
+        expect(expanded.headingWidth).toBe(compact.headingWidth);
+        expect(expanded.headingHeight).toBeCloseTo(compact.headingHeight, 3);
+        expect(expanded.headingFontSize).toBe(compact.headingFontSize);
+        expect(expanded.transform).toBe("none");
+        expect(expanded.clipPath).toBe("none");
+        expanded.links.forEach((link, index) => {
+          expect(link.width).toBeCloseTo(compact.links[index].width, 3);
+          expect(link.height).toBeCloseTo(compact.links[index].height, 3);
+        });
+
+        await enterBand(page);
+        await page.mouse.move(0, 0);
+        await page.clock.fastForward(1200);
+        expect(await heightOf(page), "growth itself and mouse exit cannot close the band").toBe(expanded.surfaceHeight);
+        await scrollSectionTop(page, -height);
+        await page.clock.fastForward(1200);
+        expect(await heightOf(page), "passing the focus zone toward the footer keeps it open").toBe(expanded.surfaceHeight);
+        expect((await bandState(page)).footerGap).toBeCloseTo(0, 1);
+        await scrollCenter(page, 0.655, compact.surfaceHeight, entry === "above" ? "bottom" : "top");
+        const closing = await bandState(page);
+        await expectIntermediate(page, expanded.surfaceHeight, compact.surfaceHeight, { edge, position: closing[edge] });
+        await expectHeight(page, compact.surfaceHeight);
+        const closed = await bandState(page);
+        expect(Math.abs(closed.sectionTop - closing.sectionTop - (entry === "above" ? growth : 0)), "closing reverses upward expansion").toBeLessThan(0.6);
+        expect(Math.abs(closing.sectionBottom - closed.sectionBottom - (entry === "below" ? growth : 0)), "closing reverses downward expansion").toBeLessThan(0.6);
+        expect(Math.abs(closed[edge] - closing[edge])).toBeLessThan(0.6);
+        expect(closed.footerGap).toBeCloseTo(0, 1);
+      } finally {
+        await page.clock.resume();
+      }
+    });
+  }
+
+  test("finishes a triggered expansion before honoring a reversed scroll and can trigger again", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    try {
+      await freezeContact(page);
+      const compact = await heightOf(page);
+      const full = compact + 224;
+      await scrollCenter(page, 0.648);
+      const opening = await expectIntermediate(page, compact, full);
+      await scrollCenter(page, 0.68, compact);
+      const reversed = await bandState(page);
+      await page.clock.fastForward(32);
+      expect(await heightOf(page), "crossing back cannot interrupt the opening").toBeGreaterThan(opening);
+      let peak = 0;
+      for (let elapsed = 0; elapsed < 900; elapsed += 40) {
+        await page.clock.fastForward(40);
+        const current = await bandState(page);
+        peak = Math.max(peak, current.surfaceHeight);
+        expect(current.footerGap).toBeCloseTo(0, 1);
+        expect(Math.abs(current.sectionBottom - reversed.sectionBottom), "the held edge preserves the visitor's own scroll change").toBeLessThan(0.6);
+      }
+      expect(peak, "the opening reaches full height before the queued contraction").toBeGreaterThan(full - 2);
+      await expectHeight(page, compact);
+      await scrollCenter(page, 0.648);
+      await expectIntermediate(page, compact, full);
+      await expectHeight(page, full);
+      await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+      await expectHeight(page, full);
+    } finally {
+      await page.clock.resume();
+    }
+  });
+
+  test("runs to completion after a real wheel crossing in either direction without hover", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/");
+    await page.waitForFunction(() => window.__afterHoursMotionReady && window.__workPreviewReady);
+    await page.evaluate(() => document.fonts.ready);
+    await page.mouse.move(0, 0);
+    const compact = await heightOf(page);
+    await scrollCenter(page, 0.655);
+    await page.mouse.move(720, 880);
+    expect(await heightOf(page), "a resting mouse cannot expand it").toBe(compact);
+    await page.mouse.wheel(0, 20);
+    // The wheel stops here. A scrub would remain near its starting size.
+    await expect.poll(() => heightOf(page)).toBeCloseTo(compact + 224, 1);
+    await page.mouse.wheel(0, -20);
+    await expect.poll(() => heightOf(page)).toBeCloseTo(compact, 1);
+  });
+
+  test("honors native section navigation, including an unchanged fragment, during expansion", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    try {
+      await freezeContact(page);
+      const compact = await heightOf(page);
+      // The URL can still name Work after scrolling down manually. Clicking its
+      // link again must work without relying on a hashchange event.
+      await page.evaluate(() => history.replaceState(null, "", "#selected-evidence"));
+      await scrollCenter(page, 0.648);
+      await expectIntermediate(page, compact, compact + 224);
+      const expected = await page.evaluate(() => {
+        // Geometry fixtures use instant scrolling; restore the product's native
+        // smooth anchor behavior before exercising the navigation itself.
+        document.documentElement.style.removeProperty("scroll-behavior");
+        return Number.parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop) +
+          Number.parseFloat(getComputedStyle(document.querySelector("#selected-evidence")!).scrollMarginTop);
+      });
+      await page.locator('.site-nav a[href="#selected-evidence"]').evaluate((link: HTMLAnchorElement) => link.click());
+      await page.clock.resume();
+      await expect.poll(() => page.locator("#selected-evidence").evaluate((section) =>
+        section.getBoundingClientRect().top,
+      ), { message: "Contact's scroll compensation must not cancel native section navigation" }).toBeCloseTo(expected, 0);
+
+      const contactLanding = await page.locator("#contact-path").evaluate((section) =>
+        Number.parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop) +
+          Number.parseFloat(getComputedStyle(section).scrollMarginTop),
+      );
+      await page.locator('.site-nav a[href="#contact-path"]').evaluate((link: HTMLAnchorElement) => link.click());
+      await expect.poll(() => page.locator("#contact-path").evaluate((section) =>
+        section.getBoundingClientRect().top,
+      ), { message: "Contact must be full before native navigation calculates its end-of-document limit" }).toBeCloseTo(contactLanding, 0);
+    } finally {
+      await page.clock.resume();
+    }
+  });
+
+  test("replaces an in-flight expansion with static reduced motion and restores centered focus", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    try {
+      await freezeContact(page);
+      const compact = await heightOf(page);
+      await scrollCenter(page, 0.648);
+      await expectIntermediate(page, compact, compact + 224);
+      for (const reducedMotion of ["reduce", "no-preference"] as const) {
+        // The media query's native delivery is not a fake animation frame. Await
+        // that event without spending the rest of the reveal's controlled time.
+        const delivery = await page.evaluateHandle(() => ({
+          changed: new Promise<void>((resolve) => {
+            window.matchMedia("(prefers-reduced-motion: reduce)").addEventListener(
+              "change",
+              () => resolve(),
+              { once: true },
+            );
+          }),
+        }));
+        try {
+          await page.emulateMedia({ reducedMotion });
+          await delivery.evaluate(({ changed }) => changed);
+          if (reducedMotion === "reduce") {
+            expect(await heightOf(page), "reduced motion immediately restores the full box").toBeCloseTo(compact + 224, 1);
+            await scrollSectionTop(page, 860);
+            await page.clock.fastForward(800);
+            expect(await heightOf(page), "scroll cannot shrink the static band").toBeCloseTo(compact + 224, 1);
+          } else {
+            // Other sections also restore their scroll layouts. Re-establish
+            // the below-trigger position rather than assuming their resize left
+            // this section at the reduced-motion offset.
+            await scrollCenter(page, 0.68);
+            await expectHeight(page, compact);
+          }
+        } finally {
+          await delivery.dispose();
+        }
+      }
+      await scrollCenter(page, 0.648);
+      await expectIntermediate(page, compact, compact + 224);
+      await expectHeight(page, compact + 224);
+    } finally {
+      await page.clock.resume();
+    }
+  });
+
+  test("keeps direct Contact entry full and responds to centered focus without pointer movement", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/#contact-path");
+    await page.waitForFunction(() => window.__afterHoursMotionReady && window.__workPreviewReady);
+    await page.evaluate(() => document.fonts.ready);
+    // Keep native fragment landing and the subsequent animations on one real
+    // rendering clock instead of switching to a mocked clock after loading.
+    await page.evaluate(() => new Promise<void>((resolve) => {
+      let position = window.scrollY;
+      let height = 0;
+      let since = performance.now();
+      const landed = () => {
+        const box = document.querySelector("#contact-path")!.getBoundingClientRect();
+        if (window.scrollY !== position || Math.abs(box.height - height) > 0.01) {
+          position = window.scrollY;
+          height = box.height;
+          since = performance.now();
+        }
+        if (box.top < window.innerHeight && performance.now() - since >= 160) resolve();
+        else requestAnimationFrame(landed);
+      };
+      requestAnimationFrame(landed);
+    }));
+    const direct = await bandState(page);
+    expect(direct.sectionTop).toBeGreaterThanOrEqual(direct.headerBottom);
+    expect(direct.surfaceHeight).toBeGreaterThanOrEqual(900 * 0.7);
+    expect(direct.links).toHaveLength(3);
+    expect(direct.footerGap).toBeCloseTo(0, 1);
+    await enterBand(page);
+    await page.mouse.move(0, 0);
+    await page.evaluate(() => new Promise<void>((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+    }));
+    expect(await heightOf(page), "hover does not take ownership after a fragment landing").toBeCloseTo(direct.surfaceHeight, 3);
+    const compact = direct.surfaceHeight - 224;
+    await scrollCenter(page, 0.68, compact, "top");
+    await expect.poll(() => heightOf(page)).toBeCloseTo(compact, 3);
+    await scrollCenter(page, 0.648);
+    await expect.poll(() => heightOf(page)).toBeCloseTo(direct.surfaceHeight, 3);
+  });
+
+  test("keeps an already fully visible band full when the module arrives late", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const releasePageModule = await gatePageModule(page);
+    try {
+      await freezeForHydration(page);
+      expect(
+        await page.evaluate(() => Boolean(window.__afterHoursMotionReady)),
+        "the page module is genuinely absent before the gate opens",
+      ).toBe(false);
+      await scrollSectionTop(page, 100);
+      const painted = await bandState(page);
+      expect(painted.surfaceHeight).toBeGreaterThanOrEqual(900 * 0.7);
+      expect(painted.clipPath).toBe("none");
+
+      releasePageModule();
+      await expect.poll(() => page.evaluate(() => Boolean(window.__afterHoursMotionReady))).toBe(true);
+      const afterInit = await bandState(page);
+      expect(afterInit.surfaceHeight, "no close/reopen entrance in an already visible band").toBe(painted.surfaceHeight);
+      expect(afterInit.footerGap).toBeCloseTo(0, 1);
+      expect(afterInit.headingHeight).toBeCloseTo(painted.headingHeight, 1);
+      await scrollCenter(page, 0.68);
+      await expectIntermediate(page, painted.surfaceHeight, painted.surfaceHeight - 224);
+      await expectHeight(page, painted.surfaceHeight - 224);
+      await scrollCenter(page, 0.648);
+      await expectHeight(page, painted.surfaceHeight);
+    } finally {
+      releasePageModule();
+      await page.clock.resume();
+    }
+  });
+
+  test("leaves the band complete without the module, and under reduced motion from the start", async ({
+    page,
+  }) => {
+    /*
+      Two ways the module does not run its reveal, both of which have to leave an
+      ordinary complete band: the chunk never arrives, and the preference is already
+      set when the page loads.
+    */
+    await page.route(/Portfolio\.astro_astro_type_script/, (route) => route.abort());
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/");
+    await page.waitForTimeout(600);
+
+    await scrollSectionTop(page, 0);
+    const noModule = await bandState(page);
+    expect(noModule.clipPath).toBe("none");
+    expect(noModule.surfaceHeight).toBeGreaterThanOrEqual(900 * 0.7);
+    expect(noModule.footerGap).toBeCloseTo(0, 1);
+    expect(
+      await page
+        .locator(".contact-surface")
+        .evaluate((el) => getComputedStyle(el).backgroundColor),
+    ).toBe("rgb(167, 139, 250)");
+    expect(noModule.links.length).toBe(3);
+
+    await page.unroute(/Portfolio\.astro_astro_type_script/);
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.goto("/");
+    await page.waitForTimeout(600);
+    await scrollSectionTop(page, 0);
+    const reduced = await bandState(page);
+    expect(reduced.clipPath).toBe("none");
+    expect(reduced.surfaceHeight).toBeGreaterThanOrEqual(900 * 0.7);
+    expect(reduced.footerGap).toBeCloseTo(0, 1);
+    expect(reduced.links.length).toBe(3);
+    await enterBand(page);
+    await scrollSectionTop(page, 860);
+    await page.waitForTimeout(600);
+    expect(await heightOf(page), "reduced motion has no scroll expansion").toBe(reduced.surfaceHeight);
+  });
+
+  test("keeps mobile static and cancels desktop expansion at the layout breakpoint", async ({
+    page,
+  }) => {
+    // Cover a mobile first load as well as live layout changes; there is no reason
+    // to initialize the unrelated desktop opening before checking mobile sizing.
+    await page.setViewportSize({ width: 390, height: 844 });
+    try {
+      await freezeContact(page);
+      for (const [width, height] of [[390, 844], [320, 640], [1100, 768]]) {
+        await page.mouse.move(0, 0);
+        await page.setViewportSize({ width, height });
+        await scrollSectionTop(page, 100);
+        const mobile = await bandState(page);
+        await enterBand(page);
+        await scrollSectionTop(page, height - 40);
+        await page.clock.fastForward(800);
+        expect(await heightOf(page), `${width}px scroll and mouse entry cannot resize mobile`).toBe(mobile.surfaceHeight);
+        await page.mouse.move(0, 0);
+        await scrollSectionTop(page, 0);
+        await page.clock.fastForward(800);
+        expect(await heightOf(page), `${width}px return scroll cannot resize mobile`).toBe(mobile.surfaceHeight);
+        expect(mobile.clipPath).toBe("none");
+        expect(mobile.footerGap).toBeCloseTo(0, 1);
+        expect(mobile.surfaceWidth).toBeCloseTo(width, 1);
+        expect(mobile.links).toHaveLength(3);
+        for (const link of mobile.links) {
+          expect(link.height).toBeGreaterThanOrEqual(44);
+          expect(link.visibility).not.toBe("hidden");
+          expect(link.display).not.toBe("none");
+          expect(link.pointerEvents).not.toBe("none");
+          expect(link.left).toBeGreaterThanOrEqual(0);
+          expect(link.right).toBeLessThanOrEqual(width);
+        }
+      }
+
+      await page.setViewportSize({ width: 1101, height: 768 });
+      await scrollSectionTop(page, 728);
+      await page.clock.fastForward(80);
+      const desktop = await heightOf(page);
+      await scrollCenter(page, 0.648);
+      await expectIntermediate(page, desktop, desktop + 224);
+      await page.setViewportSize({ width: 1100, height: 768 });
+      const mobile = await bandState(page);
+      await page.clock.fastForward(800);
+      expect(await heightOf(page), "queued desktop work cannot resize mobile").toBe(mobile.surfaceHeight);
+      expect(mobile.footerGap).toBeCloseTo(0, 1);
+    } finally {
+      await page.clock.resume();
+    }
+  });
 });
 
 test("returns a real 404 that carries the same mark and a recovery path", async ({
@@ -1119,12 +1695,12 @@ test.describe("section refinement", () => {
     await page.setViewportSize({ width: 1440, height: 1000 });
     await page.goto("/");
 
-    // Every body section keeps a substantial vertical rhythm (~12vh at 1000px).
+    // Static sections keep their substantial rhythm. Contact's compact/expanded
+    // spacing is covered separately by its hover contract.
     for (const selector of [
       "#intro",
       "#selected-evidence",
       "#learning-archive",
-      "#contact-path",
     ]) {
       const padding = await page
         .locator(selector)
@@ -1187,16 +1763,30 @@ test.describe("section refinement", () => {
     // near the eyebrow. At the two-column breakpoints the two centers coincide.
     for (const width of [1920, 1440, 1101]) {
       await page.setViewportSize({ width, height: 1000 });
-      const delta = await page.evaluate(() => {
+      const layout = await page.evaluate(() => {
         const box = (selector: string) =>
           document.querySelector(selector)!.getBoundingClientRect();
         const paths = box(".contact-paths");
         const intro = box(".contact-intro-block");
-        return Math.abs(
-          paths.top + paths.height / 2 - (intro.top + intro.height / 2),
-        );
+        const content = document.querySelector(".contact-layout")!;
+        const surface = document.querySelector(".contact-surface")!;
+        const style = getComputedStyle(surface);
+        const available = surface.getBoundingClientRect().width -
+          Number.parseFloat(style.paddingLeft) - Number.parseFloat(style.paddingRight);
+        const maximum = Number.parseFloat(getComputedStyle(content).maxWidth);
+        return {
+          delta: Math.abs(paths.top + paths.height / 2 - (intro.top + intro.height / 2)),
+          width: content.getBoundingClientRect().width,
+          expectedWidth: Math.min(available, Number.isFinite(maximum) ? maximum : available),
+        };
       });
-      expect(delta, `${width}px`).toBeLessThan(8);
+      expect(layout.delta, `${width}px`).toBeLessThan(8);
+      // A centered, max-width child of the taller band must not shrink-wrap to
+      // its text at the wide breakpoint, leaving the paths stranded in the middle.
+      expect(layout.width, `${width}px fills the available content measure`).toBeCloseTo(
+        layout.expectedWidth,
+        1,
+      );
     }
   });
 

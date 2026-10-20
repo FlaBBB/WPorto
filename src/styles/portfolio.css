@@ -780,10 +780,69 @@ dd {
 }
 
 /* Contact: an open violet band with plum ink and adjacent paths. */
+/*
+  The section supplies the focus position; its full-bleed surface owns the real
+  box height. Expansion adds vertical space in normal flow instead of uncovering
+  a clipped reservation or scaling descendants. The footer follows the changing
+  bottom edge directly, with no dark gap or overlapping neighbor.
+
+  Once the whole compact desktop band is visible and its midpoint reaches the
+  viewport's 45–65% focus zone, a 400ms animation adds 224px of height. The 74vh
+  minimum also lets the compact midpoint reach that zone before the page ends on
+  common laptop screens. Scroll does not scrub the animation. The compact box
+  contains all text, paths and focus outlines; mobile, touch, reduced motion and
+  an unavailable module keep the static complete layout.
+
+  A downward approach opens upward with the bottom edge held by scroll following
+  the whole height change. An upward approach opens downward with the top edge
+  held naturally. Closing reverses around the same edge. Temporarily disable
+  native scroll anchoring so it cannot add another correction to either mode.
+*/
+html[data-contact-resizing] {
+  overflow-anchor: none;
+}
 #contact-path {
+  padding: 0;
+}
+.contact-surface {
+  position: relative;
+  /*
+    The band paints its own background, so it has to be the stacking context its
+    sparse stars sit in: they are painted at z-index -1, which is above this
+    element's own background but below its content.
+  */
+  isolation: isolate;
+  padding-block: calc(var(--section-space) * 1.2);
+  padding-inline: var(--gutter);
   background: var(--contact-band);
   color: var(--contact-ink);
-  padding-block: calc(var(--section-space) * 1.2);
+  --contact-expansion: 0px;
+}
+@media (min-width: 1101px) {
+  .contact-surface {
+    display: grid;
+    align-items: center;
+    min-height: 74vh;
+    padding-block: clamp(8rem, 18vh, 12rem);
+  }
+  .contact-layout {
+    width: 100%;
+  }
+}
+/*
+  Only a mouse-capable desktop takes the managed sizing. The same space drives
+  padding and minimum height, so both endpoints grow by the same amount even when
+  the content determines the height. Native media rules restore static sizing
+  immediately if motion or a fine pointer becomes unavailable, ahead of JS teardown.
+*/
+@media (min-width: 1101px) and (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+  .contact-surface {
+    --contact-expansion: 112px;
+  }
+  .contact-surface[data-contact-scroll] {
+    min-height: calc(74vh - var(--contact-expansion) * 2 + var(--contact-space) * 2);
+    padding-block: calc(clamp(8rem, 18vh, 12rem) - var(--contact-expansion) + var(--contact-space));
+  }
 }
 .contact-layout {
   display: grid;
@@ -1402,7 +1461,7 @@ dd {
   #technical-profile > .evidence-ledger,
   #learning-archive > .section-heading,
   #learning-archive > .archive-layout,
-  #contact-path > .contact-layout {
+  #contact-path .contact-layout {
     max-width: 108rem;
     margin-inline: auto;
   }
@@ -1609,20 +1668,22 @@ dd {
 
   Each page arrives the way it reads. Work's index assembles from the left. The
   ledger is recorded rather than travelled, so it only fades. The archive's
-  statement lies flat like a page settling. The contact paths converge from three
-  directions.
+  statement lies flat like a page settling. Contact has no text entrance: desktop
+  focus comes from the band's threshold-triggered height expansion; mobile
+  leaves it static.
 */
 .motion [data-reveal][data-enter="right"] {
   transform: translateX(-1.25rem);
-}
-.motion [data-reveal][data-enter="left"] {
-  transform: translateX(1.25rem);
 }
 .motion [data-reveal][data-enter="settle"] {
   transform: translateY(0.875rem) rotate(-1.2deg);
 }
 .motion [data-reveal][data-enter="fade"] {
   transform: none;
+}
+.motion [data-reveal][data-enter="line"] {
+  opacity: 1;
+  transform: translateY(1.1em);
 }
 .motion [data-rule] {
   transform: scaleX(0);

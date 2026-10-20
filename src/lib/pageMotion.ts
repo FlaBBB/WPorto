@@ -1,9 +1,10 @@
 /**
- * The page motion module: reveals, link nudges, and the Evidence Ledger.
+ * The page motion module: reveals, link nudges, the Evidence Ledger, and Contact's
+ * scroll-triggered expansion.
  *
  * The page is one document, so this is built once at load. It is still a module
- * rather than a block in the layout because the reveal, nudge and disclosure work
- * is one coherent concern with its own teardown.
+ * rather than a block in the layout because the reveal, nudge, disclosure and band
+ * work is one coherent concern with its own teardown.
  */
 
 import gsap from "gsap";
@@ -47,12 +48,32 @@ type LedgerRecord = {
   tween: gsap.core.Tween | undefined;
 };
 
+/** Contact's section supplies the position; its surface owns the real height. */
+type ContactFocus = {
+  section: HTMLElement;
+  surface: HTMLElement;
+  tween: gsap.core.Tween | undefined;
+  /** Native navigation owns the viewport until it finishes or a wheel takes over. */
+  navigating: boolean;
+  /** Once yielded, this transition cannot reclaim scroll, even after navigation. */
+  anchorTween: boolean;
+  /** The visitor's last vertical approach; our own scroll corrections do not count. */
+  direction: "up" | "down";
+  /** Opening chooses one fixed edge; closing reverses around that same edge. */
+  edge: "top" | "bottom";
+  /** Last observed position, before resizing can clamp the browser's scroll. */
+  scrollY: number;
+  /** Subpixel correction survives consecutive transitions at one reading position. */
+  remainder: number;
+};
+
 /** Everything one page's motion is wired to, so teardown can be complete. */
 type Page = {
   revealTargets: HTMLElement[];
   ruleTargets: HTMLElement[];
   nudgeTargets: HTMLElement[];
   ledgerRecords: LedgerRecord[];
+  contactFocus?: ContactFocus;
   /** The reveal/nudge work is running; false while reduced motion is in force. */
   active: boolean;
   revealObserver?: IntersectionObserver;
@@ -60,7 +81,10 @@ type Page = {
   // within the reveal window.
   revealTweens: gsap.core.Tween[];
   focusInHandler?: (event: Event) => void;
-  scrollHandler?: () => void;
+  scrollHandler?: (event?: Event) => void;
+  contactIntentHandler?: (event: Event) => void;
+  /** Recomputes Contact's sizing when its desktop layout changes. */
+  contactResizeHandler?: () => void;
   scrollFrame: number;
   /** Pending hover-intent delay on an Evidence Ledger row. */
   hoverTimer: number;
@@ -78,6 +102,14 @@ const RULE_LEAD = 0.1;
 /** Default stagger between the targets of one delivery. */
 const REVEAL_STAGGER = 0.06;
 
+/** Contact's compact midpoint enters this viewport band before it expands. */
+const CONTACT_FOCUS_START = 0.45;
+const CONTACT_FOCUS_END = 0.65;
+/** Seconds for a complete expansion or contraction, independent of scroll speed. */
+const CONTACT_TRANSITION_SECONDS = 0.4;
+/** These events yield viewport control; wheel/scrollend release it for a future tween. */
+const CONTACT_SCROLL_INTENTS = ["pointerdown", "click", "keydown", "wheel", "scrollend"] as const;
+
 /**
  * A target's explicit lead time, in seconds.
  *
@@ -90,6 +122,143 @@ const delayOf = (element: HTMLElement) => {
 };
 
 let page: Page | undefined;
+
+/**
+ * CSS owns the extra space and its desktop/pointer/preference gates. A zero amount
+ * means a static band, so mobile needs no separate script-side breakpoint.
+ */
+function contactExpansion(surface: HTMLElement) {
+  const value = Number.parseFloat(
+    getComputedStyle(surface).getPropertyValue("--contact-expansion"),
+  );
+  return Number.isFinite(value) && value > 0 ? value : 0;
+}
+
+/** A native Contact landing must stay full while its fragment position settles. */
+function contactIsTargeted(section: HTMLElement, fragment = location.hash) {
+  try {
+    const target = document.getElementById(decodeURIComponent(fragment.slice(1)));
+    return target !== null && section.contains(target);
+  } catch {
+    return false;
+  }
+}
+
+/** Return ownership to the stylesheet's complete, static band. */
+function settleContactFocus(focus: ContactFocus) {
+  focus.tween?.kill();
+  focus.tween = undefined;
+  focus.anchorTween = false;
+  focus.remainder = 0;
+  focus.surface.removeAttribute("data-contact-scroll");
+  focus.surface.style.removeProperty("--contact-space");
+  root.removeAttribute("data-contact-resizing");
+}
+
+/**
+ * The whole compact band must be visible, clear of the fixed header, and its
+ * midpoint must enter the viewport's 45–65% focus zone. Elapsed time then reaches
+ * the target: stopping scroll cannot strand a partial size. A transition finishes
+ * before checking the latest position, so recrossing cannot scrub or interrupt it.
+ *
+ * Both CSS sizing terms grow by twice --contact-space. A downward approach holds
+ * the bottom edge and opens upward; an upward approach holds the top edge and
+ * opens downward. Closing reverses the opening around the same edge. Project the
+ * compact box from that edge for focus checks, so sizing cannot change its own
+ * entry boundary. Holding the bottom needs the whole height change added to
+ * scroll; holding the top needs no scroll write. Content keeps its natural size.
+ * The adjustment adds to the visitor's current scroll rather than replacing it.
+ * Native navigation, keyboard and pointer activation take scroll ownership away
+ * immediately; a yielded transition finishes sizing without writing scroll again.
+ * Once expanded, passing above the focus zone keeps it open toward the footer;
+ * scrolling back below the zone starts a contraction.
+ *
+ * Initial ownership adopts the current position without a close/reopen entrance.
+ * Padding changes the real height, leaving text unscaled and the footer against
+ * the band's bottom edge at every intermediate pose.
+ */
+function syncContactFocus(focus: ContactFocus) {
+  const expansion = contactExpansion(focus.surface);
+  if (!expansion) {
+    settleContactFocus(focus);
+    return;
+  }
+  if (focus.tween) return;
+  const box = focus.section.getBoundingClientRect();
+  const managed = focus.surface.hasAttribute("data-contact-scroll");
+  const space = managed
+    ? Number.parseFloat(focus.surface.style.getPropertyValue("--contact-space")) || 0
+    : expansion;
+  const compactHeight = box.height - space * 2;
+  const compactTop = focus.edge === "bottom" ? box.bottom - compactHeight : box.top;
+  const midpoint = compactTop + compactHeight / 2;
+  const viewport = window.innerHeight;
+  const headerBottom = document.querySelector(".site-header")?.getBoundingClientRect().bottom ?? 0;
+  const fullyVisible = compactTop >= headerBottom && compactTop + compactHeight <= viewport;
+  const inFocus = midpoint >= viewport * CONTACT_FOCUS_START && midpoint <= viewport * CONTACT_FOCUS_END;
+  const passedFocus = space > 0 && midpoint < viewport * CONTACT_FOCUS_START;
+  const expanded = (fullyVisible && inFocus) || passedFocus;
+  const fragmentEntry = focus.navigating && contactIsTargeted(focus.section);
+  const target = expanded || fragmentEntry ? expansion : 0;
+  if (!managed || fragmentEntry) {
+    // A native Contact landing is already full and aligned at its top, rather
+    // than an animated approach that needs to choose an expanding edge.
+    if (fragmentEntry) focus.edge = "top";
+    focus.surface.style.setProperty("--contact-space", `${target}px`);
+    focus.surface.setAttribute("data-contact-scroll", "");
+    return;
+  }
+  if (Math.abs(space - target) < 0.01) return;
+  if (target > space) {
+    const edge = focus.direction === "down" ? "bottom" : "top";
+    if (focus.edge !== edge) focus.remainder = 0;
+    focus.edge = edge;
+  }
+  let height = box.height;
+  if (focus.scrollY !== window.scrollY) focus.remainder = 0;
+  focus.scrollY = window.scrollY;
+  focus.anchorTween = !focus.navigating;
+  root.setAttribute("data-contact-resizing", "");
+  focus.tween = gsap.to(focus.surface, {
+    "--contact-space": `${target}px`,
+    duration: CONTACT_TRANSITION_SECONDS,
+    ease: "power2.out",
+    onUpdate: () => {
+      if (!contactExpansion(focus.surface)) {
+        settleContactFocus(focus);
+        return;
+      }
+      const before = focus.scrollY;
+      const next = focus.section.getBoundingClientRect();
+      const movement = next.height - height;
+      height = next.height;
+      // An anchor jump away must stay away: never drag an offscreen visitor
+      // back toward Contact, or cancel an in-flight native smooth navigation.
+      if (!focus.anchorTween || focus.edge === "top" || next.bottom <= 0 || next.top >= window.innerHeight) {
+        focus.scrollY = window.scrollY;
+        focus.remainder = 0;
+        return;
+      }
+      // Use the pre-layout position: shrinking the document can already have
+      // clamped scrollY, which must not become a second movement on this frame.
+      const destination = Math.max(0, Math.min(
+        before + movement + focus.remainder,
+        root.scrollHeight - window.innerHeight,
+      ));
+      window.scrollTo({ top: Math.round(destination), behavior: "instant" });
+      focus.scrollY = window.scrollY;
+      // Scroll positions may round to a CSS pixel. Carry that rounding into the
+      // next frame, but not an unreachable offset beyond the document's edges.
+      focus.remainder = destination - focus.scrollY;
+    },
+    onComplete: () => {
+      root.removeAttribute("data-contact-resizing");
+      focus.tween = undefined;
+      focus.anchorTween = false;
+      syncContactFocus(focus);
+    },
+  });
+}
 
 function settle(targets: HTMLElement[]) {
   // Cancel any in-flight reveal first: otherwise a running opacity/y tween
@@ -108,9 +277,18 @@ function stopMotion() {
     window.removeEventListener("scroll", page.scrollHandler);
     window.removeEventListener("hashchange", page.scrollHandler);
   }
+  if (page.contactResizeHandler) {
+    window.removeEventListener("resize", page.contactResizeHandler);
+  }
+  if (page.contactIntentHandler) {
+    for (const event of CONTACT_SCROLL_INTENTS)
+      window.removeEventListener(event, page.contactIntentHandler);
+  }
   if (page.scrollFrame) cancelAnimationFrame(page.scrollFrame);
   page.focusInHandler = undefined;
   page.scrollHandler = undefined;
+  page.contactResizeHandler = undefined;
+  page.contactIntentHandler = undefined;
   page.scrollFrame = 0;
   // Stop the grouped reveals before clearing their inline styles.
   for (const tween of page.revealTweens) tween.kill();
@@ -120,6 +298,13 @@ function stopMotion() {
   root.classList.remove("motion");
   gsap.set(page.revealTargets, { clearProps: "all" });
   gsap.set(page.ruleTargets, { clearProps: "all" });
+  /*
+    Contact's band is left complete, exactly as it is with no JavaScript at all.
+    Stopping mid-expansion would otherwise strand a partial size. Reduced motion
+    replaces the gesture rather than freezing it part-way; restoring motion reads
+    the current scroll instead of replaying an entrance.
+  */
+  if (page.contactFocus) settleContactFocus(page.contactFocus);
   page.active = false;
 }
 
@@ -221,17 +406,69 @@ function startMotion() {
     settle(passed);
   };
 
-  current.scrollHandler = () => {
+  current.scrollHandler = (event) => {
+    if (event?.type === "scroll" && current.contactFocus) {
+      const focus = current.contactFocus;
+      // A visitor's scroll supplies a new reading position and rounding origin;
+      // our own writes have already stored the same position before delivery.
+      if (focus.scrollY !== window.scrollY) {
+        focus.direction = window.scrollY > focus.scrollY ? "down" : "up";
+        focus.remainder = 0;
+      }
+      focus.scrollY = window.scrollY;
+    }
+    if (event?.type === "hashchange" && current.contactFocus) {
+      current.contactFocus.navigating = true;
+      current.contactFocus.anchorTween = false;
+    }
     if (current.scrollFrame) return;
     current.scrollFrame = requestAnimationFrame(() => {
       current.scrollFrame = 0;
+      if (!current.active) return;
       settlePassed();
+      if (current.contactFocus) syncContactFocus(current.contactFocus);
     });
   };
   window.addEventListener("scroll", current.scrollHandler, { passive: true });
-  // A deep link may have scrolled before this module ran, so sweep once.
-  requestAnimationFrame(settlePassed);
   window.addEventListener("hashchange", current.scrollHandler);
+
+  // CSS restores static sizing immediately at its layout gates; reevaluate the
+  // focus zone on resize and once fonts establish the content's height.
+  if (current.contactFocus) {
+    const focus = current.contactFocus;
+    focus.navigating = Boolean(location.hash);
+    current.contactIntentHandler = (event) => {
+      focus.navigating = event.type !== "wheel" && event.type !== "scrollend";
+      // Click matters even for an unchanged fragment, which has no hashchange.
+      // Do not restore this tween's anchoring when a later scrollend arrives.
+      if (focus.navigating) focus.anchorTween = false;
+      if (event.type !== "click" || event.defaultPrevented) return;
+      const mouse = event as MouseEvent;
+      if (mouse.button || mouse.metaKey || mouse.ctrlKey || mouse.shiftKey || mouse.altKey) return;
+      const link = event.target instanceof Element
+        ? event.target.closest<HTMLAnchorElement>("a[href]")
+        : null;
+      if (!link || (link.target && link.target !== "_self")) return;
+      if (link.origin !== location.origin || link.pathname !== location.pathname || link.search !== location.search) return;
+      if (!contactIsTargeted(focus.section, link.hash)) return;
+      // Native anchor navigation clamps its destination to the document's
+      // current height. Settle before that default action, not on hashchange.
+      settleContactFocus(focus);
+      focus.edge = "top";
+      focus.surface.style.setProperty("--contact-space", `${contactExpansion(focus.surface)}px`);
+      focus.surface.setAttribute("data-contact-scroll", "");
+    };
+    for (const event of CONTACT_SCROLL_INTENTS)
+      window.addEventListener(event, current.contactIntentHandler, { passive: true });
+    syncContactFocus(current.contactFocus);
+    current.contactResizeHandler = current.scrollHandler;
+    window.addEventListener("resize", current.contactResizeHandler);
+    document.fonts.ready.then(() => {
+      if (current.active) current.scrollHandler?.();
+    });
+  }
+  // A deep link may scroll before or just after this module runs.
+  current.scrollHandler();
 }
 
 function syncMotionPreference() {
@@ -255,6 +492,29 @@ function settlePanel(record: LedgerRecord) {
   record.tween = undefined;
   record.details.open = record.open;
   gsap.set(record.panel, { clearProps: "height,opacity,overflow" });
+}
+
+/**
+ * The Contact band, if this page has one.
+ *
+ * Resolve the position reference and the sizing surface explicitly so a page
+ * without either stays an ordinary static layout.
+ */
+function buildContactFocus(): ContactFocus | undefined {
+  const section = document.querySelector<HTMLElement>("#contact-path");
+  const surface = section?.querySelector<HTMLElement>(".contact-surface");
+  if (!section || !surface) return undefined;
+  return {
+    section,
+    surface,
+    tween: undefined,
+    navigating: false,
+    anchorTween: false,
+    direction: "down",
+    edge: "bottom",
+    scrollY: window.scrollY,
+    remainder: 0,
+  };
 }
 
 /**
@@ -299,11 +559,18 @@ function buildPage(): Page {
     ruleTargets,
     nudgeTargets,
     ledgerRecords,
+    contactFocus: buildContactFocus(),
     active: false,
     revealTweens: [],
     scrollFrame: 0,
     hoverTimer: 0,
   };
+
+  if (current.contactFocus) {
+    finePointer.addEventListener("change", () => {
+      if (current.active) current.scrollHandler?.();
+    });
+  }
 
   for (const element of nudgeLinks) {
     const arrow = arrowOf(element);
