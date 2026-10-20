@@ -271,7 +271,7 @@ function buildPage(): Page {
   // target because it animates a different property and leads its group.
   const ruleTargets = gsap.utils.toArray<HTMLElement>("[data-rule]");
   const nudgeLinks = gsap.utils.toArray<HTMLElement>(
-    ".intro-link, .project-link, .text-link, .ledger-source a, #contact-path a, .site-nav a",
+    ".intro-link, .project-link, .text-link, .ledger-source a, .writing-all, #contact-path a, .site-nav a",
   );
   const nudgeTargets = nudgeLinks.map((element) => arrowOf(element) ?? element);
 

@@ -10,6 +10,7 @@ import EvidenceLedger from "../components/EvidenceLedger.svelte";
 import FlabSculpture from "../components/FlabSculpture.svelte";
 import SectionHeading from "../components/SectionHeading.svelte";
 import SparseStars from "../components/SparseStars.svelte";
+import WritingShowcase from "../components/WritingShowcase.svelte";
 import Portfolio from "../layouts/Portfolio.astro";
 import {
   email,
@@ -19,6 +20,8 @@ import {
   profileRecords,
   projects,
 } from "../lib/portfolio";
+import { WRITING } from "../lib/writing";
+
 const nameBreak = ownerName.lastIndexOf(" ");
 const nameLines = [ownerName.slice(0, nameBreak), ownerName.slice(nameBreak + 1)];
 
@@ -109,11 +112,16 @@ const LINKEDIN_ICON =
       </div>
     </section>
 
+    <section id="writing" aria-labelledby="writing-heading">
+      <SparseStars seed={7} client:load />
+      <WritingShowcase entries={WRITING} client:load />
+    </section>
+
     <section id="technical-profile" aria-labelledby="technical-profile-heading">
       <SparseStars seed={3} client:load />
       <div class="section-heading">
         <SectionHeading
-          index="02"
+          index="03"
           label="Profile"
           headingId="technical-profile-heading"
           title="Evidence over claims."
@@ -127,7 +135,7 @@ const LINKEDIN_ICON =
       <SparseStars seed={4} client:load />
       <div class="section-heading">
         <SectionHeading
-          index="03"
+          index="04"
           label="Archive"
           headingId="learning-archive-heading"
           title="Still learning. Keeping the notes."

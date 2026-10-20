@@ -194,18 +194,17 @@ test("makes the section navigation keyboard reachable", async ({ page }) => {
   await expect(
     headerNav.getByRole("link", { name: "Work", exact: true }),
   ).toBeFocused();
-  expect(await labels(headerNav)).toEqual(["Work", "Profile", "Archive", "Contact"]);
+  expect(await labels(headerNav)).toEqual([
+    "Work",
+    "Writing",
+    "Profile",
+    "Archive",
+    "Contact",
+  ]);
 
-  // The footer carries the same four destinations, so the header's list is never
-  // the only route to a section.
-  const footerNav = page.locator(".footer-nav");
-  expect(await labels(footerNav)).toEqual(["Work", "Profile", "Archive", "Contact"]);
-  await expect(
-    footerNav.getByRole("link", { name: "Contact", exact: true }),
-  ).toHaveAttribute("href", "#contact-path");
-
-  // The four links are in-page anchors, so the header is the route to every
-  // section for a visitor who already knows which one they want.
+  // The header's five links are the only in-page section route now, so they are
+  // the route to every section for a visitor who already knows which one they
+  // want. Writing also has a page of its own, which is linked from the section.
   const contactNav = headerNav.getByRole("link", { name: "Contact", exact: true });
   await expect(contactNav).toHaveAttribute("href", "#contact-path");
   await contactNav.focus();
@@ -220,11 +219,12 @@ test("makes the section navigation keyboard reachable", async ({ page }) => {
   );
 
   // Continuing forward from the navigation reaches the page content: the
-  // wordmark, the four section links, then the Intro's own link, in that order.
+  // wordmark, the five section links, then the Intro's own link, in that order.
   await page.goto("/");
   const order = [
     page.locator(".flab-logo"),
     headerNav.getByRole("link", { name: "Work", exact: true }),
+    headerNav.getByRole("link", { name: "Writing", exact: true }),
     headerNav.getByRole("link", { name: "Profile", exact: true }),
     headerNav.getByRole("link", { name: "Archive", exact: true }),
     headerNav.getByRole("link", { name: "Contact", exact: true }),
@@ -271,16 +271,15 @@ for (const width of [320, 390, 768, 801, 1100, 1440]) {
       await page.evaluate(() => document.documentElement.scrollWidth),
     ).toBe(width);
 
-    // Both navigation surfaces — the header's section links and the footer's —
-    // must stay inside the viewport with real touch targets.
-    for (const nav of [page.locator(".site-nav"), page.locator(".footer-nav")]) {
-      await expect(nav).toBeVisible();
-      for (const link of await nav.getByRole("link").all()) {
-        const bounds = await link.boundingBox();
-        expect(bounds?.x).toBeGreaterThanOrEqual(0);
-        expect((bounds?.x ?? 0) + (bounds?.width ?? 0)).toBeLessThanOrEqual(width);
-        expect(bounds?.height).toBeGreaterThanOrEqual(44);
-      }
+    // The header's section links must stay inside the viewport with real touch
+    // targets.
+    const headerNav = page.locator(".site-nav");
+    await expect(headerNav).toBeVisible();
+    for (const link of await headerNav.getByRole("link").all()) {
+      const bounds = await link.boundingBox();
+      expect(bounds?.x).toBeGreaterThanOrEqual(0);
+      expect((bounds?.x ?? 0) + (bounds?.width ?? 0)).toBeLessThanOrEqual(width);
+      expect(bounds?.height).toBeGreaterThanOrEqual(44);
     }
 
     for (const link of await page.locator("#contact-path a").all()) {
@@ -334,24 +333,23 @@ test("keeps the 320px labels inside the viewport with a wide system font", async
     .evaluate((el) => getComputedStyle(el).fontFamily);
   expect(applied).toContain("DejaVu Sans");
 
-  // No horizontal overflow, and the labels are retained and still fit on both
-  // surfaces that carry them.
+  // No horizontal overflow, and the labels are retained and still fit on the header
+  // surface that carries them.
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(
     320,
   );
-  for (const nav of [page.locator(".site-nav"), page.locator(".footer-nav")]) {
-    expect(
-      (await nav.getByRole("link").allTextContents()).map((label) =>
-        label.trim(),
-      ),
-    ).toEqual(["Work", "Profile", "Archive", "Contact"]);
-    for (const link of await nav.getByRole("link").all()) {
-      const box = await link.boundingBox();
-      expect(box?.x).toBeGreaterThanOrEqual(0);
-      expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(320);
-      // Targets stay at least 44px tall; the fix narrows the gap, not the targets.
-      expect(box?.height).toBeGreaterThanOrEqual(44);
-    }
+  const headerNav = page.locator(".site-nav");
+  expect(
+    (await headerNav.getByRole("link").allTextContents()).map((label) =>
+      label.trim(),
+    ),
+  ).toEqual(["Work", "Writing", "Profile", "Archive", "Contact"]);
+  for (const link of await headerNav.getByRole("link").all()) {
+    const box = await link.boundingBox();
+    expect(box?.x).toBeGreaterThanOrEqual(0);
+    expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(320);
+    // Targets stay at least 44px tall; the fix narrows the gap, not the targets.
+    expect(box?.height).toBeGreaterThanOrEqual(44);
   }
 });
 
@@ -836,6 +834,7 @@ test.describe("section refinement", () => {
     const sections = [
       "#intro",
       "#selected-evidence",
+      "#writing",
       "#technical-profile",
       "#learning-archive",
       "#contact-path",
@@ -1261,12 +1260,23 @@ test.describe("section refinement", () => {
     const groups = footer.locator(".footer-inner > *");
     await expect(groups).toHaveCount(2);
 
+    // Section Links belong in the header, not in a second footer menu or an empty
+    // menu container that still draws a divider.
+    await expect(footer.locator("nav")).toHaveCount(0);
+    for (const label of ["Work", "Profile", "Archive", "Contact"]) {
+      await expect(
+        footer.getByRole("link", { name: label, exact: true }),
+        `the footer no longer repeats ${label}`,
+      ).toHaveCount(0);
+    }
+
     // The right group IS the link back to the opening, with the visible label kept
     // in its accessible name (Label in Name) and a matching title.
     const top = footer.locator(".footer-top");
     await expect(top).toHaveAttribute("aria-label", "Back to the opening — Still learning.");
     await expect(top).toHaveAttribute("title", "Back to the opening");
     await expect(top).toContainText("Still learning.");
+    await expect(top.locator(".footer-dash")).toHaveCount(1);
     // No separate visible "Back to top" text group remains.
     await expect(footer.getByText("Back to top", { exact: true })).toHaveCount(0);
 
@@ -1355,3 +1365,176 @@ for (const width of [1440, 1101, 1100, 700, 390, 320]) {
     await expect(page.locator("#contact-path a")).toHaveCount(3);
   });
 }
+test.describe("Writing", () => {
+  test("reads the newest entries as a feed with a plate for each", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.goto("/");
+
+    const section = page.locator("#writing");
+    await expect(section.getByRole("heading", { level: 2 })).toHaveText(
+      "Latest writing.",
+    );
+
+    // The feed is driven by whatever is published, so the assertion is about the
+    // relationship between the list and the plates, not about one article.
+    const rows = section.locator(".writing-row");
+    const plates = section.locator(".writing-plate");
+    const count = await rows.count();
+    expect(count).toBeGreaterThan(0);
+    await expect(plates).toHaveCount(count);
+
+    // Each row is a real route to its writeup, and the first entry is the
+    // one the plate opens on.
+    for (const row of await rows.all()) {
+      expect(await row.getAttribute("href")).toMatch(/^\/writing\/[a-z0-9-]+$/);
+    }
+    await expect(section.locator(".writing-row[data-active]")).toHaveCount(1);
+    await expect(section.locator(".writing-plate[data-active]")).toHaveCount(1);
+    await expect(section.locator(".writing-plate img").first()).toHaveAttribute(
+      "src",
+      /^\/images\/writing\/.+\.webp$/,
+    );
+
+    // The plate is decoration; the feed carries the content.
+    await expect(section.locator(".writing-plate-frame")).toHaveAttribute(
+      "aria-hidden",
+      "true",
+    );
+    await expect(section.getByRole("link", { name: /All writing/ })).toHaveAttribute(
+      "href",
+      "/writing",
+    );
+  });
+
+  test("swaps the plate to the entry a visitor is on, by hover and by focus", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.goto("/");
+    await page.evaluate(() => {
+      document.documentElement.style.scrollBehavior = "auto";
+      document.querySelector("#writing")?.scrollIntoView();
+    });
+    await expect(page.locator(".writing-plate").first()).toHaveCSS("opacity", "1");
+
+    const rows = page.locator(".writing-row");
+    if ((await rows.count()) > 1) {
+      // A real second entry: pointing at it brings its plate forward.
+      await rows.nth(1).hover();
+      await expect(page.locator(".writing-plate").nth(1)).toHaveCSS("opacity", "1");
+      await expect(page.locator(".writing-plate").first()).toHaveCSS("opacity", "0");
+    }
+
+    // Keyboard focus drives the same state, so the plate is not mouse-only.
+    await page.mouse.move(2, 2);
+    await rows.first().focus();
+    await expect(page.locator(".writing-plate").first()).toHaveCSS("opacity", "1");
+    await expect(page.locator(".writing-row[data-active]")).toHaveCount(1);
+  });
+
+  test("serves the index and the writeup, and returns to the home sections", async ({
+    page,
+  }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.goto("/writing");
+
+    await expect(page).toHaveTitle("Writing — Fikri Muhammad Abdillah");
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText(
+      "Writeups, kept in the open.",
+    );
+    // One published writeup, with its five challenges listed as its contents.
+    await expect(page.locator(".writing-index-feature")).toHaveCount(1);
+    await expect(page.locator(".writing-index-thumb img")).toHaveAttribute(
+      "src",
+      /^\/images\/writing\/.+\.webp$/,
+    );
+    await expect(page.locator(".writing-chapters .writing-chapter")).toHaveCount(5);
+
+    // Writing is the current page, and the other links return to the one-page
+    // document's own sections rather than pretending to be routes.
+    const nav = page.locator(".site-nav");
+    await expect(
+      nav.getByRole("link", { name: "Writing", exact: true }),
+    ).toHaveAttribute("aria-current", "page");
+    await expect(
+      nav.getByRole("link", { name: "Profile", exact: true }),
+    ).toHaveAttribute("href", "/#technical-profile");
+
+    await page.locator(".writing-index-feature").click();
+    await expect(page).toHaveURL(/\/writing\/tcp1p-international-2024$/);
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText(
+      "Writeup RE TCP1P International 2024",
+    );
+    await expect(page.locator(".challenge")).toHaveCount(5);
+    await expect(page.locator(".challenge h3").first()).toHaveText("Rev / Serial");
+    // Each challenge links to its own full post on Medium.
+    for (const link of await page.locator(".challenge .text-link").all()) {
+      expect(await link.getAttribute("href")).toMatch(
+        /^https:\/\/medium\.com\/@f12345ff67\//,
+      );
+    }
+
+    // A chapter deep link lands clear of the fixed header.
+    await page.goto("/writing/tcp1p-international-2024#wannaflag");
+    const header = await page.locator(".site-header").boundingBox();
+    const chapter = await page.locator("#wannaflag").boundingBox();
+    expect(chapter?.y).toBeGreaterThanOrEqual(
+      (header?.y ?? 0) + (header?.height ?? 0) - 1,
+    );
+
+    // A document page never stages the opening's loader.
+    await expect(page.locator("#loading-screen")).toHaveCount(0);
+  });
+});
+
+test.describe("Writing images", () => {
+  test("frames a light image and a dark image differently, from the pixels", async ({
+    page,
+  }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.goto("/writing/tcp1p-international-2024");
+
+    // The cover is part of the article, not a background: it has alt text and a
+    // caption, so it carries meaning rather than decorating.
+    const cover = page.locator(".article-cover");
+    await expect(cover).toBeVisible();
+    await expect(cover.locator("img")).toHaveAttribute("alt", /.+/);
+    await expect(cover.locator("figcaption")).not.toBeEmpty();
+    // Its tone was read from the image itself.
+    await expect(cover).toHaveAttribute("data-tone", /^(light|dark)$/);
+
+    // The two tones are genuinely different frames, not the same rule twice.
+    const frame = await page.evaluate(() => {
+      const read = (tone: "light" | "dark") => {
+        const figure = document.createElement("figure");
+        figure.className = "article-figure";
+        figure.dataset.tone = tone;
+        document.body.append(figure);
+        const style = getComputedStyle(figure);
+        const box = { border: style.borderTopColor, shadow: style.boxShadow };
+        figure.remove();
+        return box;
+      };
+      return { light: read("light"), dark: read("dark") };
+    });
+    expect(frame.light.border).not.toBe(frame.dark.border);
+    expect(frame.light.shadow).not.toBe(frame.dark.shadow);
+  });
+
+  test("classifies luminance per channel, so a saturated image is not called light", async () => {
+    const { toneOf } = await import("../src/lib/imageTone");
+    const pixels = (...rgb: number[]) => {
+      const data: number[] = [];
+      for (let index = 0; index < 64; index += 1) data.push(...rgb, 255);
+      return data;
+    };
+
+    expect(toneOf(pixels(247, 247, 249))).toBe("light"); // a white tool window
+    expect(toneOf(pixels(12, 10, 18))).toBe("dark"); // a terminal
+    // Mid violet: 124, 92, 250. The channel mean is 155/255, which would pass a
+    // naive threshold; its perceived luminance is 0.39, which must not.
+    expect(toneOf(pixels(124, 92, 250))).toBe("dark");
+    expect(toneOf([])).toBe("dark");
+  });
+});

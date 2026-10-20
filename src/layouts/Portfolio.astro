@@ -19,11 +19,32 @@ const {
   metaDescription = description,
   /** The route this page is served at, for the canonical and og:url. */
   path,
+  /**
+   * `home` is the one-page Portfolio Site with its opening and scroll scene.
+   * `document` is a writing page: the same shell and section links, but no
+   * opening and no page-level scroll reservation.
+   */
+  variant = "home",
+  /** Open Graph type; a Writing note is an article, everything else a website. */
+  ogType = "website",
 } = Astro.props as {
   title: string;
   metaDescription?: string;
   path: string;
+  variant?: "home" | "document";
+  ogType?: "website" | "article";
 };
+
+const isHome = variant === "home";
+const writingCurrent = path === "/writing" || path.startsWith("/writing/");
+const navItems = sections.map(({ id, label }) => ({
+  id,
+  label,
+  // On the home page the links are anchors to its sections. Everywhere else
+  // they return to those anchors, except Writing, which has a page of its own.
+  href: isHome ? `#${id}` : id === "writing" ? "/writing" : `/#${id}`,
+  current: !isHome && id === "writing" && writingCurrent,
+}));
 
 const url = `https://flab.my.id${path}`;
 const year = new Date().getFullYear();
@@ -37,7 +58,7 @@ const year = new Date().getFullYear();
     <title>{title}</title>
     <meta name="description" content={metaDescription} />
     <meta name="theme-color" content="#17131e" />
-    <meta property="og:type" content="website" />
+    <meta property="og:type" content={ogType} />
     <meta property="og:title" content={title} />
     <meta property="og:description" content={metaDescription} />
     <meta property="og:url" content={url} />
@@ -76,20 +97,27 @@ const year = new Date().getFullYear();
   </head>
   <body>
     <header class="site-header">
-      <a class="flab-logo" href="#identity" aria-label="flab — back to the top">
+      <a
+        class="flab-logo"
+        href={isHome ? "#identity" : "/"}
+        aria-label={isHome ? "flab — back to the top" : "flab — back to the Portfolio Site"}
+      >
         <svg viewBox={`0 0 ${FLAB_VIEWBOX.width} ${FLAB_VIEWBOX.height}`} aria-hidden="true">
           <path d={FLAB_PATH} fill="currentColor" fill-rule={FLAB_FILL_RULE} />
         </svg>
       </a>
       {/*
-        The four sections are one page now, so these are anchors rather than routes:
+        The sections are one page now, so these are anchors rather than routes:
         they are a shortcut past the opening to a section the visitor has already
-        decided they want, not the only way to reach it.
+        decided they want, not the only way to reach it. On a writing page they
+        return to the home page's anchors, and Writing points at its own index.
       */}
       <nav class="site-nav" aria-label="Portfolio sections">
         <ul>
-          {sections.map(({ id, label }) => (
-            <li><a href={`#${id}`}>{label}</a></li>
+          {navItems.map(({ label, href, current }) => (
+            <li>
+              <a href={href} aria-current={current ? "page" : undefined}>{label}</a>
+            </li>
           ))}
         </ul>
       </nav>
@@ -111,31 +139,24 @@ const year = new Date().getFullYear();
           The right group is the link back to the opening itself, so there is no
           third visible "Back to top" group. Its accessible name keeps the visible
           "Still learning." label (Label in Name) while naming the destination.
+          On a document page the destination is the Portfolio Site's opening.
         -->
-        <a class="footer-top" href="#identity" aria-label="Back to the opening — Still learning." title="Back to the opening">
+        <a
+          class="footer-top"
+          href={isHome ? "#identity" : "/"}
+          aria-label={isHome ? "Back to the opening — Still learning." : "Back to the Portfolio Site — Still learning."}
+          title={isHome ? "Back to the opening" : "Back to the Portfolio Site"}
+        >
           <span class="footer-note">Still learning.</span>
           <span class="footer-dash" aria-hidden="true"></span>
         </a>
       </div>
-      <!--
-        The header's section links are the shortcut past the opening; this is the
-        same four destinations for a visitor who has already scrolled to the foot
-        of the page and would otherwise have to scroll back to the top for them.
-      -->
-      <nav class="footer-nav" aria-label="Portfolio sections">
-        <ul>
-          {sections.map(({ id, label }) => (
-            <li><a href={`#${id}`}>{label}</a></li>
-          ))}
-        </ul>
-      </nav>
     </footer>
 
     <script>
       import { initPageMotion } from "../lib/pageMotion";
 
       initPageMotion();
-
       /*
         The header is transparent over the opening, so the star field reads through
         it with no container edge over the sky. Once the opening has scrolled away

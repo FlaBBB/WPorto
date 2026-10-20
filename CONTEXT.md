@@ -41,11 +41,23 @@ _Avoid_: Full-motion fallback
 The opening's gesture: the stage sticks for the length of the scene, and the visitor's own scroll breaks the assembled mark into a star cloud and reforms it on the way back. There is no hold and no click — the mark starts breaking on the first scrolled pixel.
 _Avoid_: Hero animation, scroll effect, intro
 
+**Loading Screen**:
+The opening's prelude: the `flab` mark assembled from the same star glyphs the sculpture will draw, shown while the sculpture hydrates. It is a picture of the opening rather than a progress gate, so it never takes the pointer and yields to the visitor's first scroll or key.
+_Avoid_: Splash screen, spinner, loading indicator
+
 **Section Link**:
 One of the entries in the header's section navigation. It is an anchor to that section in the one-page document, so it is a shortcut past the opening rather than the only route to a section. On a Writing page it returns to the Portfolio Site's anchors, except Writing itself, which has its own page.
 _Avoid_: Nav item, menu link
 
-**Magnetic Pull**:
-The restrained lean of the assembled mark toward a nearby fine pointer. It moves only the mark, only while the mark is still substantially assembled, and only while no link is under the pointer.
-_Avoid_: Cursor gravity, cursor tether
+**Writeup**:
+A published account of solving a challenge, presented on the Portfolio Site by its event, result, and the challenges it covers, and read in full at its original Medium post. The writeup is the article; its challenges are its contents, not separate articles.
+_Avoid_: Blog post, article, note
+
+**Writing Section**:
+The home page's section for the Writeup. Its chart is a Reading Instrument: the challenges are its stars, and pointing at or focusing one in the list re-aims it. The chart is decoration; the list carries the links.
+_Avoid_: Blog section, articles section
+
+**Reading Instrument**:
+The Writing Section's chart. It is decorative and names nothing on its own: it points at whichever challenge the visitor is on and reads back that challenge's index and kind, while the list remains the content.
+_Avoid_: Chart widget, radar, visualisation
 
