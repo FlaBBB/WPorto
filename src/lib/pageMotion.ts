@@ -190,11 +190,24 @@ function startMotion() {
   // scroll, an instant jump, or a deep-link landing can pass an element without
   // it ever being reported as intersecting. Anything already scrolled past the
   // viewport is settled here, so no target can stay permanently hidden.
+  //
+  // "Not yet settled" is read from the painted pose rather than from opacity
+  // alone, because the entrance variants are not all opacity ones: the Intro's
+  // masked name lines start at full opacity and are displaced inside their own
+  // clip instead. Reading opacity alone would leave a jump past the Intro with the
+  // name sitting at its pre-paint offset. The bounding-box test is the cheap one,
+  // so it is asked first and only the few targets above the reading line pay for a
+  // computed style read.
+  const prePosed = (target: HTMLElement) => {
+    const style = getComputedStyle(target);
+    if (Number(style.opacity) < 1) return true;
+    return style.transform !== "none" && style.transform !== "matrix(1, 0, 0, 1, 0, 0)";
+  };
+
   const settlePassed = () => {
     const passed = revealTargets.filter(
       (target) =>
-        Number(getComputedStyle(target).opacity) < 1 &&
-        target.getBoundingClientRect().bottom <= 0,
+        target.getBoundingClientRect().bottom <= 0 && prePosed(target),
     );
     if (!passed.length) return;
     for (const target of passed) current.revealObserver?.unobserve(target);

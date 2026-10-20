@@ -42,7 +42,7 @@ The opening's gesture: the stage sticks for the length of the scene, and the vis
 _Avoid_: Hero animation, scroll effect, intro
 
 **Section Link**:
-One of the four entries in the header's section navigation. It is an anchor to that section in the one-page document, so it is a shortcut past the opening rather than the only route to a section.
+One of the entries in the header's section navigation. It is an anchor to that section in the one-page document, so it is a shortcut past the opening rather than the only route to a section. On a Writing page it returns to the Portfolio Site's anchors, except Writing itself, which has its own page.
 _Avoid_: Nav item, menu link
 
 **Magnetic Pull**:

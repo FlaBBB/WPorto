@@ -15,9 +15,12 @@ import {
   email,
   githubProfile,
   linkedInProfile,
+  ownerName,
   profileRecords,
   projects,
 } from "../lib/portfolio";
+const nameBreak = ownerName.lastIndexOf(" ");
+const nameLines = [ownerName.slice(0, nameBreak), ownerName.slice(nameBreak + 1)];
 
 // Recognizable contact marks. They are decorative (aria-hidden); the adjacent
 // text labels carry the accessible name.
@@ -42,8 +45,16 @@ const LINKEDIN_ICON =
       <SparseStars seed={1} client:load />
       <div class="intro-layout">
         <div class="intro-lead">
-          <h1 id="intro-heading">Fikri Muhammad Abdillah<span class="intro-dot" aria-hidden="true">.</span></h1>
-          <p class="intro-secondary">Web applications. Realtime systems.</p>
+          <h1 id="intro-heading">
+            {nameLines.map((line, index) => (
+              <span class="intro-line">
+                <span data-reveal data-enter="line" data-enter-delay={index * 0.08}>
+                  {line}{index === 1 && <span class="intro-dot" aria-hidden="true">.</span>}
+                </span>{index === 0 && " "}
+              </span>
+            ))}
+          </h1>
+          <p class="intro-secondary" data-reveal data-enter-delay="0.16">Web applications. Realtime systems.</p>
         </div>
         <div class="intro-body">
           <p class="intro-note" data-reveal>
