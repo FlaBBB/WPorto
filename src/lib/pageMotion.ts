@@ -13,13 +13,6 @@ declare global {
   interface Window {
     /** Set once the motion module has wired a page, read by the pre-paint hold. */
     __afterHoursMotionReady?: boolean;
-    /**
-     * Set once the Work section's preview controller owns the section. The
-     * pre-paint hold reserves that section's geometry on the strength of this
-     * signal and releases the reservation if it never arrives, so an unavailable
-     * Work module leaves the static inline preview standing.
-     */
-    __workPreviewReady?: boolean;
   }
 }
 

@@ -3362,6 +3362,38 @@ test.describe("Writing", () => {
     );
     await expect(page.locator(".writing-chapters .writing-chapter")).toHaveCount(5);
 
+    /*
+      The contents are rows, not a run of inline text. Every chapter carries an
+      index, a name, a deck and its points, so an unstyled list reads as one
+      sentence — "01Rev / SerialA .NET licence window…100 pts" — which is what
+      shipped until the list got its own rules. Assert the layout, not the CSS
+      that produces it: the name sits on its own line above the deck, and the
+      points sit in their own column to the right of both.
+    */
+    const rows = await page.locator(".writing-chapter").evaluateAll((links) =>
+      links.map((link) => {
+        const box = (selector: string) =>
+          link.querySelector(selector)!.getBoundingClientRect();
+        return {
+          display: getComputedStyle(link).display,
+          index: box(".writing-chapter-index"),
+          name: box(".writing-chapter-name"),
+          deck: box(".writing-chapter-deck"),
+          meta: box(".writing-chapter-meta"),
+        };
+      }),
+    );
+    for (const row of rows) {
+      expect(row.display).toBe("grid");
+      // The name is above the deck, not beside it.
+      expect(row.name.bottom).toBeLessThanOrEqual(row.deck.top + 1);
+      // The points are to the right of the name and the deck, on one line.
+      expect(row.meta.left).toBeGreaterThan(row.name.right);
+      expect(row.meta.left).toBeGreaterThan(row.deck.right);
+      // ...and clear of the index, which starts the row.
+      expect(row.name.left).toBeGreaterThan(row.index.right);
+    }
+
     // Writing is the current page, and the other links return to the one-page
     // document's own sections rather than pretending to be routes.
     const nav = page.locator(".site-nav");
