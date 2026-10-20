@@ -16,7 +16,7 @@ const latest = WRITING[0];
 <Portfolio
   title="Writing — Fikri Muhammad Abdillah"
   metaDescription="Reverse-engineering writeups by Fikri Muhammad Abdillah: the TCP1P International 2024 challenges, solved and written up."
-  path="/writing"
+  path="/writing/"
   variant="document"
 >
   <div class="writing-page">
@@ -36,7 +36,7 @@ const latest = WRITING[0];
 
       <section class="writing-index-list" aria-labelledby="writing-index-heading">
         <h2 id="writing-index-heading" class="visually-hidden">Published writeups</h2>
-        <a class="writing-index-feature" href={`/writing/${latest.slug}`}>
+        <a class="writing-index-feature" href={`/writing/${latest.slug}/`}>
           <span class="writing-index-thumb" aria-hidden="true">
             <img src={latest.image} alt="" width="1600" height="1067" loading="lazy" decoding="async" />
           </span>
@@ -61,7 +61,7 @@ const latest = WRITING[0];
           <ol class="writing-chapters">
             {latest.challenges.map((challenge, index) => (
               <li data-reveal data-enter="right" data-enter-delay={(index * 0.05).toFixed(2)}>
-                <a class="writing-chapter" href={`/writing/${latest.slug}#${challenge.slug}`}>
+                <a class="writing-chapter" href={`/writing/${latest.slug}/#${challenge.slug}`}>
                   <span class="writing-chapter-index" aria-hidden="true">{padIndex(index)}</span>
                   <span class="writing-chapter-body">
                     <span class="writing-chapter-name">{challenge.name}</span>

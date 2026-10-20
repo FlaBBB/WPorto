@@ -37,13 +37,13 @@ const {
 };
 
 const isHome = variant === "home";
-const writingCurrent = path === "/writing" || path.startsWith("/writing/");
+const writingCurrent = path === "/writing/" || path.startsWith("/writing/");
 const navItems = sections.map(({ id, label }) => ({
   id,
   label,
   // On the home page the links are anchors to its sections. Everywhere else
   // they return to those anchors, except Writing, which has a page of its own.
-  href: isHome ? `#${id}` : id === "writing" ? "/writing" : `/#${id}`,
+  href: isHome ? `#${id}` : id === "writing" ? "/writing/" : `/#${id}`,
   current: !isHome && id === "writing" && writingCurrent,
 }));
 

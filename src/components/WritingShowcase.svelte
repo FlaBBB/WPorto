@@ -21,7 +21,7 @@
    * module owns. Reduced motion keeps the plate on its first entry and drops the
    * crossfade, the parallax and the touch auto-cycle.
    */
-  let { entries, allHref = "/writing" }: {
+  let { entries, allHref = "/writing/" }: {
     entries: WritingEntry[];
     allHref?: string;
   } = $props();
@@ -245,7 +245,7 @@
           <a
             class="writing-row"
             data-active={index === 0 ? "" : undefined}
-            href={`/writing/${entry.slug}`}
+            href={`/writing/${entry.slug}/`}
           >
             <span class="writing-row-index" aria-hidden="true">{padIndex(index)}</span>
             <span class="writing-row-body">

@@ -2348,7 +2348,9 @@ test.describe("editorial Work preview", () => {
     const reserved = reservedSamples[reservedSamples.length - 1];
 
     for (const sample of settledReserved) {
-      expect(sample.docH, "reserved document height").toBe(settledReserved[0].docH);
+      // Not the document's total height: Contact's band is sized by the page
+      // module, so that number belongs to a different section and moves when the
+      // page module arrives. The offsets below Work are what the reservation owns.
       expect(sample.workTop, "reserved Work offset").toBe(settledReserved[0].workTop);
       expect(sample.profileTop, "reserved Profile offset").toBe(
         settledReserved[0].profileTop,
@@ -2377,7 +2379,6 @@ test.describe("editorial Work preview", () => {
     const reference = settledReserved[0] ?? reserved;
     if (last.stage === "block") {
       expect(last.inline).toBe("none");
-      expect(last.docH).toBe(reference.docH);
       expect(last.profileTop).toBe(reference.profileTop);
       expect(last.archiveTop).toBe(reference.archiveTop);
       await expect(page.locator(".work-preview-stage")).toBeVisible();
@@ -2386,8 +2387,9 @@ test.describe("editorial Work preview", () => {
       ).toBeVisible();
     } else {
       expect(last.inline).toBe("block");
-      // The in-flow layout is the taller one: every study is in the document.
-      expect(last.docH).toBeGreaterThan(reference.docH);
+      // The in-flow layout is the taller one: every study is in the document, so
+      // everything below the section sits further down.
+      expect(last.archiveTop).toBeGreaterThan(reference.archiveTop);
       await expect(page.locator(".work-preview-stage")).toBeHidden();
       await expect(page.locator(".work-inline-preview .project-preview")).toHaveCount(3);
     }
@@ -3090,6 +3092,9 @@ test.describe("Work's layout ownership is its own", () => {
         motion: /\bmotion\b/.test(root.className),
         reserved: /\bwork-preview\b/.test(root.className),
         height: root.scrollHeight,
+        workHeight: Math.round(
+          document.querySelector("#selected-evidence")!.getBoundingClientRect().height,
+        ),
         stage: getComputedStyle(stage).display,
         inline: getComputedStyle(
           document.querySelector<HTMLElement>(".work-inline-preview")!,
@@ -3172,8 +3177,11 @@ test.describe("Work's layout ownership is its own", () => {
     );
     expect(arrived.inline, "the page module's class did not restore the in-flow studies")
       .toBe(afterHold.inline);
-    expect(arrived.height, "the page module's class did not move the document height").toBe(
-      afterHold.height,
+    // The document's total height is not Work's: Contact's band is sized by this
+    // same module, and it legitimately becomes compact when the module arrives.
+    // Work's own height is what must not move.
+    expect(arrived.workHeight, "the page module's class did not move Work's height").toBe(
+      afterHold.workHeight,
     );
     expect(
       arrived.profileTop,
@@ -3210,6 +3218,9 @@ test.describe("Work's layout ownership is its own", () => {
         document.querySelector<HTMLElement>(".work-inline-preview")!,
       ).display,
       height: document.documentElement.scrollHeight,
+      workHeight: Math.round(
+        document.querySelector("#selected-evidence")!.getBoundingClientRect().height,
+      ),
       workReady: Boolean(window.__workPreviewReady),
       pageReady: Boolean(window.__afterHoursMotionReady),
     }));
@@ -3245,6 +3256,9 @@ test.describe("Work's layout ownership is its own", () => {
         document.querySelector<HTMLElement>(".work-inline-preview")!,
       ).display,
       height: document.documentElement.scrollHeight,
+      workHeight: Math.round(
+        document.querySelector("#selected-evidence")!.getBoundingClientRect().height,
+      ),
       workReady: Boolean(window.__workPreviewReady),
       pageReady: Boolean(window.__afterHoursMotionReady),
     }));
@@ -3255,7 +3269,9 @@ test.describe("Work's layout ownership is its own", () => {
     // height that fallback had before either module was involved.
     expect(settled.stage, "a late module re-pinned the section").toBe("none");
     expect(settled.inline, "a late module took the in-flow studies away").toBe("block");
-    expect(settled.height, "a late module reformatted the document").toBe(baseline.height);
+    // Work's own height, not the document's: Contact's band becomes compact when the
+    // page module arrives, which is its own contract and not a re-pin of Work.
+    expect(settled.workHeight, "a late module reformatted Work").toBe(baseline.workHeight);
     await expect(page.locator(".work-inline-preview .project-preview")).toHaveCount(3);
   });
 });
@@ -3282,7 +3298,7 @@ test.describe("Writing", () => {
     // Each row is a real route to its writeup, and the first entry is the
     // one the plate opens on.
     for (const row of await rows.all()) {
-      expect(await row.getAttribute("href")).toMatch(/^\/writing\/[a-z0-9-]+$/);
+      expect(await row.getAttribute("href")).toMatch(/^\/writing\/[a-z0-9-]+\/$/);
     }
     await expect(section.locator(".writing-row[data-active]")).toHaveCount(1);
     await expect(section.locator(".writing-plate[data-active]")).toHaveCount(1);
@@ -3298,7 +3314,7 @@ test.describe("Writing", () => {
     );
     await expect(section.getByRole("link", { name: /All writing/ })).toHaveAttribute(
       "href",
-      "/writing",
+      "/writing/",
     );
   });
 
@@ -3332,7 +3348,7 @@ test.describe("Writing", () => {
     page,
   }) => {
     await page.emulateMedia({ reducedMotion: "reduce" });
-    await page.goto("/writing");
+    await page.goto("/writing/");
 
     await expect(page).toHaveTitle("Writing — Fikri Muhammad Abdillah");
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(
@@ -3357,7 +3373,7 @@ test.describe("Writing", () => {
     ).toHaveAttribute("href", "/#technical-profile");
 
     await page.locator(".writing-index-feature").click();
-    await expect(page).toHaveURL(/\/writing\/tcp1p-international-2024$/);
+    await expect(page).toHaveURL(/\/writing\/tcp1p-international-2024\/$/);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(
       "Writeup RE TCP1P International 2024",
     );
@@ -3371,7 +3387,7 @@ test.describe("Writing", () => {
     }
 
     // A chapter deep link lands clear of the fixed header.
-    await page.goto("/writing/tcp1p-international-2024#wannaflag");
+    await page.goto("/writing/tcp1p-international-2024/#wannaflag");
     const header = await page.locator(".site-header").boundingBox();
     const chapter = await page.locator("#wannaflag").boundingBox();
     expect(chapter?.y).toBeGreaterThanOrEqual(
@@ -3388,7 +3404,7 @@ test.describe("Writing images", () => {
     page,
   }) => {
     await page.emulateMedia({ reducedMotion: "reduce" });
-    await page.goto("/writing/tcp1p-international-2024");
+    await page.goto("/writing/tcp1p-international-2024/");
 
     // The cover is part of the article, not a background: it has alt text and a
     // caption, so it carries meaning rather than decorating.
