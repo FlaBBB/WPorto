@@ -22,6 +22,16 @@
     starColor,
   } from "../lib/stars";
 
+  declare global {
+    interface Window {
+      /**
+       * Set once the opening can draw its own mark. The loading screen reads it
+       * (and listens for `flab:ready`) before handing the stage over.
+       */
+      __flabReady?: boolean;
+    }
+  }
+
   /**
    * The opening sculpture. Its assembled target is sampled from the same filled
    * `flab` geometry that renders the header logo, so the gathered shape is the
@@ -383,6 +393,15 @@
     // A deep link may land mid-scene, so read the live geometry once at mount.
     computeGather();
 
+    /*
+      The first frame is already on the canvas (resize drew it synchronously), so
+      the loading screen can crossfade to the real mark. This also fires when the
+      canvas is unavailable and the static mark remains, so the screen never
+      outlives the opening it is covering.
+    */
+    window.__flabReady = true;
+    window.dispatchEvent(new CustomEvent("flab:ready"));
+
     return () => {
       motionQuery.removeEventListener("change", syncPreference);
       document.removeEventListener("visibilitychange", handleVisibility);
@@ -521,7 +540,8 @@
       width: min(44vw, 40rem, calc(52dvh * 402 / 272));
     }
   }
-  /* Once the canvas owns the field, the static mark steps aside. */
+  /* Reserve the field before hydration as well as the fitted mark. */
+  :global(html.motion) .sculpture-field,
   .sculpture[data-motion="on"]:not([data-collapsed="true"]) .sculpture-field {
     height: 100%;
   }
@@ -549,30 +569,35 @@
   /*
     The scroll scene. The section is taller than the viewport and the stage sticks
     inside it, so the visitor's own scroll is what breaks the mark apart and
-    reforms it. The extra length is the gesture, so it is only claimed once there
-    is a canvas to drive.
+    reforms it. The extra length is the gesture, reserved pre-paint and retained
+    once there is a canvas to drive. Error/reduced-motion overrides collapse it.
 
     Reserve the sticky viewport pre-paint too, so the server-rendered SVG is
     centred in the same initial full viewport and does not jump ~128px when the
     component hydrates. Collapsed overrides below win over this.
   */
-  :global(html.motion) .sculpture-sticky {
-    position: sticky;
-    top: 0;
-    height: 100vh;
-    height: 100dvh;
-    padding-block: 0;
-  }
+  :global(html.motion) .sculpture-scene,
   .sculpture[data-motion="on"] .sculpture-scene {
     height: 225vh;
     height: 225dvh;
   }
+  :global(html.motion) .sculpture-sticky,
   .sculpture[data-motion="on"] .sculpture-sticky {
     position: sticky;
     top: 0;
     height: 100vh;
     height: 100dvh;
     padding-block: 0;
+  }
+  :global(html.motion) .opening-caption,
+  .sculpture[data-motion="on"] .opening-caption {
+    position: absolute;
+    inset: auto 0 clamp(1.5rem, 5vh, 3rem);
+    z-index: 3;
+    padding-top: 0;
+    /* The cue fades out as the cloud breaks, so the scene's exit never drags it
+       across the fixed header. */
+    opacity: var(--caption-fade, 1);
   }
   /*
     Collapsed means there is no canvas to draw — no JavaScript, reduced motion,
@@ -589,5 +614,12 @@
     position: relative;
     height: auto;
     padding-block: clamp(3.5rem, 12vh, 7rem);
+  }
+  :global(html.motion) .sculpture[data-collapsed="true"] .sculpture-field {
+    height: auto;
+  }
+  :global(html.motion) .sculpture[data-collapsed="true"] .opening-caption {
+    position: static;
+    padding-top: 2rem;
   }
 </style>

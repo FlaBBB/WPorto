@@ -1,0 +1,545 @@
+---
+/**
+ * The page's loading screen: the opening's sky, before the sculpture can draw it.
+ *
+ * The server sends the opening as a filled SVG mark until the sculpture hydrates.
+ * This screen covers that plain mark with the same night the sculpture will paint:
+ * a drifting star field, the `flab` mark filled with twinkling stars, a violet
+ * outline drawing itself, and a quiet status line. When the sculpture reports its
+ * first frame, the screen crossfades away and the canvas mark takes its place.
+ *
+ * It is decorative and self-clearing: it never takes the pointer, and it removes
+ * itself under reduced motion, without JavaScript, on a deep link, when the
+ * sculpture reports its first frame, and after a timeout if that report never
+ * arrives.
+ */
+import { FLAB_FILL_RULE, FLAB_PATH, FLAB_VIEWBOX } from "../lib/flabMark";
+import { GLYPHS, rand } from "../lib/stars";
+
+type SkyStar = {
+  left: number;
+  top: number;
+  size: number;
+  glyph: string;
+  min: number;
+  max: number;
+  dx: number;
+  dy: number;
+  duration: number;
+  twinkle: number;
+  delay: number;
+  violet: boolean;
+};
+
+type MarkStar = {
+  x: number;
+  y: number;
+  size: number;
+  glyph: string;
+  min: number;
+  max: number;
+  duration: number;
+  delay: number;
+  violet: boolean;
+};
+
+/** Stars outside the mark. Sparse, so the mark stays the subject. */
+const SKY_COUNT = 48;
+/** Stars inside the mark's own geometry, clipped by the real `flab` path. */
+const MARK_COUNT = 150;
+
+const sky: SkyStar[] = Array.from({ length: SKY_COUNT }, (_, index) => {
+  const min = 0.05 + rand(index, 101) * 0.12;
+  return {
+    left: 2 + rand(index, 102) * 96,
+    top: 2 + rand(index, 103) * 96,
+    size: 9 + rand(index, 104) * 12,
+    glyph: GLYPHS[Math.floor(rand(index, 105) * GLYPHS.length)],
+    min,
+    max: Math.min(0.9, min + 0.18 + rand(index, 106) * 0.24),
+    dx: (rand(index, 107) - 0.5) * 36,
+    dy: (rand(index, 108) - 0.5) * 36,
+    duration: 16 + rand(index, 109) * 22,
+    twinkle: 7 + rand(index, 110) * 9,
+    delay: -rand(index, 111) * 14,
+    violet: rand(index, 112) > 0.86,
+  };
+});
+
+const markStars: MarkStar[] = Array.from({ length: MARK_COUNT }, (_, index) => {
+  const min = 0.28 + rand(index, 201) * 0.34;
+  return {
+    x: rand(index, 202) * FLAB_VIEWBOX.width,
+    y: rand(index, 203) * FLAB_VIEWBOX.height,
+    size: 2.6 + rand(index, 204) * 4.8,
+    glyph: GLYPHS[Math.floor(rand(index, 205) * GLYPHS.length)],
+    min,
+    max: Math.min(1, min + 0.28 + rand(index, 206) * 0.32),
+    duration: 2.2 + rand(index, 207) * 3.2,
+    delay: -rand(index, 208) * 5,
+    violet: rand(index, 209) > 0.78,
+  };
+});
+
+const skyStyle = (star: SkyStar) =>
+  `left:${star.left.toFixed(2)}%;top:${star.top.toFixed(2)}%;` +
+  `font-size:${star.size.toFixed(1)}px;` +
+  `--min:${star.min.toFixed(3)};--max:${star.max.toFixed(3)};` +
+  `--dx:${star.dx.toFixed(1)}px;--dy:${star.dy.toFixed(1)}px;` +
+  `--dur:${star.duration.toFixed(1)}s;--twinkle:${star.twinkle.toFixed(1)}s;` +
+  `animation-delay:${star.delay.toFixed(2)}s`;
+
+const markStyle = (star: MarkStar) =>
+  `--min:${star.min.toFixed(3)};--max:${star.max.toFixed(3)};` +
+  `--dur:${star.duration.toFixed(1)}s;--delay:${star.delay.toFixed(2)}s`;
+---
+
+<div class="loading-screen" id="loading-screen" data-state="loading" aria-hidden="true">
+  <div class="loading-sky">
+    {sky.map((star) => (
+      <span
+        class:list={["loading-sky-star", star.violet && "loading-sky-star-violet"]}
+        style={skyStyle(star)}
+      >{star.glyph}</span>
+    ))}
+  </div>
+  <div class="loading-glow"></div>
+  <div class="loading-core">
+    <div class="loading-mark">
+      <svg viewBox={`0 0 ${FLAB_VIEWBOX.width} ${FLAB_VIEWBOX.height}`} aria-hidden="true">
+        <defs>
+          <clipPath id="flab-loading-clip">
+            <path d={FLAB_PATH} clip-rule={FLAB_FILL_RULE} />
+          </clipPath>
+          <linearGradient id="flab-loading-sweep" x1="0" y1="0" x2="1" y2="0.4">
+            <stop offset="0" stop-color="rgb(167, 139, 250)" stop-opacity="0" />
+            <stop offset="0.5" stop-color="rgb(167, 139, 250)" stop-opacity="0.22" />
+            <stop offset="1" stop-color="rgb(167, 139, 250)" stop-opacity="0" />
+          </linearGradient>
+        </defs>
+        <path
+          class="loading-fill"
+          d={FLAB_PATH}
+          fill-rule={FLAB_FILL_RULE}
+        />
+        <g
+          class="loading-stars"
+          clip-path="url(#flab-loading-clip)"
+          text-anchor="middle"
+          dominant-baseline="central"
+        >
+          {markStars.map((star) => (
+            <text
+              class:list={["loading-star", star.violet && "loading-star-violet"]}
+              x={star.x.toFixed(1)}
+              y={star.y.toFixed(1)}
+              font-size={star.size.toFixed(1)}
+              style={markStyle(star)}
+            >{star.glyph}</text>
+          ))}
+          <rect
+            class="loading-sweep"
+            x="0"
+            y="0"
+            width="320"
+            height={FLAB_VIEWBOX.height}
+            fill="url(#flab-loading-sweep)"
+          />
+        </g>
+        <path
+          class="loading-outline"
+          d={FLAB_PATH}
+          fill="none"
+          pathLength="1"
+          vector-effect="non-scaling-stroke"
+        />
+      </svg>
+    </div>
+    <p class="loading-status">
+      <span class="loading-spark" aria-hidden="true">✦</span>
+      <span class="loading-label">Assembling the sky</span>
+      <span class="loading-track" aria-hidden="true"><span class="loading-bar"></span></span>
+    </p>
+  </div>
+</div>
+
+<script is:inline>
+  (function () {
+    var screen = document.getElementById("loading-screen");
+    if (!screen) return;
+
+    var reduced = false;
+    try {
+      reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    } catch (error) {
+      reduced = false;
+    }
+
+    // A deep link is aimed at a section, not at the opening; do not stage a
+    // prologue in front of it. Reduced motion gets the static mark immediately.
+    if (reduced || location.hash) {
+      screen.remove();
+      return;
+    }
+
+    var ready = window.__flabReady === true;
+    var elapsed = false;
+    var leaving = false;
+
+    /*
+      Ask for the page's own faces now.
+
+      The screen covers the page, and WebKit in particular will not fetch a face
+      for text it is not painting: left alone, the page would settle its type only
+      after the screen leaves, reflowing under the visitor and moving the reading
+      position. Loading the faces here means the page appears in its final type.
+    */
+    if (document.fonts) {
+      document.fonts.forEach(function (face) {
+        face.load().catch(function () {});
+      });
+    }
+
+    /*
+      The loader's motion waits for the page's fonts. WebKit defers webfont loading
+      while CSS animations run, so animating from the first frame can hold the page's
+      own faces back for as long as the screen is up. The still frame is the same
+      picture; it simply moves once the faces have landed. The timer is the fallback
+      for a font request that never settles — the loader must not stay frozen.
+    */
+    function startMotion() {
+      if (screen.isConnected) screen.setAttribute("data-live", "true");
+    }
+    if (document.fonts && document.fonts.ready) {
+      document.fonts.ready.then(startMotion, startMotion);
+    } else {
+      startMotion();
+    }
+    window.setTimeout(startMotion, 1500);
+
+    function leave() {
+      if (leaving) return;
+      leaving = true;
+      screen.setAttribute("data-state", "leaving");
+      window.setTimeout(function () {
+        screen.remove();
+      }, 780);
+    }
+
+    function maybeLeave() {
+      if (ready && elapsed) leave();
+    }
+
+    window.addEventListener("flab:ready", function () {
+      ready = true;
+      maybeLeave();
+    });
+
+    // The entrance needs a beat to read, so a fast sculpture cannot flash the
+    // screen away before the mark has assembled.
+    window.setTimeout(function () {
+      elapsed = true;
+      maybeLeave();
+    }, 700);
+
+    // If the sculpture never reports (a failed module, an unavailable canvas),
+    // the screen must not outstay its welcome.
+    window.setTimeout(leave, 4500);
+
+    /*
+      The screen covers the whole viewport, so a visitor who scrolls is already
+      reading past it. Yield immediately rather than fading a still image over a
+      page they have moved on from.
+    */
+    ["wheel", "touchmove", "keydown", "hashchange"].forEach(function (type) {
+      window.addEventListener(type, leave, { passive: true, once: true });
+    });
+
+    maybeLeave();
+  })();
+</script>
+
+<style>
+  /*
+    System monospace, deliberately not the page's `--font-mono`: the loader must
+    not request a webfont of its own. The page's faces load on their own schedule,
+    and a loader that competes for them delays the very first paint it exists to
+    improve.
+  */
+  .loading-screen {
+    --loading-mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    overflow: hidden;
+    background: var(--background);
+    /*
+      Never take the pointer. The screen is a picture of the opening, not a gate:
+      a click or a hit test must reach the page underneath, so the overlay can
+      never trap input — or the page's own `elementFromPoint` reading — while it
+      is fading. Keyboard input still dismisses it immediately.
+    */
+    pointer-events: none;
+    transition: opacity 720ms cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .loading-screen[data-state="leaving"] {
+    opacity: 0;
+  }
+  /* Depth at the edges, so the mark sits in a lit volume rather than on a flat fill. */
+  .loading-screen::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at 50% 50%, transparent 38%, #0e0b14 100%);
+    opacity: 0.72;
+    pointer-events: none;
+  }
+
+  .loading-sky {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+  }
+  .loading-sky-star {
+    position: absolute;
+    line-height: 1;
+    color: var(--ink);
+    opacity: var(--min);
+  }
+  /*
+    The loader holds still until the page's fonts have landed, then comes alive.
+
+    That ordering is not decoration. WebKit defers webfont loading while CSS
+    animations are running, so a loader that starts twinkling at parse time can
+    hold the page's own faces in `unloaded` for as long as it is on screen — the
+    loader would delay the very thing it exists to cover. A still frame requests
+    nothing; once the faces are in, the same elements start to move.
+  */
+  .loading-screen[data-live="true"] .loading-sky-star {
+    animation:
+      loading-drift var(--dur) ease-in-out infinite alternate,
+      loading-twinkle var(--twinkle) ease-in-out infinite alternate;
+  }
+  .loading-sky-star-violet {
+    color: var(--accent);
+  }
+
+  .loading-glow {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: min(78vmin, 48rem);
+    aspect-ratio: 1;
+    border-radius: 50%;
+    background: radial-gradient(
+      circle,
+      color-mix(in srgb, var(--accent) 20%, transparent),
+      color-mix(in srgb, var(--accent) 6%, transparent) 45%,
+      transparent 70%
+    );
+    /* The animation's midpoint, so the still frame and the moving one match. */
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 0.75;
+  }
+  .loading-screen[data-live="true"] .loading-glow {
+    animation: loading-breathe 7s ease-in-out infinite alternate;
+  }
+
+  .loading-core {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+  }
+
+  .loading-mark {
+    width: min(66vw, 20rem, calc(52dvh * 402 / 272));
+  }
+  .loading-mark svg {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+  @media (min-width: 760px) {
+    .loading-mark {
+      width: min(44vw, 40rem, calc(52dvh * 402 / 272));
+    }
+  }
+
+  .loading-stars {
+    font-family: var(--loading-mono);
+    font-weight: 400;
+  }
+  .loading-star {
+    fill: var(--ink);
+    opacity: var(--min);
+  }
+  .loading-screen[data-live="true"] .loading-star {
+    animation: loading-twinkle var(--dur) ease-in-out var(--delay) infinite alternate;
+  }
+  .loading-star-violet {
+    fill: var(--accent);
+  }
+
+  .loading-outline {
+    stroke: var(--accent);
+    stroke-width: 1.1;
+    stroke-linejoin: round;
+    stroke-dasharray: 1;
+    stroke-dashoffset: 0;
+    opacity: 0.16;
+  }
+  .loading-screen[data-live="true"] .loading-outline {
+    animation: loading-draw 2.6s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+  }
+  /*
+    A whisper of fill under the stars, so the silhouette reads at a glance while
+    the mark is still visibly made of stars rather than being the plain SVG again.
+  */
+  .loading-fill {
+    fill: var(--ink);
+    opacity: 0.055;
+  }
+
+  .loading-sweep {
+    opacity: 0;
+  }
+  .loading-screen[data-live="true"] .loading-sweep {
+    animation: loading-sweep 5.2s ease-in-out 1.4s infinite;
+  }
+
+  .loading-status {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: clamp(1.5rem, 5vh, 3rem);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.65rem;
+    color: var(--muted-ink);
+    font: 500 0.6875rem/1 var(--loading-mono);
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+  }
+  .loading-spark {
+    color: var(--accent);
+    font-size: 0.95rem;
+  }
+  .loading-screen[data-live="true"] .loading-spark {
+    animation: loading-spin 4.2s linear infinite;
+  }
+  .loading-track {
+    position: relative;
+    width: clamp(3.5rem, 10vw, 6rem);
+    height: 1px;
+    margin-left: 0.35rem;
+    overflow: hidden;
+    background: var(--rule);
+  }
+  .loading-bar {
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 38%;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  }
+  .loading-screen[data-live="true"] .loading-bar {
+    animation: loading-scan 1.8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+
+  @keyframes loading-drift {
+    from {
+      transform: translate3d(0, 0, 0);
+    }
+    to {
+      transform: translate3d(var(--dx, 0px), var(--dy, 0px), 0);
+    }
+  }
+  @keyframes loading-twinkle {
+    from {
+      opacity: var(--min, 0.08);
+    }
+    to {
+      opacity: var(--max, 0.3);
+    }
+  }
+  @keyframes loading-breathe {
+    from {
+      transform: translate(-50%, -50%) scale(0.9);
+      opacity: 0.55;
+    }
+    to {
+      transform: translate(-50%, -50%) scale(1.08);
+      opacity: 0.9;
+    }
+  }
+  @keyframes loading-draw {
+    0% {
+      stroke-dashoffset: 1;
+      opacity: 0;
+    }
+    10% {
+      opacity: 0.55;
+    }
+    62% {
+      stroke-dashoffset: 0;
+      opacity: 0.55;
+    }
+    88% {
+      stroke-dashoffset: 0;
+      opacity: 0.16;
+    }
+    100% {
+      stroke-dashoffset: 0;
+      opacity: 0;
+    }
+  }
+  @keyframes loading-sweep {
+    0% {
+      opacity: 0;
+      transform: translateX(-320px);
+    }
+    20% {
+      opacity: 1;
+    }
+    55% {
+      opacity: 1;
+    }
+    75%,
+    100% {
+      opacity: 0;
+      transform: translateX(402px);
+    }
+  }
+  @keyframes loading-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  @keyframes loading-scan {
+    from {
+      transform: translateX(-100%);
+    }
+    to {
+      transform: translateX(280%);
+    }
+  }
+
+  /*
+    The loader is a motion experience, not a slower path to the page: reduced
+    motion gets the static mark and no overlay at all.
+  */
+  @media (prefers-reduced-motion: reduce) {
+    .loading-screen {
+      display: none;
+    }
+  }
+</style>
+
+<noscript>
+  <style is:inline>
+    #loading-screen {
+      display: none !important;
+    }
+  </style>
+</noscript>
